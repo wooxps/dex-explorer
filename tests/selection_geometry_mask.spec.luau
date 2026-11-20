@@ -237,6 +237,24 @@ do
 	-- Exercise the real renderer switching one retained Highlight to a combined
 	-- model, rather than keeping the old Highlight-plus-wireframe rendering.
 	local manager = Renderer.Create({ Parent = holder, Workspace = workspace, GeometryMask = Geometry })
+	local fixed = Instance.new("Part", workspace)
+	fixed.Anchored, fixed.Transparency, fixed.CFrame = true, 1, { Id = 1 }
+	manager:Update({ fixed })
+	drain()
+	local fixedMask = manager.Records[fixed].Mask
+	local steps, step = 0, fixedMask.Step
+	fixedMask.Step = function(self) steps += 1; step(self) end
+	for _ = 1, 120 do service.RunService.RenderStepped:Fire() end
+	assert(steps == 0 and fixedMask.Ready, "stationary masks must keep their geometry without polling")
+	fixed.Anchored = false
+	fixed._props.CFrame = { Id = 12 }
+	service.RunService.RenderStepped:Fire()
+	assert(steps == 1 and fixedMask.Entries[fixed].Copy.CFrame == fixed.CFrame)
+	fixed.Anchored = true
+	service.RunService.RenderStepped:Fire()
+	assert(steps == 1)
+	manager:Update({})
+	fixed:Destroy()
 	manager:Update({ sourceRoot })
 	local record = manager.Records[sourceRoot]
 	assert(

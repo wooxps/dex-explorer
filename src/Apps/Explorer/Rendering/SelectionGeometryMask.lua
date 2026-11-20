@@ -80,7 +80,7 @@ local function CreateModule()
 		end
 		return object == root or object:IsDescendantOf(root)
 	end
-	function GeometryMask.Create(parts, onChanged)
+	function GeometryMask.Create(parts, onChanged, onStepChanged)
 		if type(Instance.fromExisting) ~= "function" then
 			return nil, "No shallow geometry copier"
 		end
@@ -120,6 +120,7 @@ local function CreateModule()
 			Model = model,
 			Entries = {},
 			Dynamic = {},
+			NeedsStep = false,
 			Bones = {},
 			Count = 0,
 			Version = 0,
@@ -135,6 +136,13 @@ local function CreateModule()
 		local scheduled = false
 		local pump
 		local movedParts, movedPoses, movedEntries = {}, {}, {}
+		local function updateStepping()
+			local needed = next(self.Dynamic) ~= nil or next(self.Bones) ~= nil
+			if needed ~= self.NeedsStep then
+				self.NeedsStep = needed
+				if not self.Destroyed and onStepChanged then onStepChanged(self, needed) end
+			end
+		end
 		local function changed()
 			if not self.Destroyed and onChanged then
 				onChanged()
@@ -155,6 +163,7 @@ local function CreateModule()
 			for _, binding in ipairs(entry.Bones) do
 				self.Bones[binding.Source] = nil
 			end
+			updateStepping()
 			disconnect(entry.Connections)
 			entry.Copy:Destroy()
 			self.Count -= 1
@@ -228,6 +237,7 @@ local function CreateModule()
 						end
 					elseif property == "Anchored" then
 						self.Dynamic[source] = not source.Anchored and entry or nil
+						updateStepping()
 					elseif property == "TextureID" or property == "TextureContent" or property == "RenderFidelity" then
 						pcall(function()
 							copy[property] = source[property]
@@ -258,6 +268,7 @@ local function CreateModule()
 			for _, binding in ipairs(bones) do
 				self.Bones[binding.Source] = binding
 			end
+			updateStepping()
 			self.Count += 1
 			totalParts += 1
 		end

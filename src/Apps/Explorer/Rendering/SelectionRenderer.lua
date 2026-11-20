@@ -502,6 +502,8 @@ local function CreateModule()
 					if not record.Destroyed then
 						updateRoot(record)
 					end
+				end, function(current, needed)
+					if record.Mask == current then masks[record] = needed and current or nil end
 				end)
 				record.Mask = mask
 				record.MaskUnavailable = problem
@@ -516,7 +518,7 @@ local function CreateModule()
 				end
 			end
 			local maskReady = record.Mask and record.Mask.Ready and not record.Mask.Failed
-			masks[record] = record.Mask
+			masks[record] = record.Mask and record.Mask.NeedsStep ~= false and record.Mask or nil
 			local wasPreparing = record.PreparingMask
 			record.PreparingMask = record.Mask ~= nil and not maskReady
 			if record.PreparingMask then

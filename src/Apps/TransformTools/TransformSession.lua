@@ -130,32 +130,59 @@ local function CreateModule()
 		return center, Vector3.new(maxX - minX, maxY - minY, maxZ - minZ), pivot
 	end
 	function Transform.CreateSelectionPivot(roots, records)
-		local blocks, membership, moving = {}, {}, {}
-		local modelOf = {}
+		local membership, modelOf = {}, {}
+		local moving, movingSlots = {}, {}
 		local changed = true
 		local tracker = {}
+		local function build(first, last, parent)
+			local block = { First = first, Last = last, Parent = parent, Dirty = true }
+			if last - first < 4 then
+				for i = first, last do membership[roots[i]] = block end
+			else
+				local step = math.ceil((last - first + 1) / 8)
+				for i = first, last, step do
+					block[#block + 1] = build(i, math.min(i + step - 1, last), block)
+				end
+			end
+			return block
+		end
+		local top = build(1, #roots)
+		local function dirty(block)
+			changed = true
+			while block and not block.Dirty do
+				block.Dirty = true
+				block = block.Parent
+			end
+		end
+		local function trackMotion(part, enabled)
+			local slot = movingSlots[part]
+			if enabled and not slot then
+				moving[#moving + 1] = { Part = part, Pose = part.CFrame, Block = membership[part] }
+				movingSlots[part] = #moving
+			elseif slot and not enabled then
+				local last = #moving
+				local tail = moving[last]
+				moving[slot] = tail
+				movingSlots[tail.Part] = slot
+				moving[last], movingSlots[part] = nil, nil
+			end
+		end
 		function tracker:AddPart(root, part)
 			local block = membership[root]
 			if not block then return end
 			membership[part] = block
 			if root ~= part then modelOf[part] = root end
-			if not part.Anchored then moving[part] = part.CFrame end
-			block.Dirty, changed = true, true
+			trackMotion(part, not part.Anchored)
+			dirty(block)
 		end
 		function tracker:RemovePart(root, part)
 			local block = membership[part]
 			if not block or modelOf[part] ~= root then return end
-			block.Dirty, changed = true, true
-			membership[part], moving[part], modelOf[part] = nil, nil, nil
+			dirty(block)
+			trackMotion(part, false)
+			membership[part], modelOf[part] = nil, nil
 		end
-		for i, root in ipairs(roots) do
-			local index = (i - 1) // 32 + 1
-			local block = blocks[index]
-			if not block then
-				block = { Dirty = true }
-				blocks[index] = block
-			end
-			membership[root] = block
+		for _, root in ipairs(roots) do
 			if root:IsA("Model") then
 				for part in pairs(records[root].Parts) do tracker:AddPart(root, part) end
 			else
@@ -167,43 +194,58 @@ local function CreateModule()
 				local block = membership[part]
 				if not block then return end
 				if property == "Anchored" then
-					moving[part] = if part.Anchored then nil else part.CFrame
+					trackMotion(part, not part.Anchored)
 				elseif property ~= "CFrame" and property ~= "Size" and property ~= "PivotOffset"
 					and property ~= "WorldPivot" and property ~= "PrimaryPart"
 					and property ~= "Position" and property ~= "Orientation" and property ~= "Rotation" then
 					return
 				end
-				block.Dirty = true
-				changed = true
+				dirty(block)
 			end)
 		end)
 		if not ok then return nil end
 		local previousSpace, previousOrientation, pivot
+		local rebuildTree = false
+		local function measure(block, toLocal, rotated)
+			if not rotated and not block.Dirty then return end
+			if #block == 0 then
+				block.X, block.Y, block.Z, block.MaxX, block.MaxY, block.MaxZ =
+					extents(roots, block.First, block.Last, toLocal)
+			else
+				local x, y, z = math.huge, math.huge, math.huge
+				local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+				for _, child in ipairs(block) do
+					measure(child, toLocal, rotated)
+					x, y, z = math.min(x, child.X), math.min(y, child.Y), math.min(z, child.Z)
+					maxX, maxY, maxZ = math.max(maxX, child.MaxX), math.max(maxY, child.MaxY), math.max(maxZ, child.MaxZ)
+				end
+				block.X, block.Y, block.Z = x, y, z
+				block.MaxX, block.MaxY, block.MaxZ = maxX, maxY, maxZ
+			end
+			block.Dirty = false
+		end
 		function tracker:Get(space)
-			for part, previous in pairs(moving) do
-				local pose = part.CFrame
-				if pose ~= previous then
-					moving[part] = pose
-					membership[part].Dirty = true
+			local moved = 0
+			for _, entry in ipairs(moving) do
+				local pose = entry.Part.CFrame
+				if pose ~= entry.Pose then
+					entry.Pose = pose
+					moved += 1
 					changed = true
+					if not rebuildTree and moved < #roots / 4 then dirty(entry.Block) end
 				end
 			end
 			if not changed and space == previousSpace then return pivot end
 			local orientation = selectionOrientation(roots, space)
-			local rotated = orientation ~= previousOrientation
 			local toLocal = orientation and orientation:Inverse()
-			local minX, minY, minZ = math.huge, math.huge, math.huge
-			local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
-			for i, block in ipairs(blocks) do
-				if rotated or block.Dirty then
-					block[1], block[2], block[3], block[4], block[5], block[6] =
-						extents(roots, (i - 1) * 32 + 1, math.min(i * 32, #roots), toLocal)
-					block.Dirty = false
-				end
-				minX, minY, minZ = math.min(minX, block[1]), math.min(minY, block[2]), math.min(minZ, block[3])
-				maxX, maxY, maxZ = math.max(maxX, block[4]), math.max(maxY, block[5]), math.max(maxZ, block[6])
+			if moved >= #roots / 4 then
+				top.X, top.Y, top.Z, top.MaxX, top.MaxY, top.MaxZ = extents(roots, 1, #roots, toLocal)
+			else
+				measure(top, toLocal, orientation ~= previousOrientation or rebuildTree)
 			end
-			pivot = CFrame.new((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
+			-- A full scan bypasses the child bounds. Refresh them on the next sparse update.
+			rebuildTree = moved >= #roots / 4
+			pivot = CFrame.new((top.X + top.MaxX) * 0.5, (top.Y + top.MaxY) * 0.5, (top.Z + top.MaxZ) * 0.5)
 			if orientation then pivot = orientation * pivot end
 			previousSpace, previousOrientation, changed = space, orientation, false
 			return pivot

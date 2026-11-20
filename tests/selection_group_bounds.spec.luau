@@ -209,7 +209,18 @@ do
 	moving._props.CFrame = CFrame.new(5000, 0, 100)
 	calls = 0
 	service.RunService.RenderStepped:Fire()
-	assert(calls == 32)
+	assert(calls > 0 and calls <= 4, "one moving root only recomputes its leaf")
+	checkPivot()
+	for i = 2, #order do
+		local part = order[i]
+		part.Anchored = false
+		game.ItemChanged:Fire(part, "Anchored")
+		part._props.CFrame = CFrame.new(i, -i, 2*i)
+	end
+	service.RunService.RenderStepped:Fire()
+	checkPivot()
+	order[3]._props.CFrame = CFrame.new(-9100, 35, 0)
+	service.RunService.RenderStepped:Fire()
 	checkPivot()
 	moving.Size = vec(200, 200, 200)
 	game.ItemChanged:Fire(moving, "Size")
