@@ -503,8 +503,8 @@ local function CreateModule()
 						updateRoot(record)
 					end
 				end, function(current, needed)
-					if record.Mask == current then masks[record] = needed and current or nil end
-				end)
+					if record.Mask == current then masks[record] = needed and current.Displayed ~= false and current or nil end
+				end, true)
 				record.Mask = mask
 				record.MaskUnavailable = problem
 			elseif (record.HiddenParts == 0 or record.NativeOnly) and record.Mask then
@@ -518,7 +518,7 @@ local function CreateModule()
 				end
 			end
 			local maskReady = record.Mask and record.Mask.Ready and not record.Mask.Failed
-			masks[record] = record.Mask and record.Mask.NeedsStep ~= false and record.Mask or nil
+			masks[record] = record.Mask and record.Mask.Displayed ~= false and record.Mask.NeedsStep ~= false and record.Mask or nil
 			local wasPreparing = record.PreparingMask
 			record.PreparingMask = record.Mask ~= nil and not maskReady
 			if record.PreparingMask then
@@ -558,6 +558,14 @@ local function CreateModule()
 				end
 			end
 			local maskActive = not not (maskReady and record.Highlight)
+			if maskReady and record.Mask.SetDisplayed then
+				local mask = record.Mask
+				if mask.Displayed ~= maskActive then
+					local ok, problem = pcall(mask.SetDisplayed, mask, maskActive)
+					if not ok then mask:Fail(problem) return end
+				end
+				masks[record] = maskActive and mask.NeedsStep and mask or nil
+			end
 			local maskVersion = record.Mask and record.Mask.Version or 0
 			if record.MaskActive ~= maskActive or record.MaskVersion ~= maskVersion then
 				record.MaskActive = maskActive

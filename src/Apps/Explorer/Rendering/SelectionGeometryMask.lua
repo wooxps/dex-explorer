@@ -80,7 +80,7 @@ local function CreateModule()
 		end
 		return object == root or object:IsDescendantOf(root)
 	end
-	function GeometryMask.Create(parts, onChanged, onStepChanged)
+	function GeometryMask.Create(parts, onChanged, onStepChanged, startDetached)
 		if type(Instance.fromExisting) ~= "function" then
 			return nil, "No shallow geometry copier"
 		end
@@ -121,6 +121,7 @@ local function CreateModule()
 			Entries = {},
 			Dynamic = {},
 			NeedsStep = false,
+			Displayed = not startDetached,
 			Bones = {},
 			Count = 0,
 			Version = 0,
@@ -230,12 +231,17 @@ local function CreateModule()
 						return
 					end
 					if property == "CFrame" or property == "Size" or property == "Shape" then
+						if not self.Displayed and (property == "CFrame" or property == "Size") then
+							entry.GeometryDirty = true
+							return
+						end
 						local value = source[property]
 						copy[property] = value
 						if property == "CFrame" then
 							entry.LastPose = value
 						end
 					elseif property == "Anchored" then
+						if not self.Displayed then entry.GeometryDirty = true end
 						self.Dynamic[source] = not source.Anchored and entry or nil
 						updateStepping()
 					elseif property == "TextureID" or property == "TextureContent" or property == "RenderFidelity" then
@@ -300,7 +306,7 @@ local function CreateModule()
 			else
 				table.clear(queue)
 				head = 1
-				if not model.Parent then
+				if self.Displayed and not model.Parent then
 					model.Parent = getRoot()
 				end
 				self.Ready = true
@@ -378,6 +384,24 @@ local function CreateModule()
 		function self:Fail(problem)
 			if not self.Destroyed and not self.Failed then
 				setFailure(problem)
+			end
+		end
+		function self:SetDisplayed(displayed)
+			if self.Displayed == displayed or self.Destroyed then return end
+			self.Displayed = displayed
+			if displayed then
+				for source, entry in pairs(self.Entries) do
+					if entry.GeometryDirty then
+						entry.Copy.Size = source.Size
+						local pose = source.CFrame
+						entry.Copy.CFrame, entry.LastPose = pose, pose
+						entry.GeometryDirty = nil
+					end
+				end
+				model.Parent = getRoot()
+				if self.NeedsStep then self:Step() end
+			else
+				model.Parent = nil
 			end
 		end
 		function self:Destroy()

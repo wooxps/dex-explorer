@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "fbcc13a6cf94bfa4b4b8",
+  "release": "af5c4a02066c32875baf",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -464,14 +464,14 @@
       "sha256": "880d8eacbeaa9ce4966152b6be4ef0f5f21db2b0ff82ee1334cf7ccc31c70879"
     },
     "src/Apps/Explorer/Rendering/SelectionGeometryMask.lua": {
-      "bytes": 11397,
-      "checksum": 3280656583,
-      "sha256": "8759ab19f852d652a2cb908b51e2538da51545ea39534ca4b371c9ef608d265f"
+      "bytes": 12196,
+      "checksum": 3167605165,
+      "sha256": "99d3df119faac00d2c8e22ba1dd65db91db06436852f446b252f5880d3d176b0"
     },
     "src/Apps/Explorer/Rendering/SelectionRenderer.lua": {
-      "bytes": 31995,
-      "checksum": 3552851243,
-      "sha256": "dd7cd0f856c8f647c41b151281bf8452a4d8750e380aeca5237072884fe15d26"
+      "bytes": 32386,
+      "checksum": 2231219663,
+      "sha256": "931e56da296c15ea089379f779b25bd6a0465b069133ea42c08dac058ef68727"
     },
     "src/Apps/Explorer/Services/EditingService.lua": {
       "bytes": 1041,

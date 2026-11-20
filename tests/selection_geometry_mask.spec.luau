@@ -237,6 +237,45 @@ do
 	-- Exercise the real renderer switching one retained Highlight to a combined
 	-- model, rather than keeping the old Highlight-plus-wireframe rendering.
 	local manager = Renderer.Create({ Parent = holder, Workspace = workspace, GeometryMask = Geometry })
+	do
+		local limited = Renderer.Create({ Parent = holder, Workspace = workspace, GeometryMask = Geometry, MaxHighlights = 1 })
+		local sources = {}
+		for i = 1, 8 do
+			local p = Instance.new("Part", workspace)
+			p.Transparency, p.Anchored, p.CFrame = 1, false, { Id = i }
+			sources[i] = p
+		end
+		limited:Update(sources)
+		drain()
+		local promoted, active = nil, 0
+		for _, p in ipairs(sources) do
+			local r = limited.Records[p]
+			if r.Highlight then
+				assert(r.Mask.Model.Parent and r.Highlight.Adornee == r.Mask.Model)
+				active += 1
+			else
+				assert(r.Parts[p].Bounds.Adornee == p and not r.Mask.Model.Parent)
+				promoted = p
+			end
+		end
+		assert(active == 1 and limited.Counts.Bounds == #sources - 1)
+		local r = limited.Records[promoted]
+		local mask, pose = r.Mask, { Id = 99 }
+		local size = Vector3.new(14, 8, 3)
+		promoted.Size = size
+		assert(mask.Entries[promoted].Copy.Size ~= size)
+		promoted._props.CFrame = pose
+		service.RunService.RenderStepped:Fire()
+		assert(mask.Entries[promoted].Copy.CFrame ~= pose)
+		limited:Update({promoted})
+		drain()
+		assert(r.Mask == mask and mask.Model.Parent and r.Highlight.Adornee == mask.Model)
+		assert(mask.Entries[promoted].Copy.CFrame == pose and limited.Counts.Bounds == 0)
+		assert(mask.Entries[promoted].Copy.Size == size)
+		limited:Destroy()
+		for _, p in ipairs(sources) do p:Destroy() end
+		drain()
+	end
 	local fixed = Instance.new("Part", workspace)
 	fixed.Anchored, fixed.Transparency, fixed.CFrame = true, 1, { Id = 1 }
 	manager:Update({ fixed })
