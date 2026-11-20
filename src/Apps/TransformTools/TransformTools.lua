@@ -534,7 +534,14 @@ local function CreateModule()
 		end
 		local watchBounds = Tools.Tool ~= "Select"
 		local function selectionChanged()
-			if drag then finish(true) else refresh() end
+			if drag then finish(true) end
+			boundsDirty = true
+			if refreshQueued then return end
+			refreshQueued = true
+			task.defer(function()
+				refreshQueued = false
+				if Main.Alive and not destroyed then refresh() end
+			end)
 		end
 		local function dirty()
 			boundsDirty = true
@@ -594,21 +601,8 @@ local function CreateModule()
 					selectionConnections[#selectionConnections + 1] =
 						object:GetPropertyChangedSignal("PrimaryPart"):Connect(dirty)
 				end
-				local function topology()
-					if drag then
-						finish(true)
-					end
-					boundsDirty = true
-					if refreshQueued then
-						return
-					end
-					refreshQueued = true
-					task.defer(function()
-						refreshQueued = false
-						if Main.Alive and not destroyed then
-							refresh()
-						end
-					end)
+				local function topology(child)
+					if child:IsA("BasePart") then selectionChanged() end
 				end
 				selectionConnections[#selectionConnections + 1] = object.DescendantAdded:Connect(topology)
 				selectionConnections[#selectionConnections + 1] = object.DescendantRemoving:Connect(topology)
