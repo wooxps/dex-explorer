@@ -354,50 +354,6 @@ do
 	folder:Destroy()
 	drain()
 	assert(activeSignals() == folderBaseline and not next(Main.SelectionGeometryRoots), "folder observers are released")
-	local priorFind = methods.FindFirstChildWhichIsA
-	methods.FindFirstChildWhichIsA = function(self, class)
-		for _, child in self:GetChildren() do
-			if child:IsA(class) then return child end
-		end
-	end
-	local selected = {}
-	local hiddenBlocks = {}
-	for i = 1, 16 do
-		local model = Instance.new("Model", workspace)
-		Instance.new("Part", model)
-		local block = Instance.new("Part", model)
-		block.Shape, block.Transparency = Enum.PartType.Block, 1
-		selected[i], hiddenBlocks[i] = model, block
-	end
-	manager = Renderer.Create({ Parent = holder, Workspace = workspace, GeometryMask = Geometry })
-	manager:Update(selected)
-	drain()
-	assert(not next(Main.SelectionGeometryRoots))
-	for i, model in selected do
-		record = manager.Records[model]
-		assert(record.Highlight.Adornee == model and record.Parts[hiddenBlocks[i]].Bounds)
-	end
-	record = manager.Records[selected[1]]
-	local block = hiddenBlocks[1]
-	block.Shape = Enum.PartType.Ball
-	drain()
-	assert(record.Mask and record.Mask.Ready and not record.Parts[block].Bounds)
-	block.Shape = Enum.PartType.Block
-	assert(not record.Mask and record.Parts[block].Bounds)
-	local special = Instance.new("SpecialMesh", block)
-	drain()
-	assert(record.Mask and record.Mask.Ready)
-	special:Destroy()
-	drain()
-	assert(not record.Mask and record.Parts[block].Bounds)
-	manager:Update({selected[1]})
-	drain()
-	assert(record.Mask and record.Mask.Ready, "single selection restores the full silhouette")
-	manager:Destroy()
-	for _, model in selected do model:Destroy() end
-	drain()
-	methods.FindFirstChildWhichIsA = priorFind
-	assert(activeSignals() == folderBaseline and not next(Main.SelectionGeometryRoots))
 	Instance.fromExisting = nil
 	assert(
 		Geometry.Create({ [visible] = true }) == nil,

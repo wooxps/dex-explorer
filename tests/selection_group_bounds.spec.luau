@@ -109,55 +109,6 @@ for _, class in { "Folder", "Model" } do
 	drain()
 end
 manager:Destroy()
-do
-	local blocks = {}
-	local dirtyDraws = 0
-	methods.AddLines = function(self, points)
-		dirtyDraws += 1
-		self._props.Lines = table.clone(points)
-	end
-	local many = Renderer.Create({ Parent = holder, Workspace = workspace })
-	for i = 1, 768 do
-		local part = newPart(workspace, vec(i, 0, 0))
-		part.Shape, part.Anchored = Enum.PartType.Block, true
-		blocks[i] = part
-	end
-	many:Update(blocks)
-	assert(many.Counts.WireBatches == 12 and many.Counts.Highlights == 0 and many.Counts.Bounds == 0)
-	for _ = 1, 120 do service.RunService.RenderStepped:Fire() end
-	assert(dirtyDraws == 12, "idle outlines were uploaded again")
-	local box = many.Records[blocks[2]].Batch.Wire
-	assert(#box.Lines == 64 * 24)
-	blocks[2].CFrame = CFrame.new(300, 0, 0) * CFrame.fromAxisAngle(vec(0, 0, 1), math.pi / 2)
-	blocks[2].Size = vec(2, 4, 8)
-	game.ItemChanged:Fire(blocks[2], "CFrame")
-	game.ItemChanged:Fire(blocks[2], "Size")
-	service.RunService.RenderStepped:Fire()
-	assert(dirtyDraws == 13 and box.Lines[25] == vec(302, -1, -4) and box.Lines[26] == vec(302, 1, -4))
-	assert((workspace.Terrain.CFrame * box.CFrame) * box.Lines[25] == box.Lines[25])
-	blocks[2].Anchored = false
-	game.ItemChanged:Fire(blocks[2], "Anchored")
-	drain()
-	assert(many.Records[blocks[2]].Highlight and not many.Records[blocks[2]].Batch)
-	local mesh = Instance.new("SpecialMesh", blocks[1])
-	drain()
-	assert(many.Records[blocks[1]].Highlight, "adding geometry must restore the native silhouette")
-	many:Update({blocks[1], blocks[3]})
-	assert(many.Counts.WireBatches == 0 and many.Counts.Highlights == 2 and not box.Parent)
-	local folder = Instance.new("Folder", workspace)
-	local mixed = {folder}
-	for i = 1, 64 do blocks[i].Parent = folder end
-	for i = 65, 79 do mixed[#mixed + 1] = blocks[i] end
-	many:Update(mixed)
-	assert(many.Records[folder].Group.Count == 64 and not many.Records[blocks[1]])
-	many:Update({folder})
-	assert(not many.Records[folder] and many.Records[blocks[1]].Highlight, "isolated folder restores child outlines")
-	many:Destroy()
-	for _, part in blocks do part:Destroy() end
-	folder:Destroy()
-	drain()
-	print("PASS: 768 block outlines in 12 adornments, idle reuse, rotated resize, physics and mesh handoff")
-end
 instMT.__newindex = oldNewIndex
 host:Destroy()
 parts[1]:Destroy()

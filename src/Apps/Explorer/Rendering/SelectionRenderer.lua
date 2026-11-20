@@ -27,20 +27,20 @@ local function CreateModule()
 		local localT = part.LocalTransparencyModifier or 0
 		return 1 - (1 - t) * (1 - localT) >= 1
 	end
-	local function needsGroupBounds(object, descendants, threshold)
-		if #descendants < threshold then return false end
+	local function needsGroupBounds(object, descendants)
+		if #descendants < 512 then return false end
 		local folder = object:IsA("Folder")
 		local count = 0
 		for _, child in ipairs(descendants) do
 			-- Folder expansion also installs watches on nested folders and models.
 			if child:IsA("BasePart") or (folder and (child:IsA("Folder") or child:IsA("Model"))) then
 				count += 1
-				if count >= threshold then return true end
+				if count >= 512 then return true end
 			end
 		end
 		return false
 	end
-	local function createGroupBounds(object, parent, color, workspace, excluded, descendants, owners)
+	local function createGroupBounds(object, parent, color, workspace, excluded, descendants)
 		local group = { Parts = {}, Dynamic = {}, Connections = {}, Dirty = true, Count = 0 }
 		local entries, blocks = {}, {}
 		local blockSize = 32
@@ -91,7 +91,6 @@ local function CreateModule()
 				blocks[index] = { Dirty = true }
 			end
 			group.Parts[part] = entry
-			owners[part] = group
 			group.Dynamic[part] = not part.Anchored and entry or nil
 			group.Count += 1
 			group.Dirty = true
@@ -115,24 +114,23 @@ local function CreateModule()
 					blocks[blockOf(last)].Dirty = true
 				end
 				group.Parts[part], group.Dynamic[part] = nil, nil
-				if owners[part] == group then owners[part] = nil end
 				group.Count -= 1
 				group.Dirty = true
 			end
 		end)
-		function group:PropertyChanged(part, property)
+		group.Connections[#group.Connections + 1] = game.ItemChanged:Connect(function(part, property)
 			local entry = group.Parts[part]
 			if not entry then
 				return
 			end
-			if property == "CFrame" or property == "Size" or property == "Position" or property == "Orientation" or property == "Rotation" then
+			if property == "CFrame" or property == "Size" then
 				entry.Pose, entry.Size = part.CFrame, part.Size
 				blocks[blockOf(entry.Slot)].Dirty = true
 				group.Dirty = true
 			elseif property == "Anchored" then
 				group.Dynamic[part] = not part.Anchored and entry or nil
 			end
-		end
+		end)
 		function group:Step()
 			for part, entry in pairs(self.Dynamic) do
 				local pose = part.CFrame
@@ -193,9 +191,6 @@ local function CreateModule()
 		function group:Destroy()
 			disconnect(self.Connections)
 			wire:Destroy()
-			for part in self.Parts do
-				if owners[part] == self then owners[part] = nil end
-			end
 			table.clear(self.Parts)
 			table.clear(self.Dynamic)
 			table.clear(entries)
@@ -220,79 +215,9 @@ local function CreateModule()
 		manager.InspectorRecords = manager.Records
 		local selection, selectionWatches = {}, {}
 		local largeGroups = {}
-		local groupOwners, groupCount, groupConnection = {}, 0, nil
 		local options = { PartEnabled = true, GuiEnabled = true, Color = Color3.fromRGB(0, 170, 255) }
 		local pendingBounds, pendingHighlights, pendingGroups = {}, {}, {}
 		local masks = {}
-		local batches, dirtyBatches = {}, {}
-		local batchSize = 64
-		local boxEdges = { 1, 2, 3, 4, 5, 6, 7, 8, 1, 3, 2, 4, 5, 7, 6, 8, 1, 5, 2, 6, 3, 7, 4, 8 }
-		local corners = table.create(8)
-		local function drawBatch(batch)
-			local points = batch.Points
-			for slot in batch.Changed do
-				batch.Changed[slot] = nil
-				local part = batch.Parts[slot]
-				if not part then continue end
-				local half = part.Size * 0.5
-				local cf = part.CFrame
-				local i = 0
-				for z = -1, 1, 2 do
-					for y = -1, 1, 2 do
-						for x = -1, 1, 2 do
-							i += 1
-							corners[i] = cf * Vector3.new(x * half.X, y * half.Y, z * half.Z)
-						end
-					end
-				end
-				local offset = (slot - 1) * 24
-				for j, corner in boxEdges do points[offset + j] = corners[corner] end
-			end
-			batch.Wire:Clear()
-			batch.Wire.Color3 = options.Color
-			batch.Wire:AddLines(points)
-		end
-		local function updateBatches(parts)
-			local count = math.ceil(#parts / batchSize)
-			for i = #batches, count + 1, -1 do
-				local batch = batches[i]
-				dirtyBatches[batch] = nil
-				batch.Wire:Destroy()
-				batches[i] = nil
-			end
-			for i = 1, count do
-				local batch = batches[i]
-				if not batch then
-					local wire = Instance.new("WireframeHandleAdornment")
-					wire.Name = "SelectionPartBounds"
-					wire.Adornee = workspace.Terrain
-					wire.CFrame = workspace.Terrain.CFrame:Inverse()
-					wire.AlwaysOnTop, wire.ZIndex, wire.Thickness = true, 1, 1
-					wire.Parent = parent
-					batch = { Wire = wire, Parts = {}, Changed = {}, Points = table.create(batchSize * 24) }
-					batches[i] = batch
-				end
-				local offset = (i - 1) * batchSize
-				local length = math.min(batchSize, #parts - offset)
-				if batch.Color ~= options.Color or #batch.Parts ~= length then
-					batch.Color = options.Color
-					dirtyBatches[batch] = true
-				end
-				for j = 1, length do
-					local part = parts[offset + j]
-					if batch.Parts[j] ~= part then
-						batch.Changed[j] = true
-						dirtyBatches[batch] = true
-					end
-					batch.Parts[j] = part
-					manager.Records[part].Batch = batch
-					manager.Records[part].BatchSlot = j
-				end
-				for j = #batch.Parts, length + 1, -1 do batch.Parts[j] = nil end
-				for j = #batch.Points, length * 24 + 1, -1 do batch.Points[j] = nil end
-			end
-			manager.Counts.WireBatches = count
-		end
 		local selectionPivot
 		local sharedOpacity = {}
 		local opacityConnection
@@ -402,9 +327,6 @@ local function CreateModule()
 				end
 			end)
 		end
-		local function folderChildChanged(child)
-			if child:IsA("Folder") or child:IsA("Model") or child:IsA("BasePart") then queueReconcile() end
-		end
 		local function updatePart(record, state)
 			if manager.Destroyed or record.Destroyed or state.Destroyed then
 				return
@@ -491,24 +413,7 @@ local function CreateModule()
 				record.Mask:Destroy()
 				record.Mask = nil
 			end
-			local needsMask = record.HiddenParts > 0 and not record.NativeOnly and config.GeometryMask
-			if needsMask and record.Bulk then
-				needsMask = false
-				for part, state in record.Parts do
-					if state.Invisible and part.ClassName == "Part" and not state.WatchesShape then
-						state.WatchesShape = true
-						bind(state.Connections, part:GetPropertyChangedSignal("Shape"), function()
-							if record.Bulk and state.Invisible then updateRoot(record) end
-						end)
-					end
-					if state.Invisible and (part.ClassName ~= "Part" or part.Shape ~= Enum.PartType.Block
-						or part:FindFirstChildWhichIsA("DataModelMesh")) then
-						needsMask = true
-						break
-					end
-				end
-			end
-			if needsMask and not record.Mask and not record.MaskUnavailable then
+			if record.HiddenParts > 0 and not record.NativeOnly and config.GeometryMask and not record.Mask and not record.MaskUnavailable then
 				local mask, problem = config.GeometryMask.Create(record.Parts, function()
 					if not record.Destroyed then
 						updateRoot(record)
@@ -516,7 +421,7 @@ local function CreateModule()
 				end)
 				record.Mask = mask
 				record.MaskUnavailable = problem
-			elseif not needsMask and record.Mask then
+			elseif (record.HiddenParts == 0 or record.NativeOnly) and record.Mask then
 				record.Mask:Destroy()
 				record.Mask = nil
 			end
@@ -629,10 +534,6 @@ local function CreateModule()
 		end
 		local function updateDots()
 			local roots = dotRoots
-			for batch in dirtyBatches do
-				drawBatch(batch)
-				dirtyBatches[batch] = nil
-			end
 			for _, mask in pairs(masks) do stepMask(mask) end
 			if not selectionPivot then
 				table.clear(roots)
@@ -731,28 +632,17 @@ local function CreateModule()
 				updateDots()
 			end
 		end
-		local function addRecord(object, nativeOnly, descendants, batched, bulk)
+		local function addRecord(object, nativeOnly, descendants)
 			local record = {
 				Object = object,
 				NativeOnly = nativeOnly,
-				Bulk = bulk,
 				Connections = {},
 				Kind = object:IsA("GuiObject") and "Gui" or object:IsA("Model") and "Model" or "Part",
 			}
 			manager.Records[object] = record
 			manager.Counts.Roots += 1
-			if batched then
-				record.RenderingMode = "BatchBounds"
-				bind(record.Connections, object.ChildAdded, queueReconcile)
-			elseif largeGroups[object] then
-				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded, descendants, groupOwners)
-				groupCount += 1
-				if not groupConnection then
-					groupConnection = game.ItemChanged:Connect(function(part, property)
-						local group = groupOwners[part]
-						if group then group:PropertyChanged(part, property) end
-					end)
-				end
+			if largeGroups[object] then
+				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded, descendants)
 				if manager.Counts.Bounds < maxBounds then
 					manager.Counts.Bounds += 1
 				else
@@ -779,13 +669,9 @@ local function CreateModule()
 				record.Collecting = false
 				bind(record.Connections, object.DescendantAdded, function(part)
 					watchPart(record, part)
-					if record.Bulk and record.HiddenParts > 0 and part:IsA("DataModelMesh") then updateRoot(record) end
 				end)
 				bind(record.Connections, object.DescendantRemoving, function(part)
 					removePart(record, part)
-					if record.Bulk and record.HiddenParts > 0 and part:IsA("DataModelMesh") then
-						task.defer(function() updateRoot(record) end)
-					end
 				end)
 				updateRoot(record)
 			end
@@ -803,11 +689,6 @@ local function CreateModule()
 			disconnect(record.Connections)
 			if record.Group then
 				record.Group:Destroy()
-				groupCount -= 1
-				if groupCount == 0 then
-					groupConnection:Disconnect()
-					groupConnection = nil
-				end
 				if pendingGroups[record] then
 					pendingGroups[record] = nil
 					manager.Counts.OmittedBounds -= 1
@@ -853,13 +734,9 @@ local function CreateModule()
 				end
 			end
 			for _, object in ipairs(selection) do
-				if object == workspace or ((object:IsA("Folder") or object:IsA("Model"))
-					and not object:IsDescendantOf(workspace)) then continue end
-				local threshold = if #selection >= 16 and object:IsA("Folder") then 64 else 512
-				if largeGroups[object] and largeGroups[object] < threshold then largeGroups[object] = nil end
 				if options.PartEnabled and not largeGroups[object] and (object:IsA("Folder") or object:IsA("Model")) then
 					local children = object:GetDescendants()
-					if needsGroupBounds(object, children, threshold) then largeGroups[object] = threshold end
+					if needsGroupBounds(object, children) then largeGroups[object] = true end
 					if not manager.Records[object] and (largeGroups[object] or object:IsA("Model")) then
 						descendants[object] = children
 					end
@@ -903,13 +780,12 @@ local function CreateModule()
 				if not manager.Folders[folder] then
 					local record = { Connections = {} }
 					manager.Folders[folder] = record
-					bind(record.Connections, folder.ChildAdded, folderChildChanged)
-					bind(record.Connections, folder.ChildRemoved, folderChildChanged)
+					bind(record.Connections, folder.ChildAdded, queueReconcile)
+					bind(record.Connections, folder.ChildRemoved, queueReconcile)
 					bind(record.Connections, folder.AncestryChanged, queueReconcile)
 				end
 			end
 			local wanted, spatialCandidates = {}, {}
-			local spatialCount = 0
 			for _, object in ipairs(expanded) do
 				if options.PartEnabled and spatial(object) then
 					spatialCandidates[object] = true
@@ -923,7 +799,6 @@ local function CreateModule()
 					end
 					if not ancestor then
 						wanted[object] = true
-						spatialCount += 1
 					end
 				elseif
 					options.GuiEnabled
@@ -943,16 +818,6 @@ local function CreateModule()
 			if #expanded >= 32 and not opacityConnection then
 				local ok, connection = pcall(function()
 					return game.ItemChanged:Connect(function(object, key)
-						local record = manager.Records[object]
-						if record and record.Batch then
-							if key == "CFrame" or key == "Size" or key == "Position" or key == "Orientation" or key == "Rotation" then
-								record.Batch.Changed[record.BatchSlot] = true
-								dirtyBatches[record.Batch] = true
-							elseif key == "Shape" or key == "Anchored" then
-								queueReconcile()
-							end
-							return
-						end
 						if key == "Transparency" or key == "LocalTransparencyModifier" then
 							local record = sharedOpacity[object]
 							if record then updatePart(record, record.Parts[object]) end
@@ -961,25 +826,15 @@ local function CreateModule()
 				end)
 				if ok then opacityConnection = connection end
 			end
-			local batchParts = {}
-			local batchBlocks = opacityConnection and spatialCount >= batchSize and workspace.Terrain
-			local bulk = spatialCount >= 16 or (spatialCount > 1 and #selection >= 16)
 			for _, object in ipairs(expanded) do
 				if wanted[object] then
 					local nativeOnly = folderMembers[object] == true
-					local batched = batchBlocks and object.ClassName == "Part" and object.Anchored
-						and object.Shape == Enum.PartType.Block and #object:GetChildren() == 0
 					local record = manager.Records[object]
-					if record and (record.RenderingMode == "BatchBounds") ~= (not not batched) then
-						removeRecord(record)
-						record = nil
-					end
-					if batched then batchParts[#batchParts + 1] = object end
 					if not record then
-						record = addRecord(object, nativeOnly, descendants[object], batched, bulk)
-					elseif record.NativeOnly ~= nativeOnly or record.Bulk ~= bulk then
-						record.NativeOnly, record.Bulk = nativeOnly, bulk
-						if not batched then updateRoot(record) end
+						record = addRecord(object, nativeOnly, descendants[object])
+					elseif record.NativeOnly ~= nativeOnly then
+						record.NativeOnly = nativeOnly
+						updateRoot(record)
 					end
 					if record.Color ~= options.Color then
 						style(record)
@@ -987,8 +842,7 @@ local function CreateModule()
 					end
 				end
 			end
-			updateBatches(batchParts)
-			if opacityConnection and #batchParts == 0 and not next(sharedOpacity) then
+			if opacityConnection and not next(sharedOpacity) then
 				opacityConnection:Disconnect()
 				opacityConnection = nil
 			end
@@ -1021,7 +875,6 @@ local function CreateModule()
 			reconcile()
 		end
 		function manager:Destroy()
-			updateBatches({})
 			if opacityConnection then
 				opacityConnection:Disconnect()
 				opacityConnection = nil
