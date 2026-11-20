@@ -28,7 +28,8 @@ local function Main()
 			return false
 		end
 		local byte = source:byte(position)
-		return byte >= 128 or source:sub(position, position):match("[%w_]") ~= nil
+		return byte >= 128 or byte == 95 or (byte >= 48 and byte <= 57)
+			or (byte >= 65 and byte <= 90) or (byte >= 97 and byte <= 122)
 	end
 	local function previous(source, position)
 		position -= 1
@@ -115,14 +116,24 @@ local function Main()
 		if query == "" or first >= last then
 			return result
 		end
-		local haystack = options.MatchCase and source or folded(source)
+		local base = 0
+		local haystack = source
+		local length = last - first
+		-- string.find has no end position. Bound the scan and case fold for small selections.
+		if length < #source / 4 and (#source + 1 - last > length or (not options.MatchCase and cachedSource ~= source)) then
+			base = first - 1
+			haystack = source:sub(first, last - 1)
+			if not options.MatchCase then haystack = haystack:lower() end
+		elseif not options.MatchCase then
+			haystack = folded(source)
+		end
 		local needle = options.MatchCase and query or query:lower()
 		local offset = first
 		while offset < last do
-			local start, finish = haystack:find(needle, offset, true)
-			if not start or finish >= last then
-				break
-			end
+			local start, finish = haystack:find(needle, offset - base, true)
+			if not start then break end
+			start, finish = start + base, finish + base
+			if finish >= last then break end
 			local valid = boundary(source, start) and boundary(source, finish + 1)
 			if valid and options.WholeWord then
 				valid = not wordAt(source, previous(source, start)) and not wordAt(source, finish + 1)

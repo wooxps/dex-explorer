@@ -82,11 +82,17 @@ local function CreateModule()
 		local p, s = object.AbsolutePosition, object.AbsoluteSize
 		local center = Vector2.new(p.X + s.X * 0.5, p.Y + s.Y * 0.5)
 		local angle = object.AbsoluteRotation or 0
-		local corners = {}
-		for _, v in ipairs({ { -1, -1 }, { 1, -1 }, { 1, 1 }, { -1, 1 } }) do
-			local x, y = rotate(v[1] * s.X * 0.5, v[2] * s.Y * 0.5, angle)
-			corners[#corners + 1] = Vector2.new(center.X + x, center.Y + y)
-		end
+		local r = math.rad(angle)
+		local c, sine = math.cos(r), math.sin(r)
+		local halfWidth, halfHeight = s.X * 0.5, s.Y * 0.5
+		local wx, wy = halfWidth * c, halfWidth * sine
+		local hx, hy = -halfHeight * sine, halfHeight * c
+		local corners = {
+			Vector2.new(center.X + (-wx - hx), center.Y + (-wy - hy)),
+			Vector2.new(center.X + (wx - hx), center.Y + (wy - hy)),
+			Vector2.new(center.X + (wx + hx), center.Y + (wy + hy)),
+			Vector2.new(center.X + (-wx + hx), center.Y + (-wy + hy)),
+		}
 		return { Center = center, Size = s, Rotation = angle, Corners = corners }
 	end
 	function T.Bounds(roots)
@@ -98,21 +104,38 @@ local function CreateModule()
 		end
 		local x, y, X, Y = math.huge, math.huge, -math.huge, -math.huge
 		for _, o in ipairs(roots) do
-			for _, p in ipairs(T.Geometry(o).Corners) do
-				x = math.min(x, p.X)
-				y = math.min(y, p.Y)
-				X = math.max(X, p.X)
-				Y = math.max(Y, p.Y)
+			local p, size = o.AbsolutePosition, o.AbsoluteSize
+			local w, h = size.X * 0.5, size.Y * 0.5
+			local center = Vector2.new(p.X + w, p.Y + h)
+			local angle = o.AbsoluteRotation or 0
+			local dx, dy = math.abs(w), math.abs(h)
+			if angle ~= 0 then
+				local r = math.rad(angle)
+				local c, s = math.cos(r), math.sin(r)
+				dx, dy = math.abs(w * c) + math.abs(h * s), math.abs(w * s) + math.abs(h * c)
 			end
+			x, y = math.min(x, center.X - dx), math.min(y, center.Y - dy)
+			X, Y = math.max(X, center.X + dx), math.max(Y, center.Y + dy)
 		end
+		local first, last = Vector2.new(x, y), Vector2.new(X, Y)
+		x, y, X, Y = first.X, first.Y, last.X, last.Y
 		return {
 			Center = Vector2.new((x + X) * 0.5, (y + Y) * 0.5),
 			Size = Vector2.new(X - x, Y - y),
 			Rotation = 0,
-			Corners = { Vector2.new(x, y), Vector2.new(X, y), Vector2.new(X, Y), Vector2.new(x, Y) },
+			Corners = { first, Vector2.new(X, y), last, Vector2.new(x, Y) },
 		}
 	end
-	function T.CanEdit(object, tool)
+	local function parentLayout(parent)
+		for _, child in parent:GetChildren() do
+			if child:IsA("UIGridStyleLayout") or child:IsA("UIListLayout") or child:IsA("UIGridLayout")
+				or child:IsA("UIPageLayout") or child:IsA("UITableLayout") then
+				return child.ClassName
+			end
+		end
+		return false
+	end
+	function T.CanEdit(object, tool, layouts)
 		if not eligible(object) then
 			return false, "Select a GUI object inside a ScreenGui."
 		end
@@ -121,17 +144,13 @@ local function CreateModule()
 			p = p.Parent
 		end
 		if tool ~= "Rotate" and p then
-			for _, c in ipairs(p:GetChildren()) do
-				if
-					c:IsA("UIGridStyleLayout")
-					or c:IsA("UIListLayout")
-					or c:IsA("UIGridLayout")
-					or c:IsA("UIPageLayout")
-					or c:IsA("UITableLayout")
-				then
-					return false, "Position and size are controlled by " .. c.ClassName .. "."
-				end
+			local layout
+			if layouts then layout = layouts[p] end
+			if layout == nil then
+				layout = parentLayout(p)
+				if layouts then layouts[p] = layout end
 			end
+			if layout then return false, "Position and size are controlled by " .. layout .. "." end
 		end
 		if tool == "Scale" then
 			if object.AutomaticSize and object.AutomaticSize ~= Enum.AutomaticSize.None then
@@ -145,25 +164,23 @@ local function CreateModule()
 		end
 		return true
 	end
-	local function scale(object, includeSelf)
-		local result = 1
-		local p = includeSelf and object or object.Parent
-		while p and not p:IsA("ScreenGui") do
-			for _, c in ipairs(p:GetChildren()) do
+	local function parentMetrics(parent)
+		local factors, positionScale = {}, 1
+		local ancestor = parent
+		while ancestor and not ancestor:IsA("ScreenGui") do
+			for _, c in ancestor:GetChildren() do
 				if c:IsA("UIScale") then
-					result *= c.Scale
+					local factor = c.Scale
+					factors[#factors + 1] = factor
+					positionScale *= factor
 				end
 			end
-			p = p.Parent
+			ancestor = ancestor.Parent
 		end
-		return result
-	end
-	local function snapshot(o)
-		local p = o.Parent
+		local p = parent
 		while p and p:IsA("Folder") do
 			p = p.Parent
 		end
-		local positionScale = scale(o, false)
 		local parentSize = p.AbsoluteSize
 		local pw, ph = parentSize.X / positionScale, parentSize.Y / positionScale
 		for _, c in ipairs(p:GetChildren()) do
@@ -176,6 +193,15 @@ local function CreateModule()
 					- c.PaddingBottom.Offset
 			end
 		end
+		return { Factors = factors, PositionScale = positionScale, Width = pw, Height = ph,
+			Rotation = p:IsA("GuiObject") and p.AbsoluteRotation or 0 }
+	end
+	local function snapshot(o, metrics)
+		local sizeScale = 1
+		for _, c in o:GetChildren() do
+			if c:IsA("UIScale") then sizeScale *= c.Scale end
+		end
+		for _, factor in metrics.Factors do sizeScale *= factor end
 		return {
 			Position = o.Position,
 			Size = o.Size,
@@ -183,11 +209,11 @@ local function CreateModule()
 			Parent = o.Parent,
 			Anchor = o.AnchorPoint,
 			Geometry = T.Geometry(o),
-			ParentRotation = p and p:IsA("GuiObject") and p.AbsoluteRotation or 0,
-			ParentWidth = pw,
-			ParentHeight = ph,
-			PositionScale = positionScale,
-			SizeScale = scale(o, true),
+			ParentRotation = metrics.Rotation,
+			ParentWidth = metrics.Width,
+			ParentHeight = metrics.Height,
+			PositionScale = metrics.PositionScale,
+			SizeScale = sizeScale,
 		}
 	end
 	local function state(o)
@@ -217,13 +243,18 @@ local function CreateModule()
 		if tool == "Rotate" and #roots ~= 1 then
 			return nil, "Rotate one GUI object at a time."
 		end
-		local records = {}
+		local records, layouts, parents = {}, {}, {}
 		for _, o in ipairs(roots) do
-			local ok, reason = T.CanEdit(o, tool)
+			local ok, reason = T.CanEdit(o, tool, layouts)
 			if not ok then
 				return nil, reason
 			end
-			local before = snapshot(o)
+			local metrics = parents[o.Parent]
+			if not metrics then
+				metrics = parentMetrics(o.Parent)
+				parents[o.Parent] = metrics
+			end
+			local before = snapshot(o, metrics)
 			if before.PositionScale <= 0 or before.SizeScale <= 0 then
 				return nil, "A UIScale must be greater than zero."
 			end

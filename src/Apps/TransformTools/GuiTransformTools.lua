@@ -113,11 +113,13 @@ local function CreateModule()
 			tools.LastError = T.LastError
 		end
 	end
+	local transformModes = { "Move", "Scale", "Rotate" }
 	local function capabilities()
 		local r = { Move = true, Scale = true, Rotate = #T.Roots == 1 }
+		local layouts = {}
 		for _, o in ipairs(T.Roots) do
-			for _, tool in ipairs({ "Move", "Scale", "Rotate" }) do
-				local ok, reason = Apps.GuiTransformSession.CanEdit(o, tool)
+			for _, tool in ipairs(transformModes) do
+				local ok, reason = Apps.GuiTransformSession.CanEdit(o, tool, layouts)
 				if not ok then
 					r[tool] = false
 					r[tool .. "Reason"] = reason

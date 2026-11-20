@@ -54,28 +54,28 @@ local function Main()
 				p = p.Parent
 			end
 		end
-		local function add(g, source)
-			local e = A.Extents(g)
-			for _, axis in ipairs({ "X", "Y" }) do
-				for _, f in ipairs(A.Features(g, axis)) do
-					targets[axis][#targets[axis] + 1] = {
-						Value = f.Value,
-						Kind = f.Kind,
-						From = axis == "X" and e.Top or e.Left,
-						To = axis == "X" and e.Bottom or e.Right,
-						Source = source,
-					}
-				end
-			end
+		local function addAxis(list, first, center, last, from, to, source)
+			local n = #list
+			list[n + 1] = { Value = first, Kind = "Edge", From = from, To = to, Source = source }
+			list[n + 2] = { Value = center, Kind = "Center", From = from, To = to, Source = source }
+			list[n + 3] = { Value = last, Kind = "Edge", From = from, To = to, Source = source }
+		end
+		local function add(center, size, rotation, source)
+			local e = A.Extents({ Center = center, Size = size, Rotation = rotation })
+			addAxis(targets.X, e.Left, e.X, e.Right, e.Top, e.Bottom, source)
+			addAxis(targets.Y, e.Top, e.Y, e.Bottom, e.Left, e.Right, source)
+		end
+		local function addObject(o, rotation)
+			local p, size = o.AbsolutePosition, o.AbsoluteSize
+			add(Vector2.new(p.X + size.X * 0.5, p.Y + size.Y * 0.5), size, rotation, o)
 		end
 		local viewport = service.Workspace.CurrentCamera and service.Workspace.CurrentCamera.ViewportSize
 		if viewport then
-			add({ Center = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5), Size = viewport, Rotation = 0 }, "Screen")
+			add(Vector2.new(viewport.X * 0.5, viewport.Y * 0.5), viewport, 0, "Screen")
 		end
 		for screen in pairs(screens) do
 			if screen.Enabled then
-				local p, s = screen.AbsolutePosition, screen.AbsoluteSize
-				add({ Center = Vector2.new(p.X + s.X * 0.5, p.Y + s.Y * 0.5), Size = s, Rotation = 0 }, screen)
+				addObject(screen, 0)
 				local stack = screen:GetChildren()
 				local index = 1
 				while index <= #stack do
@@ -85,7 +85,7 @@ local function Main()
 						continue
 					end
 					if o:IsA("GuiObject") and Apps.GuiTransformSession.Visible(o) then
-						add(Apps.GuiTransformSession.Geometry(o), o)
+						addObject(o, o.AbsoluteRotation or 0)
 					end
 					for _, child in ipairs(o:GetChildren()) do
 						stack[#stack + 1] = child

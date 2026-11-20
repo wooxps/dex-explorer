@@ -857,12 +857,7 @@ local function CreateModule()
 		return compareNodes(a, b, sortingNames)
 	end
 	local defaultNodeSorter = Explorer.NodeSorter
-	local function sortSiblings(children, sort)
-		if #children < 512 or sort ~= defaultNodeSorter then
-			table.sort(children, sort)
-			return
-		end
-
+	local function sortNamedSiblings(children, namesByNode, sort)
 		local class
 		local names = table.create(#children)
 		local byName = {}
@@ -879,10 +874,10 @@ local function CreateModule()
 			end
 			class = nodeClass
 			node.Class = nodeClass
-			local name = sortingNames[node]
+			local name = namesByNode[node]
 			if not name then
 				name = tostring(node.Obj)
-				sortingNames[node] = name
+				namesByNode[node] = name
 			end
 			names[i] = name
 			if byName[name] then
@@ -894,8 +889,9 @@ local function CreateModule()
 
 		if not unique then
 			table.sort(children, function(a, b)
-				local left, right = sortingNames[a], sortingNames[b]
+				local left, right = namesByNode[a], namesByNode[b]
 				if left == right then
+					if a.Id and b.Id then return a.Id < b.Id end
 					return sort(a, b)
 				end
 				return left < right
@@ -906,6 +902,13 @@ local function CreateModule()
 		table.sort(names)
 		for i, name in ipairs(names) do
 			children[i] = byName[name]
+		end
+	end
+	local function sortSiblings(children, sort)
+		if #children >= 16 and sort == defaultNodeSorter then
+			sortNamedSiblings(children, sortingNames, sort)
+		else
+			table.sort(children, sort)
 		end
 	end
 
@@ -1123,10 +1126,17 @@ local function CreateModule()
 			end
 			return items
 		end
-		local items = {}
-		for i, child in ipairs(table.move(parent, 1, #parent, 1, table.create(#parent))) do
+		local items = table.move(parent, 1, #parent, 1, table.create(#parent))
+		local count = 0
+		for i = 1, #items do
+			local child = items[i]
 			if not child.Del and child.Parent == parent then
-				items[#items + 1] = child
+				count += 1
+				if count ~= i then
+					items[count], items[i] = child, nil
+				end
+			else
+				items[i] = nil
 			end
 			if i % 128 == 0 then
 				check()
@@ -1140,6 +1150,11 @@ local function CreateModule()
 			end
 			less = function(a, b)
 				return compareNodes(a, b, names, true)
+			end
+			if #items >= 16 and #items <= 512 then
+				sortNamedSiblings(items, names, less)
+				check()
+				return remember(items)
 			end
 		end
 		return remember(sortColdItems(items, less, check))
@@ -1295,6 +1310,7 @@ local function CreateModule()
 			end
 		end
 
+		local branchDepth
 		local function recur(root, depth)
 			local cached = not isSearching and depth == 2 and branchViews[root]
 			if cached then
@@ -1308,6 +1324,11 @@ local function CreateModule()
 				return
 			end
 			local branchStart = count
+			local previousWidth
+			if not isSearching and depth == 2 then
+				previousWidth, maxNameWidth = maxNameWidth, 0
+				branchDepth = 2
+			end
 			if depth > maxDepth then
 				maxDepth = depth
 			end
@@ -1366,22 +1387,14 @@ local function CreateModule()
 					end
 				end
 			end
-			if not isSearching and depth == 3 then
-				local rows = {}
-				local width, deepest = 0, 2
-				for index = branchStart, count - 1 do
-					local node = tree[index]
-					rows[#rows + 1] = node
-					width = math.max(width, node.NameWidth or 0)
-					local level = 2
-					local parent = node.Parent
-					while parent and parent ~= root do
-						level += 1
-						parent = parent.Parent
-					end
-					deepest = math.max(deepest, level)
-				end
-				branchViews[root] = { Rows = rows, Width = width, Depth = deepest }
+			if branchDepth and count > branchStart then
+				branchDepth = math.max(branchDepth, depth - 1)
+			end
+			if previousWidth ~= nil then
+				local rows = table.move(tree, branchStart, count - 1, 1, table.create(count - branchStart))
+				branchViews[root] = { Rows = rows, Width = maxNameWidth, Depth = branchDepth }
+				maxNameWidth = math.max(previousWidth, maxNameWidth)
+				branchDepth = nil
 			end
 		end
 

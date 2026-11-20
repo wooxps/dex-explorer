@@ -316,32 +316,45 @@ local function Main()
 				end
 			end
 
-			local nextMatch = math.huge
-			for word = (#nodes + 31) // 32 - 1, 0, -1 do
-				local offset = word * 4
-				local matchWord = buffer.readu32(allMatches.Data, offset)
-				local contextWord = 0
-				local first = word * 32 + 1
-				for i = math.min(first + 31, #nodes), first, -1 do
-					local bit = lshift(1, i - first)
-					if band(matchWord, bit) ~= 0 then
-						nextMatch = i
-					end
-					if nextMatch <= ends[i] then
-						contextWord = bor(contextWord, bit)
+			allMatches:Prepare(checkpoint)
+			if allMatches.Count <= #nodes // 64 then
+				allMatches:Each(function(i)
+					while i > 0 and allContext:Set(i) do
 						width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
 						depth = math.max(depth, depths[i])
-						if parents[i] == 0 then
-							top[#top + 1] = i
+						local parent = parents[i]
+						if parent == 0 then top[#top + 1] = i end
+						if depths[i] % 128 == 0 then checkpoint() end
+						i = parent
+					end
+				end, checkpoint)
+			else
+				local nextMatch = math.huge
+				for word = (#nodes + 31) // 32 - 1, 0, -1 do
+					local offset = word * 4
+					local matchWord = buffer.readu32(allMatches.Data, offset)
+					local contextWord = 0
+					local first = word * 32 + 1
+					for i = math.min(first + 31, #nodes), first, -1 do
+						local bit = lshift(1, i - first)
+						if band(matchWord, bit) ~= 0 then
+							nextMatch = i
+						end
+						if nextMatch <= ends[i] then
+							contextWord = bor(contextWord, bit)
+							width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
+							depth = math.max(depth, depths[i])
+							if parents[i] == 0 then
+								top[#top + 1] = i
+							end
 						end
 					end
-				end
-				buffer.writeu32(allContext.Data, offset, contextWord)
-				if word % 4 == 0 then
-					checkpoint()
+					buffer.writeu32(allContext.Data, offset, contextWord)
+					if word % 4 == 0 then
+						checkpoint()
+					end
 				end
 			end
-			allMatches:Prepare(checkpoint)
 			allContext:Prepare(checkpoint)
 			result = { Match = allMatches, Context = allContext, Top = top, Width = width, Depth = depth }
 			if className then
@@ -361,48 +374,72 @@ local function Main()
 	local function sparseNameView(layout, terms, context, checkpoint, matchesName)
 		local names, nodes = layout.Names, layout.Nodes
 		if #nodes < 1024 then return nil end
+		-- Common queries are cheaper to scan directly. Sample across the tree so a
+		-- single folder full of matches doesn't determine the path for every folder.
+		local sampledHits = 0
+		local stride = #nodes // 16
+		for i = stride, stride * 16, stride do
+			if matchesName(names[i]) then
+				sampledHits += 1
+				if sampledHits == 4 then return nil end
+			end
+		end
 		local needle = terms[1]
 		for i = 2, #terms do
 			if #terms[i] > #needle then needle = terms[i] end
 		end
 		local blocks = layout.NameBlocks or {}
 		layout.NameBlocks = blocks
+		if #needle == 0 then return nil end
 		local candidates = {}
-		local limit = math.max(1, #nodes // 1024)
+		local limit = math.max(32, #nodes // 32)
 		for first = 1, #nodes, 128 do
+			local last = math.min(first + 127, #nodes)
 			local block = (first - 1) // 128 + 1
 			local text = blocks[block]
 			if not text then
-				text = string.lower(table.concat(names, "\0", first, math.min(first + 127, #nodes)))
+				text = string.lower(table.concat(names, "\0", first, last))
 				blocks[block] = text
 			end
-			if string.find(text, needle, 1, true) then
-				candidates[#candidates + 1] = first
-				if #candidates > limit then return nil end
+			local at = string.find(text, needle, 1, true)
+			if at then
+				local row, start = first, 1
+				while at do
+					local finish = start + #names[row] - 1
+					while at > finish and row < last do
+						start = finish + 2
+						row += 1
+						finish = start + #names[row] - 1
+					end
+					if at >= start and at + #needle - 1 <= finish then
+						if nodes[row] ~= layout.NilRoot and (#terms == 1 or matchesName(names[row])) then
+							candidates[#candidates + 1] = row
+							if #candidates > limit then return nil end
+						end
+					end
+					-- A hit on the separator can be followed by a valid hit in this row.
+					at = string.find(text, needle, if at < start then start else finish + 2, true)
+				end
 			end
-			if block % 8 == 0 then checkpoint() end
+			if block % 4 == 0 then checkpoint() end
 		end
 		local matches, included = Bits.Dense(#nodes), Bits.Dense(#nodes)
 		local fullPositions = layout.Positions
 		local positions, parents = fullPositions or {}, layout.Parents
 		local top, width, depth = {}, 0, 1
-		for _, first in ipairs(candidates) do
-			for i = first, math.min(first + 127, #nodes) do
-				if nodes[i] ~= layout.NilRoot and matchesName(names[i]) then
-					matches:Set(i)
-					local at = i
-					while at > 0 and included:Set(at) do
-						if not fullPositions then positions[nodes[at]] = at end
-						width = math.max(width, nodes[at].NameWidth or math.min(100, #names[at]) * 14)
-						depth = math.max(depth, layout.Depths[at])
-						local parent = parents[at]
-						if parent == 0 then top[#top + 1] = at end
-						if layout.Depths[at] % 128 == 0 then checkpoint() end
-						at = parent
-					end
-				end
+		for i, position in candidates do
+			matches:Set(position)
+			local at = position
+			while at > 0 and included:Set(at) do
+				if not fullPositions then positions[nodes[at]] = at end
+				width = math.max(width, nodes[at].NameWidth or math.min(100, #names[at]) * 14)
+				depth = math.max(depth, layout.Depths[at])
+				local parent = parents[at]
+				if parent == 0 then top[#top + 1] = at end
+				if layout.Depths[at] % 128 == 0 then checkpoint() end
+				at = parent
 			end
-			checkpoint()
+			if i % 128 == 0 then checkpoint() end
 		end
 		return createView(layout, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth)
 	end
@@ -422,7 +459,7 @@ local function Main()
 		local positions, top = fullPositions or {}, {}
 		local matchWords, contextWords = {}, {}
 		local rootVisibility = context.VisibleOnly and {} or nil
-		local work, width, maxDepth = 0, 0, 1
+		local width, maxDepth = 0, 1
 		local firstTerm, termCount = terms[1], #terms
 		local nameResults, cachedNames = {}, 0
 		local function matchesName(name)
@@ -448,48 +485,39 @@ local function Main()
 		end
 		local readName, readChildren = context.Name, context.Children
 		local nodeCount = #nodes
-		local function visit(node, parent, depth, queryable)
-			if node.Del then
-				return
-			end
-			work += 1
-			if work % 128 == 0 then
-				checkpoint()
-			end
-			nodeCount += 1
-			local position = nodeCount
-			local name = readName(node)
-			nodes[position], names[position] = node, name
-			depths[position], parents[position] = depth, parent
-			local hit = queryable and matchesName(name)
-			local word, rowBit
-			if hit then
-				word = (position - 1) // 32
-				rowBit = bit32.lshift(1, (position - 1) % 32)
-				matchWords[word] = bit32.bor(matchWords[word] or 0, rowBit)
-			end
-			local included = hit
-			if #node > 0 then
-				for _, child in ipairs(snapshotChildren(node, readChildren, checkpoint)) do
-					if child.Parent == node and visit(child, position, depth + 1, true) then
-						included = true
-					end
+		local function visitChildren(owner, children, parent, depth)
+			local hasMatches = false
+			for _, node in ipairs(children) do
+				if owner == roots[1] and rootVisibility then
+					local shown = context.Visible(node)
+					rootVisibility[node] = shown
+					if not shown then continue end
+				end
+				if node.Del or (owner and node.Parent ~= owner) then continue end
+				nodeCount += 1
+				if nodeCount % 128 == 0 then checkpoint() end
+				local position = nodeCount
+				local name = readName(node)
+				nodes[position], names[position] = node, name
+				depths[position], parents[position] = depth, parent
+				local hit = owner ~= nil and nameResults[name]
+				if hit == nil then hit = matchesName(name) end
+				local childMatch = #node > 0 and visitChildren(node, snapshotChildren(node, readChildren, checkpoint), position, depth + 1)
+				ends[position] = nodeCount
+				if hit or childMatch then
+					hasMatches = true
+					positions[node] = position
+					local word = (position - 1) // 32
+					local rowBit = bit32.lshift(1, (position - 1) % 32)
+					local words = if hit then matchWords else contextWords
+					words[word] = bit32.bor(words[word] or 0, rowBit)
+					if parent == 0 then top[#top + 1] = position end
+					if depth > maxDepth then maxDepth = depth end
+					local nameWidth = node.NameWidth or math.min(100, #name) * 14
+					if nameWidth > width then width = nameWidth end
 				end
 			end
-			ends[position] = nodeCount
-			if included then
-				positions[node] = position
-				if word == nil then
-					word = (position - 1) // 32
-					rowBit = bit32.lshift(1, (position - 1) % 32)
-				end
-				contextWords[word] = bit32.bor(contextWords[word] or 0, rowBit)
-				if parent == 0 then top[#top + 1] = position end
-				if depth > maxDepth then maxDepth = depth end
-				local nameWidth = node.NameWidth or math.min(100, #name) * 14
-				if nameWidth > width then width = nameWidth end
-			end
-			return included
+			return hasMatches
 		end
 		if layout then
 			local sparse = sparseNameView(layout, terms, context, checkpoint, matchesName)
@@ -531,30 +559,19 @@ local function Main()
 			end
 			return createView(layout, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth)
 		else
-			for _, node in ipairs(snapshotChildren(roots[1], readChildren, checkpoint)) do
-				local shown = not rootVisibility or context.Visible(node)
-				if rootVisibility then
-					rootVisibility[node] = shown
-				end
-				if shown and node.Parent == roots[1] then
-					visit(node, 0, 1, true)
-				end
-			end
-			if roots[2] then
-				visit(roots[2], 0, 1, false)
-			end
+			visitChildren(roots[1], snapshotChildren(roots[1], readChildren, checkpoint), 0, 1)
+			if roots[2] then visitChildren(nil, { roots[2] }, 0, 1) end
 		end
-		local function pack(words)
-			local bits = Bits.Dense(#nodes)
-			for word, value in pairs(words) do
-				buffer.writeu32(bits.Data, word * 4, value)
-				if word % 128 == 0 then
-					checkpoint()
-				end
-			end
-			return bits:Prepare(checkpoint)
+		local allMatches, allContext = Bits.Dense(#nodes), Bits.Dense(#nodes)
+		for word = 0, (#nodes + 31) // 32 - 1 do
+			local matched = matchWords[word] or 0
+			local included = bit32.bor(matched, contextWords[word] or 0)
+			buffer.writeu32(allMatches.Data, word * 4, matched)
+			buffer.writeu32(allContext.Data, word * 4, included)
+			if word % 128 == 0 then checkpoint() end
 		end
-		local allMatches, allContext = pack(matchWords), pack(contextWords)
+		allMatches:Prepare(checkpoint)
+		allContext:Prepare(checkpoint)
 		layout = layout or {
 			Nodes = nodes,
 			Names = names,

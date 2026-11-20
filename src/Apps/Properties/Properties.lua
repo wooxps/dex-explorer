@@ -433,7 +433,7 @@ local function CreateModule()
 			local obj = #sList == 1 and sList[1].Obj
 			window:SetTitle(obj and ("Properties - " .. obj.ClassName .. ' "' .. obj.Name .. '"') or "Properties")
 		end
-		local foundClasses = {}
+		local listsByClass = {}
 		local propCount = 1
 		local elevated = Main.Elevated
 		local showDeprecated, showHidden = Settings.Properties.ShowDeprecated, Settings.Properties.ShowHidden
@@ -451,19 +451,18 @@ local function CreateModule()
 
 		table.clear(props)
 
-		for i = 1, #sList do
-			local node = sList[i]
-			local obj = node.Obj
-			local class = node.Class
-			if not class then
-				class = obj.ClassName
-				node.Class = class
-			end
-
+		local function listsForClass(class, obj)
+			local lists = listsByClass[class]
+			if lists then return lists end
+			lists = {}
+			listsByClass[class] = lists
 			local apiClass = Classes[class]
 			while apiClass do
 				local APIClassName = apiClass.Name
-				if not foundClasses[APIClassName] then
+				local classList = classLists[APIClassName]
+				if not classList then
+					classList = {}
+					classLists[APIClassName] = classList
 					local apiProps = indexableProps[APIClassName]
 					if not apiProps then
 						apiProps = Properties.GetIndexableProps(obj, apiClass)
@@ -482,17 +481,49 @@ local function CreateModule()
 							propCount = propCount + 1
 						end
 					end
-					foundClasses[APIClassName] = true
 				end
-
-				local classList = classLists[APIClassName]
-				if not classList then
-					classList = {}
-					classLists[APIClassName] = classList
-				end
-				classList[#classList + 1] = obj
-
+				lists[#lists + 1] = classList
 				apiClass = apiClass.Superclass
+			end
+			return lists
+		end
+
+		local runLists, runClass, runStart
+		local function appendToAncestors()
+			if not runStart then return end
+			local concrete = runLists[1]
+			local last = #concrete
+			if runStart == last then
+				local obj = concrete[last]
+				for i = 2, #runLists do
+					local list = runLists[i]
+					list[#list + 1] = obj
+				end
+			else
+				for i = 2, #runLists do
+					local list = runLists[i]
+					table.move(concrete, runStart, last, #list + 1, list)
+				end
+			end
+		end
+		for i = 1, #sList do
+			local node = sList[i]
+			local obj = node.Obj
+			local class = node.Class
+			if not class then
+				class = obj.ClassName
+				node.Class = class
+			end
+
+			if class ~= runClass then
+				appendToAncestors()
+				runLists = listsForClass(class, obj)
+				runClass = class
+				runStart = runLists[1] and #runLists[1] + 1
+			end
+			if runStart then
+				local concrete = runLists[1]
+				concrete[#concrete + 1] = obj
 			end
 
 			if showingAttrs and attrCount < maxAttrs then
@@ -527,6 +558,8 @@ local function CreateModule()
 				end
 			end
 		end
+
+		appendToAncestors()
 
 		table.sort(props, function(a, b)
 			if a.Category ~= b.Category then

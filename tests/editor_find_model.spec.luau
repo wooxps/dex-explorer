@@ -41,6 +41,16 @@ do
 		"backward selection scopes normalize"
 	)
 	assert(#find.Search("anything", "", {}).Matches == 0, "empty literal query has no zero-length loop")
+	do
+		local text = string.rep("a", 200) .. " Cat 猫cat cat. cat_ cats CATnot " .. string.rep(" cat", 150)
+		local opts = { WholeWord = true, Scope = { Start = 202, Finish = 225 } }
+		local hits = find.Search(text, "cat", opts).Matches
+		assert(#hits == 2 and hits[1].Start == 202 and hits[1].Finish == 205 and text:sub(hits[2].Start - 1, hits[2].Finish) == " cat.")
+		opts.Scope = { Start = hits[2].Start, Finish = hits[2].Finish - 1 }
+		assert(#find.Search(text, "cat", opts).Matches == 0)
+		opts.Scope = { Start = 209, Finish = 215 }
+		assert(#find.Search(text, "cat", opts).Matches == 0, "word boundaries include neighboring text outside the scope")
+	end
 	assert(find.SupportsRegex, "the real regex dependency is available")
 	local regex = find.Search("foo12 bar34 foo5", "(foo|bar)(\\d+)", { Regex = true, MatchCase = true })
 	assert(

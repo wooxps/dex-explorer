@@ -358,17 +358,29 @@ do
 	nested[129].Obj.Name = "Upper_NEEDLE_日本"
 	nested[130].Obj.Name = "Tail"
 	nested[131].Obj.Name = "Head"
+	nested[132].Obj.Name = ""
+	nested[133].Obj.Name = "\0Head"
+	nested[134].Obj.Name = "DoubleNeedleNeedle"
 	nested[2048].Obj.Name = "keep\0byte"
 	local function check() end
 	local roots = { tree }
 	local first = Apps.SearchResults.CreateCold(roots, { "absent" }, context, check)
 	local layout = first.ColdLayout
-	for _, terms in {{ "日本", "needle" }, { "tail\0head" }, { "keep\0byte" }, { "part" }} do
+	for _, terms in {{ "日本", "needle" }, { "tail\0head" }, { "keep\0byte" }, { "\0head" }, { "\0" }, { "needle" }, { "part" }} do
 		local actual = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
 		local full = Apps.SearchResults.CreateCold(roots, terms, context, check)
 		assert(#actual.Rows == #full.Rows and #actual.MatchList == #full.MatchList)
 		for i = 1, #full.Rows do assert(actual.Rows[i] == full.Rows[i]) end
+		for i = 1, #full.MatchList do assert(actual.MatchList[i] == full.MatchList[i]) end
 	end
+	local filtered = Apps.SearchResults.CreatePredicate(layout, function(obj)
+		return obj.Name == "\0Head" or obj.Name == "keep\0byte"
+	end, context, check, roots)
+	assert(#filtered.MatchList == 2 and filtered.MatchList[1] == nested[133] and filtered.MatchList[2] == nested[2048])
+	assert(#filtered.Rows == 4 and filtered.Rows[1] == outer and filtered.Rows[2] == nested)
+	filtered.Expanded[nested] = false
+	filtered:Reflow(check)
+	assert(#filtered.Rows == 2 and #filtered.MatchList == 2)
 	Apps.SearchResults.PrepareCharacters(layout, check)
 	local single = assert(Apps.SearchResults.CreateIndexed(layout, "u", context, check))
 	assert(single:IndexOf(nested[129]) and single:HasChildren(outer) and not single:IndexOf(nested[130]))

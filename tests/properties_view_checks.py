@@ -141,6 +141,55 @@ inputSelection = Explorer.Selection.List
 assert(Properties.SelectObject({}) and writes == 1, "a picker still writes to its current selection")
 end
 """
+program += r"""
+do
+local Properties = {ConflictSubProps={}, ConflictIgnore={}, TypeNameConvert={}}
+local window
+local Explorer = {Selection={List={}}}
+local props, indexableProps, autoUpdateObjs, categoryOrder = {}, {}, {}, {}
+local API = {Classes={}}
+for _, entry in {{"Instance"}, {"BasePart","Instance"}, {"Part","BasePart"}, {"MeshPart","BasePart"}, {"Folder","Instance"}} do
+ API.Classes[entry[1]] = {Name=entry[1], Superclass=API.Classes[entry[2]]}
+end
+local Settings={Properties={ShowAttributes=true,MaxAttributes=10,MaxConflictCheck=50}}
+local game={GetAttributes=function(obj) return obj.Attributes end}
+local getAttribute=function(obj,name) return obj.Attributes[name] end
+local service={CollectionService={GetTags=function(_, obj) return obj.Tags end}}
+local RMD={PropertyOrders={}}
+local Apps={ReflectionService={IsVisible=function() return true end}}
+function Properties.Update() end
+function Properties.Refresh() end
+function Properties.GetIndexableProps(_, class)
+ return {{Name="Setting", Class=class.Name, Tags={}, ValueType={Name="number"}, Category="Data"}}
+end
+""" + props[props.index('\tProperties.ComputeConflicts ='):props.index('\n\tlocal function getWindowSize()')] + r"""
+local list=Explorer.Selection.List
+for _, class in {"Part","Part","MeshPart","Folder","Part","Missing","MeshPart","Folder"} do
+ local i=#list+1
+ list[i]={Obj={ClassName=class, Setting=class=="MeshPart" and 2 or 1,
+  Attributes={Level=i==1 and 1 or "other"}, Tags={i%2==0 and "Even" or "Odd"}}}
+end
+Properties.ShowExplorerProps()
+for class, objects in Properties.ClassLists do
+ local matched=0
+ for _, node in list do
+  local api=API.Classes[node.Obj.ClassName]
+  while api do
+   if api.Name==class then matched+=1 assert(objects[matched]==node.Obj) break end
+   api=api.Superclass
+  end
+ end
+ assert(matched==#objects)
+end
+assert(autoUpdateObjs["Part.Setting"]==list[1].Obj and not autoUpdateObjs["BasePart.Setting"])
+local seen={}
+for _, prop in props do
+ if prop.IsAttribute then assert(prop.MultiType and prop.Tags.ReadOnly) end
+ if prop.TagName then seen[prop.TagName]=true end
+end
+assert(seen.Odd and seen.Even and not Properties.ClassLists.Missing)
+end
+"""
 with tempfile.TemporaryDirectory() as d:
  p=Path(d)/'check.luau';p.write_text(program,encoding='utf-8')
  try:subprocess.run([str(ROOT/'.tools/bin/luau.exe'),str(p)],check=True)

@@ -113,6 +113,33 @@ do
 	assert(Explorer.SearchView and #Explorer.MatchList == 81, "cold results miss a live insertion")
 	assert(Explorer.SearchExpanded[hostNode] == false, "live refresh expands a user-collapsed branch")
 	Explorer.ClearSearch()
+	local medium = Instance.new("Folder", host)
+	medium.Name = "Medium sibling sort"
+	local mediumRows = {}
+	for i = 1, 64 do
+		local object = Instance.new("Part", medium)
+		object.Name = "MediumSort" .. (i % 7)
+		mediumRows[i] = object
+	end
+	Explorer.SyncHistoryObject(medium)
+	local ordered = {}
+	for i, object in ipairs(mediumRows) do
+		local node = nodes[object]
+		node.Id = 65 - i
+		ordered[i] = node
+	end
+	local function checkMediumOrder()
+		table.sort(ordered, Explorer.NodeSorter)
+		Explorer.SearchEngine.Snapshots.State = nil
+		assert(Explorer.DoSearch("MediumSort") and #Explorer.MatchList == #ordered)
+		for i, node in ipairs(ordered) do
+			assert(Explorer.MatchList[i] == node, "medium sibling sort changed tie or manual order")
+		end
+		Explorer.ClearSearch()
+	end
+	checkMediumOrder()
+	Explorer.SetHistoryOrder(mediumRows[32], -1)
+	checkMediumOrder()
 	local expected = {}
 	for i = 1200, 1, -1 do
 		local object = Instance.new("Folder", host)

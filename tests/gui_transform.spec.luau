@@ -13,6 +13,24 @@ local other = Instance.new("SurfaceGui", game)
 local spatial = newGui(other)
 assert(#S.Collect({ spatial }) == 0, "world-space GUI is not incorrectly treated as screen coordinates")
 local before = child.Position
+do
+	local roots = { child, nested, newGui(screen, UDim2.fromOffset(-21, 460), UDim2.fromOffset(79, 42), nil, -118) }
+	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+	for _, object in roots do
+		local g = S.Geometry(object)
+		for i, direction in { { -1, -1 }, { 1, -1 }, { 1, 1 }, { -1, 1 } } do
+			local x, y = rot(direction[1] * g.Size.X * 0.5, direction[2] * g.Size.Y * 0.5, g.Rotation)
+			local corner = Vector2.new(g.Center.X + x, g.Center.Y + y)
+			assert(g.Corners[i].X == corner.X and g.Corners[i].Y == corner.Y)
+			minX, minY = math.min(minX, corner.X), math.min(minY, corner.Y)
+			maxX, maxY = math.max(maxX, corner.X), math.max(maxY, corner.Y)
+		end
+	end
+	local bounds = S.Bounds(roots)
+	assert(bounds.Corners[1].X == minX and bounds.Corners[1].Y == minY)
+	assert(bounds.Corners[3].X == maxX and bounds.Corners[3].Y == maxY)
+	roots[3]:Destroy()
+end
 local g = S.Geometry(child)
 local session = assert(S.Begin({ child }, "Move"))
 assert(session:Move(20, -10))
