@@ -6386,9 +6386,9 @@ return search]==]
 				Workspace = service.Workspace,
 				GeometryMask = type(Instance.fromExisting) == "function" and Apps.SelectionGeometryMask or nil,
 				PivotSpace = pivotSpace,
-				CreateSelectionPivot = function(roots, records)
+				CreateSelectionPivot = function(roots, records, groups)
 					local transform = Apps.TransformSession
-					return transform and transform.CreateSelectionPivot(roots, records)
+					return transform and transform.CreateSelectionPivot(roots, records, groups)
 				end,
 				SelectionPivot = function(roots)
 					local _, _, pivot = Apps.TransformSession.Bounds(roots, pivotSpace())

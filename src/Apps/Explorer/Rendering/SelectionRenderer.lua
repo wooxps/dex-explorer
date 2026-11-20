@@ -253,6 +253,7 @@ local function CreateModule()
 				self.Size = Vector3.new(maxX - minX, maxY - minY, maxZ - minZ)
 				wire.CFrame = terrainPose:ToObjectSpace(self.Pivot)
 				wire.Scale = self.Size
+				return true
 			end
 		end
 		function group:IsA(class)
@@ -621,7 +622,29 @@ local function CreateModule()
 				end
 			end
 		end
-		local dotRoots = {}
+		local dotRoots, dotGroups = {}, {}
+		local function gatherRoots()
+			table.clear(dotRoots)
+			for _, record in pairs(manager.Records) do
+				if record.Group then
+					if record.GroupIncluded then dotRoots[#dotRoots + 1] = record.Group end
+				elseif record.Kind ~= "Gui" and record.Object.Parent then
+					dotRoots[#dotRoots + 1] = record.Object
+				end
+			end
+		end
+		local function rebuildPivot()
+			if selectionPivot then
+				selectionPivot:Destroy()
+				selectionPivot = nil
+			end
+			if config.CreateSelectionPivot and manager.Counts.Roots >= 32 then
+				gatherRoots()
+				if #dotRoots >= 32 then
+					selectionPivot = config.CreateSelectionPivot(dotRoots, manager.Records, dotGroups)
+				end
+			end
+		end
 		local function stepMask(mask)
 			local ok, problem = pcall(mask.Step, mask)
 			if not ok then mask:Fail(problem) end
@@ -629,17 +652,19 @@ local function CreateModule()
 		local function updateDots()
 			local roots = dotRoots
 			for _, mask in pairs(masks) do stepMask(mask) end
-			if not selectionPivot then
-				table.clear(roots)
-				for _, record in pairs(manager.Records) do
-					if record.Group then
-						record.Group:Step()
-						if record.Object.Parent and record.Group.Count > 0 then roots[#roots + 1] = record.Group end
-					elseif record.Kind ~= "Gui" and record.Object.Parent then
-						roots[#roots + 1] = record.Object
-					end
+			local membershipChanged = false
+			for group, record in pairs(dotGroups) do
+				local boundsChanged = group:Step()
+				local included = group.Count > 0 and record.Object.Parent ~= nil
+				if included ~= record.GroupIncluded then
+					record.GroupIncluded = included
+					membershipChanged = true
+				elseif boundsChanged and selectionPivot then
+					selectionPivot:InvalidateRoot(group)
 				end
 			end
+			if membershipChanged then rebuildPivot() end
+			if not selectionPivot then gatherRoots() end
 			local dot = manager.PivotDot
 			if not dot then
 				return
@@ -674,24 +699,14 @@ local function CreateModule()
 			end
 		end
 		local function updateFrame()
-			if selectionPivot then
-				selectionPivot:Destroy()
-				selectionPivot = nil
-			end
-			if config.CreateSelectionPivot and manager.Counts.Roots >= 32 then
-				table.clear(dotRoots)
-				for _, record in pairs(manager.Records) do
-					if record.Group then
-						table.clear(dotRoots)
-						break
-					elseif record.Kind ~= "Gui" and record.Object.Parent then
-						dotRoots[#dotRoots + 1] = record.Object
-					end
-				end
-				if #dotRoots >= 32 then
-					selectionPivot = config.CreateSelectionPivot(dotRoots, manager.Records)
+			table.clear(dotGroups)
+			for _, record in pairs(manager.Records) do
+				if record.Group then
+					record.GroupIncluded = record.Group.Count > 0 and record.Object.Parent ~= nil
+					dotGroups[record.Group] = record
 				end
 			end
+			rebuildPivot()
 			local needed = false
 			for _, record in pairs(manager.Records) do
 				if record.Kind ~= "Gui" then
@@ -996,6 +1011,7 @@ local function CreateModule()
 				selectionPivot = nil
 			end
 			table.clear(dotRoots)
+			table.clear(dotGroups)
 			if self.Destroyed then
 				return
 			end

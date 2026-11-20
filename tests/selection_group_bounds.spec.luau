@@ -31,9 +31,20 @@ for index = 1, 1024 do
 	parts[index] = part
 end
 local baseline = activeSignals()
+local trackedRoots, fullScans = nil, 0
 local manager = Renderer.Create({
 	Parent = holder,
 	Workspace = workspace,
+	PivotSpace = function() return "World" end,
+	CreateSelectionPivot = function(roots, records, groups)
+		trackedRoots = roots
+		return Transform.CreateSelectionPivot(roots, records, groups)
+	end,
+	SelectionPivot = function(roots)
+		fullScans += 1
+		local _, _, pivot = Transform.Bounds(roots, "World")
+		return pivot
+	end,
 	GeometryMask = {
 		Create = function()
 			error("large selections must not duplicate geometry")
@@ -89,6 +100,42 @@ service.RunService.RenderStepped:Fire()
 assert(wire.Scale == vec(1076, 10, 2), "rotated geometry uses all three world-space extents")
 manager:Update({ host, parts[2] })
 assert(manager.Counts.Roots == 1, "selected ancestors deduplicate descendant adornments")
+do
+	local selected = { host }
+	for i = 1, 48 do
+		local part = newPart(workspace, vec(-i, 0, 0))
+		part.Anchored = true
+		selected[#selected + 1] = part
+	end
+	local projected, camera = nil, workspace.CurrentCamera
+	workspace.CurrentCamera = { WorldToScreenPoint = function(_, point)
+		projected = point
+		return vec(100, 100, 10), true
+	end }
+	manager:Update(selected)
+	assert(#trackedRoots == 49)
+	transformed = 0
+	for _ = 1, 120 do service.RunService.RenderStepped:Fire() end
+	assert(transformed == 0 and fullScans == 0, "a large group disabled caching for unrelated roots")
+	local function verify()
+		service.RunService.RenderStepped:Fire()
+		local _, _, expected = Transform.Bounds(trackedRoots, "World")
+		assert((projected - expected.Position).Magnitude < 0.000001)
+	end
+	parts[1024].CFrame = CFrame.new(2000, 0, 0)
+	game.ItemChanged:Fire(parts[1024], "CFrame")
+	verify()
+	local children = host:GetChildren()
+	for _, child in ipairs(children) do child.Parent = workspace end
+	verify()
+	assert(#trackedRoots == 48)
+	for _, child in ipairs(children) do child.Parent = host end
+	verify()
+	assert(#trackedRoots == 49 and fullScans == 0)
+	manager:Update({host})
+	for i = 2, #selected do selected[i]:Destroy() end
+	workspace.CurrentCamera = camera
+end
 -- Shrink across several tree levels between frames, then regrow the same selection.
 for _, part in ipairs(host:GetChildren()) do part.Parent = workspace end
 record.Group:Step()

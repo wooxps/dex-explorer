@@ -129,7 +129,7 @@ local function CreateModule()
 		end
 		return center, Vector3.new(maxX - minX, maxY - minY, maxZ - minZ), pivot
 	end
-	function Transform.CreateSelectionPivot(roots, records)
+	function Transform.CreateSelectionPivot(roots, records, groups)
 		local membership, modelOf = {}, {}
 		local moving, movingSlots = {}, {}
 		local changed = true
@@ -153,6 +153,10 @@ local function CreateModule()
 				block.Dirty = true
 				block = block.Parent
 			end
+		end
+		function tracker:InvalidateRoot(root)
+			local block = membership[root]
+			if block then dirty(block) end
 		end
 		local function trackMotion(part, enabled)
 			local slot = movingSlots[part]
@@ -183,6 +187,8 @@ local function CreateModule()
 			membership[part], modelOf[part] = nil, nil
 		end
 		for _, root in ipairs(roots) do
+			-- The renderer tracks each group as a single bounding box.
+			if groups and groups[root] then continue end
 			if root:IsA("Model") then
 				for part in pairs(records[root].Parts) do tracker:AddPart(root, part) end
 			else
