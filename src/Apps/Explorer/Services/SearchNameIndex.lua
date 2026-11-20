@@ -191,6 +191,11 @@ local function Main()
 			end
 		end
 		function index.CachedName(node)
+			local position = positionsByNode[node]
+			if not position then return nil end
+			if not activeChanges and next(pending) == nil then
+				return rawNames[position]
+			end
 			local ancestor = node
 			while ancestor do
 				if
@@ -203,8 +208,7 @@ local function Main()
 				end
 				ancestor = ancestor.Parent
 			end
-			local position = positionsByNode[node]
-			return position and rawNames[position]
+			return rawNames[position]
 		end
 
 		local function included(node, rootSet)

@@ -1,8 +1,10 @@
 --!strict
 
+local transformed = 0
+local getComponents = baseFrameIndex.GetComponents
 baseFrameIndex.GetComponents = function(cf)
-	local p, x, y, z = cf.Position, cf.RightVector, cf.UpVector, cf.ZVector
-	return p.X, p.Y, p.Z, x.X, y.X, z.X, x.Y, y.Y, z.Y, x.Z, y.Z, z.Z
+	transformed += 1
+	return getComponents(cf)
 end
 local oldClear, oldLines = methods.Clear, methods.AddLines
 methods.Clear = function(self)
@@ -65,8 +67,10 @@ assert(wire.Scale == vec(1046, 2, 2) and writes == 2, "anchored edits update the
 parts[1].Anchored = false
 game.ItemChanged:Fire(parts[1], "Anchored")
 parts[1]._props.CFrame = CFrame.new(-30, 0, 0)
+transformed = 0
 service.RunService.RenderStepped:Fire()
 assert(wire.Scale == vec(1056, 2, 2), "physics movement is observed without property events")
+assert(transformed > 0 and transformed <= 32, "one moving part recomputed the whole folder")
 parts[1].Parent = workspace
 service.RunService.RenderStepped:Fire()
 assert(record.Group.Count == 1023 and wire.Scale == vec(1024, 2, 2), "removed parts leave the bounds")
@@ -90,6 +94,7 @@ parts[1]:Destroy()
 workspace.Terrain:Destroy()
 workspace.Terrain, workspace.CurrentCamera = oldTerrain, oldCamera
 methods.Clear, methods.AddLines = oldClear, oldLines
+baseFrameIndex.GetComponents = getComponents
 drain()
 assert(activeSignals() == baseline, "group selection leaks source or frame subscriptions")
 print("PASS: large selections use one wireframe, bounded listeners, static idle reuse, live transforms, rotated bounds and cleanup")

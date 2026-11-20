@@ -318,7 +318,25 @@ local function Main()
 						end
 					end
 				else
-					for _, child in ipairs(state.Children[id] or empty) do
+					local siblings = state.Children[id] or empty
+					if not previousItem and siblings.Increasing and #siblings >= 512 then
+						local candidates = {}
+						for child in pairs(dirtyChildren[id] or empty) do
+							local childEntry = state.Entries[child]
+							if childEntry and childEntry.Parent == id then
+								candidates[#candidates + 1] = child
+							end
+							if #candidates > 128 then
+								break
+							end
+							tick()
+						end
+						if #candidates <= 128 then
+							table.sort(candidates)
+							siblings = candidates
+						end
+					end
+					for _, child in ipairs(siblings) do
 						local item = build(child)
 						if item then
 							if children == empty then

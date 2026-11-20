@@ -915,16 +915,101 @@ local function CreateModule()
 		return name
 	end
 
-	local function sortColdNames(items, check)
+	local function sortColdItems(items, less, check)
+		if #items <= 512 then
+			table.sort(items, less)
+			check()
+			return items
+		end
+		local page = {}
+		for first = 1, #items, 512 do
+			table.clear(page)
+			table.move(items, first, math.min(first + 511, #items), 1, page)
+			table.sort(page, less)
+			table.move(page, 1, #page, first, items)
+			check()
+		end
+		local count, width = #items, 512
+		local merged = table.create(count)
+		while width < count do
+			for first = 1, count, width * 2 do
+				local middle = math.min(first + width, count + 1)
+				local last = math.min(first + width * 2 - 1, count)
+				local left, right, at = first, middle, first
+				if right > last or not less(items[right], items[middle - 1]) then
+					table.move(items, first, last, first, merged)
+					check()
+					continue
+				end
+				while left < middle and right <= last do
+					if less(items[right], items[left]) then
+						merged[at] = items[right]
+						right += 1
+					else
+						merged[at] = items[left]
+						left += 1
+					end
+					at += 1
+					if at % 128 == 0 then
+						check()
+					end
+				end
+				if left < middle then
+					table.move(items, left, middle - 1, at, merged)
+				elseif right <= last then
+					table.move(items, right, last, at, merged)
+				end
+				check()
+			end
+			items, merged = merged, items
+			width *= 2
+		end
+		return items
+	end
+
+	local function sortColdNames(items, check, sameOrder)
 		local class = items[1].Class or items[1].Obj.ClassName
 		local names, byName = table.create(#items), {}
 		local duplicates = {}
 		local first, last
 		for i, node in ipairs(items) do
-			if node.ManualOrder or (node.Class or node.Obj.ClassName) ~= class then
-				return false
+			if node.ManualOrder then return false end
+			local nodeClass = node.Class or node.Obj.ClassName
+			if not sameOrder and nodeClass ~= class then
+				local orders, groups = {}, {}
+				for at, child in ipairs(items) do
+					if child.ManualOrder then return false end
+					local childClass = child.Class or child.Obj.ClassName
+					child.Class = childClass
+					local order = explorerOrders[childClass]
+					if not order then
+						local details = RMD.Classes[childClass]
+						order = details and tonumber(details.ExplorerOrder) or 9999
+						explorerOrders[childClass] = order
+					end
+					local group = groups[order]
+					if not group then
+						group = {}
+						groups[order] = group
+						orders[#orders + 1] = order
+					end
+					group[#group + 1] = child
+					if at % 128 == 0 then check() end
+				end
+				table.sort(orders)
+				for _, order in ipairs(orders) do
+					local group = groups[order]
+					if #group > 1 and not sortColdNames(group, check, true) then return false end
+				end
+				local at = 1
+				for _, order in ipairs(orders) do
+					local group = groups[order]
+					table.move(group, 1, #group, at, items)
+					at += #group
+				end
+				return true
 			end
-			node.Class = class
+			node.Class = nodeClass
 			local name = coldName(node)
 			local previous = byName[name]
 			if previous then
@@ -947,23 +1032,26 @@ local function CreateModule()
 				check()
 			end
 		end
-		for _, group in pairs(duplicates) do
-			local ordered, previousId = true, -math.huge
+		for name, group in pairs(duplicates) do
+			local ordered, previousId, previousClass = true, -math.huge, nil
 			for index, node in ipairs(group) do
 				if not node.Id then
 					node.Id = idCounter
 					idCounter = (idCounter + 0.001) % 999999999
 				end
-				ordered = ordered and previousId <= node.Id
+				ordered = ordered and (not previousClass or previousClass < node.Class
+					or previousClass == node.Class and previousId <= node.Id)
+				previousClass = node.Class
 				previousId = node.Id
 				if index % 128 == 0 then
 					check()
 				end
 			end
 			if not ordered then
-				table.sort(group, function(a, b)
+				duplicates[name] = sortColdItems(group, function(a, b)
+					if a.Class ~= b.Class then return a.Class < b.Class end
 					return a.Id < b.Id
-				end)
+				end, check)
 			end
 			check()
 		end
@@ -1028,12 +1116,15 @@ local function CreateModule()
 		if cached and cached.Sorter == Explorer.NodeSorter then
 			return cached.Items
 		end
+		local version, sorter = searchTreeVersion, Explorer.NodeSorter
 		local function remember(items)
-			sortedSearchChildren[parent] = { Sorter = Explorer.NodeSorter, Items = items }
+			if searchTreeVersion == version and Explorer.NodeSorter == sorter then
+				sortedSearchChildren[parent] = { Sorter = sorter, Items = items }
+			end
 			return items
 		end
 		local items = {}
-		for i, child in ipairs(table.clone(parent)) do
+		for i, child in ipairs(table.move(parent, 1, #parent, 1, table.create(#parent))) do
 			if not child.Del and child.Parent == parent then
 				items[#items + 1] = child
 			end
@@ -1051,55 +1142,7 @@ local function CreateModule()
 				return compareNodes(a, b, names, true)
 			end
 		end
-		if #items <= 512 then
-			table.sort(items, less)
-			check()
-			return remember(items)
-		end
-		local page = {}
-		for first = 1, #items, 512 do
-			table.clear(page)
-			table.move(items, first, math.min(first + 511, #items), 1, page)
-			table.sort(page, less)
-			table.move(page, 1, #page, first, items)
-			check()
-		end
-		local count, width = #items, 512
-		local merged = table.create(count)
-		while width < count do
-			for first = 1, count, width * 2 do
-				local middle = math.min(first + width, count + 1)
-				local last = math.min(first + width * 2 - 1, count)
-				local left, right, at = first, middle, first
-				if right > last or not less(items[right], items[middle - 1]) then
-					table.move(items, first, last, first, merged)
-					check()
-					continue
-				end
-				while left < middle and right <= last do
-					if less(items[right], items[left]) then
-						merged[at] = items[right]
-						right += 1
-					else
-						merged[at] = items[left]
-						left += 1
-					end
-					at += 1
-					if at % 128 == 0 then
-						check()
-					end
-				end
-				if left < middle then
-					table.move(items, left, middle - 1, at, merged)
-				elseif right <= last then
-					table.move(items, right, last, at, merged)
-				end
-				check()
-			end
-			items, merged = merged, items
-			width *= 2
-		end
-		return remember(items)
+		return remember(sortColdItems(items, less, check))
 	end
 
 	local widthRecent, widthPrevious, widthCount = {}, {}, 0

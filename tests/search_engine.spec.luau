@@ -346,6 +346,34 @@ do
 	assert(fresh.Matches[removable] and fresh:IndexOf(keep), "one result mutates the shared index or another result")
 end
 local service = add(root, "Workspace")
+do
+	local tree, context = {}, {
+		Name = function(node) return node.Obj.Name end,
+		Children = function(node) return node end,
+		Visible = function() return true end,
+	}
+	local outer = add(tree, "Container")
+	local nested = add(outer, "Branch")
+	for i = 1, 2048 do add(nested, "Part" .. i) end
+	nested[129].Obj.Name = "Upper_NEEDLE_日本"
+	nested[130].Obj.Name = "Tail"
+	nested[131].Obj.Name = "Head"
+	nested[2048].Obj.Name = "keep\0byte"
+	local function check() end
+	local roots = { tree }
+	local first = Apps.SearchResults.CreateCold(roots, { "absent" }, context, check)
+	local layout = first.ColdLayout
+	for _, terms in {{ "日本", "needle" }, { "tail\0head" }, { "keep\0byte" }, { "part" }} do
+		local actual = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
+		local full = Apps.SearchResults.CreateCold(roots, terms, context, check)
+		assert(#actual.Rows == #full.Rows and #actual.MatchList == #full.MatchList)
+		for i = 1, #full.Rows do assert(actual.Rows[i] == full.Rows[i]) end
+	end
+	Apps.SearchResults.PrepareCharacters(layout, check)
+	local single = assert(Apps.SearchResults.CreateIndexed(layout, "u", context, check))
+	assert(single:IndexOf(nested[129]) and single:HasChildren(outer) and not single:IndexOf(nested[130]))
+	assert(not first:Contains(nested[129]), "promoting a cold layout changed the original view")
+end
 local a = add(service, "Alpha")
 local b = add(service, "Beta")
 for i = 1, 70000 do

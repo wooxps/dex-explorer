@@ -131,6 +131,23 @@ do
 	for index, object in ipairs(expected) do
 		assert(Explorer.MatchList[index].Obj == object, "prepared results changed fallback order")
 	end
+	Explorer.ClearSearch()
+	local classes = { "MeshPart", "Folder", "Part" }
+	local mixed = {}
+	for i = 1, 1800 do
+		local object = Instance.new(classes[i % 3 + 1], host)
+		object.Name = i % 2 == 0 and "MixedSortCommon" or "MixedSort" .. (i % 17)
+		Explorer.SyncHistoryObject(object)
+		local node = nodes[object]
+		node.Id = 1801 - i
+		mixed[i] = node
+	end
+	table.sort(mixed, Explorer.NodeSorter)
+	Explorer.SearchEngine.Snapshots.State = nil
+	assert(Explorer.DoSearch("MixedSort") and #Explorer.MatchList == #mixed and Explorer.SearchView.Cold)
+	for i, node in ipairs(mixed) do
+		assert(Explorer.MatchList[i] == node, "cold search reordered mixed classes or duplicate names")
+	end
 	Explorer.InitialObjectCount = size
 	Explorer.ClearSearch()
 	Explorer.Selection:Clear()

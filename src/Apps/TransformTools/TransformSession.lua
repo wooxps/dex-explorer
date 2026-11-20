@@ -81,10 +81,14 @@ local function CreateModule()
 		if not roots or #roots == 0 then
 			return nil
 		end
-		local reference = space == "Scale" and roots[1]:IsA("BasePart") and roots[1].CFrame or roots[1]:GetPivot()
-		local orientation = space == "World" and CFrame.new() or reference - reference.Position
-		local minimum = Vector3.new(math.huge, math.huge, math.huge)
-		local maximum = -minimum
+		local orientation
+		if space ~= "World" then
+			local reference = space == "Scale" and roots[1]:IsA("BasePart") and roots[1].CFrame or roots[1]:GetPivot()
+			orientation = reference - reference.Position
+		end
+		local toLocal = orientation and orientation:Inverse()
+		local minX, minY, minZ = math.huge, math.huge, math.huge
+		local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
 		for _, root in ipairs(roots) do
 			local cf, size
 			if root:IsA("Model") then
@@ -92,32 +96,32 @@ local function CreateModule()
 			else
 				cf, size = root.CFrame, root.Size
 			end
-			local half = size * 0.5
-			local center = orientation:PointToObjectSpace(cf.Position)
-			local x = orientation:VectorToObjectSpace(cf.RightVector) * half.X
-			local y = orientation:VectorToObjectSpace(cf.UpVector) * half.Y
-			local z = orientation:VectorToObjectSpace(cf.LookVector) * half.Z
-			local extent = Vector3.new(
-				math.abs(x.X) + math.abs(y.X) + math.abs(z.X),
-				math.abs(x.Y) + math.abs(y.Y) + math.abs(z.Y),
-				math.abs(x.Z) + math.abs(y.Z) + math.abs(z.Z)
-			)
-			local low, high = center - extent, center + extent
-			minimum = Vector3.new(math.min(minimum.X, low.X), math.min(minimum.Y, low.Y), math.min(minimum.Z, low.Z))
-			maximum = Vector3.new(math.max(maximum.X, high.X), math.max(maximum.Y, high.Y), math.max(maximum.Z, high.Z))
+			if toLocal then
+				cf = toLocal * cf
+			end
+			local x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz = cf:GetComponents()
+			local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
+			local ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
+			local ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
+			local ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
+			minX, minY, minZ = math.min(minX, x - ex), math.min(minY, y - ey), math.min(minZ, z - ez)
+			maxX, maxY, maxZ = math.max(maxX, x + ex), math.max(maxY, y + ey), math.max(maxZ, z + ez)
 		end
-		if minimum.X == math.huge then
+		if minX == math.huge then
 			return nil
 		end
-		local center = orientation * CFrame.new((minimum + maximum) * 0.5)
+		local center = CFrame.new((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
+		if orientation then
+			center = orientation * center
+		end
 		local pivot = #roots == 1 and roots[1]:GetPivot() or center
 		if space == "Scale" then
-			pivot = CFrame.new(pivot.Position) * (orientation - orientation.Position)
+			pivot = CFrame.new(pivot.Position) * orientation
 		end
 		if space == "World" then
 			pivot = CFrame.new(pivot.Position)
 		end
-		return center, maximum - minimum, pivot
+		return center, Vector3.new(maxX - minX, maxY - minY, maxZ - minZ), pivot
 	end
 	function Transform.Snap(value, increment)
 		if not finite(value) then

@@ -286,10 +286,12 @@ local function Main()
 				if previous and previous.NameId ~= nameId and previous.NameId then
 					state.Postings:RemoveMember(previous.NameId, id)
 				end
-				if nameId then
+				if nameId and (not previous or previous.NameId ~= nameId) then
 					state.Postings:AddMember(nameId, id)
 				end
-				changes[id] = true
+				if not reset then
+					changes[id] = true
+				end
 				if columns then
 					columns.Nodes[id], columns.Parents[id], columns.Names[id], columns.NameIds[id] =
 						node, parentId or 0, name, nameId
@@ -322,20 +324,24 @@ local function Main()
 				end
 				tick()
 				if (descendants or not previous) and #node == 0 then
-					state.Children[id] = nil
+					if not reset then state.Children[id] = nil end
 					orderChanged = true
 				elseif descendants or not previous then
 					local children = {}
+					local increasing, last = true, 0
 					local source = table.clone(node)
 					for _, child in ipairs(source) do
 						if not child.Del and child.Parent == node then
 							local childId = capture(child, id, true)
 							if childId then
 								children[#children + 1] = childId
+								increasing = increasing and childId > last
+								last = childId
 							end
 						end
 						tick()
 					end
+					children.Increasing = increasing
 					state.Children[id] = children
 					if #children > 1 then
 						sortCandidates[id] = true
@@ -351,6 +357,7 @@ local function Main()
 					return
 				end
 				local children = {}
+				local increasing, last = true, 0
 				for _, child in ipairs(table.clone(node)) do
 					if not child.Del and child.Parent == node then
 						local childId = state.Ids[child] or capture(child, parentId, true)
@@ -362,10 +369,13 @@ local function Main()
 								state.Entries[childId] = entry
 							end
 							children[#children + 1] = childId
+							increasing = increasing and childId > last
+							last = childId
 						end
 					end
 					tick()
 				end
+				children.Increasing = increasing
 				state.Children[parentId] = children
 				if #children > 1 then
 					sortCandidates[parentId] = true

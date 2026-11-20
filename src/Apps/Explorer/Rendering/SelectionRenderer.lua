@@ -29,6 +29,11 @@ local function CreateModule()
 	end
 	local function createGroupBounds(object, parent, color, workspace, excluded)
 		local group = { Parts = {}, Dynamic = {}, Connections = {}, Dirty = true, Count = 0 }
+		local entries, blocks = {}, {}
+		local blockSize = 32
+		local function blockOf(slot)
+			return (slot - 1) // blockSize + 1
+		end
 		local wire = Instance.new("WireframeHandleAdornment")
 		wire.Name = "SelectionGroupBounds"
 		wire.Adornee = workspace.Terrain
@@ -62,7 +67,16 @@ local function CreateModule()
 			if not part:IsA("BasePart") or part:IsA("Terrain") or excluded(part) or group.Parts[part] then
 				return
 			end
-			local entry = { Pose = part.CFrame, Size = part.Size }
+			local slot = #entries + 1
+			local entry = { Pose = part.CFrame, Size = part.Size, Slot = slot }
+			entries[slot] = entry
+			local index = blockOf(slot)
+			local block = blocks[index]
+			if block then
+				block.Dirty = true
+			else
+				blocks[index] = { Dirty = true }
+			end
 			group.Parts[part] = entry
 			group.Dynamic[part] = not part.Anchored and entry or nil
 			group.Count += 1
@@ -73,7 +87,19 @@ local function CreateModule()
 		end
 		group.Connections[#group.Connections + 1] = object.DescendantAdded:Connect(add)
 		group.Connections[#group.Connections + 1] = object.DescendantRemoving:Connect(function(part)
-			if group.Parts[part] then
+			local entry = group.Parts[part]
+			if entry then
+				local last = #entries
+				local tail = entries[last]
+				entries[entry.Slot] = tail
+				tail.Slot = entry.Slot
+				entries[last] = nil
+				blocks[blockOf(entry.Slot)].Dirty = true
+				if (last - 1) % blockSize == 0 then
+					blocks[blockOf(last)] = nil
+				else
+					blocks[blockOf(last)].Dirty = true
+				end
 				group.Parts[part], group.Dynamic[part] = nil, nil
 				group.Count -= 1
 				group.Dirty = true
@@ -86,6 +112,7 @@ local function CreateModule()
 			end
 			if property == "CFrame" or property == "Size" then
 				entry.Pose, entry.Size = part.CFrame, part.Size
+				blocks[blockOf(entry.Slot)].Dirty = true
 				group.Dirty = true
 			elseif property == "Anchored" then
 				group.Dynamic[part] = not part.Anchored and entry or nil
@@ -96,6 +123,7 @@ local function CreateModule()
 				local pose = part.CFrame
 				if pose ~= entry.Pose then
 					entry.Pose = pose
+					blocks[blockOf(entry.Slot)].Dirty = true
 					self.Dirty = true
 				end
 			end
@@ -105,15 +133,27 @@ local function CreateModule()
 			self.Dirty = false
 			local minX, minY, minZ = math.huge, math.huge, math.huge
 			local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
-			for _, entry in pairs(self.Parts) do
-				local x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz = entry.Pose:GetComponents()
-				local size = entry.Size
-				local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
-				local ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
-				local ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
-				local ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
-				minX, minY, minZ = math.min(minX, x - ex), math.min(minY, y - ey), math.min(minZ, z - ez)
-				maxX, maxY, maxZ = math.max(maxX, x + ex), math.max(maxY, y + ey), math.max(maxZ, z + ez)
+			for index, block in ipairs(blocks) do
+				if block.Dirty then
+					local ax, ay, az = math.huge, math.huge, math.huge
+					local bx, by, bz = -math.huge, -math.huge, -math.huge
+					for slot = (index - 1) * blockSize + 1, math.min(index * blockSize, self.Count) do
+						local entry = entries[slot]
+						local x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz = entry.Pose:GetComponents()
+						local size = entry.Size
+						local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
+						local ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
+						local ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
+						local ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
+						ax, ay, az = math.min(ax, x - ex), math.min(ay, y - ey), math.min(az, z - ez)
+						bx, by, bz = math.max(bx, x + ex), math.max(by, y + ey), math.max(bz, z + ez)
+					end
+					block.MinX, block.MinY, block.MinZ = ax, ay, az
+					block.MaxX, block.MaxY, block.MaxZ = bx, by, bz
+					block.Dirty = false
+				end
+				minX, minY, minZ = math.min(minX, block.MinX), math.min(minY, block.MinY), math.min(minZ, block.MinZ)
+				maxX, maxY, maxZ = math.max(maxX, block.MaxX), math.max(maxY, block.MaxY), math.max(maxZ, block.MaxZ)
 			end
 			wire.Visible = self.Count > 0
 			if self.Count > 0 then
@@ -140,6 +180,8 @@ local function CreateModule()
 			wire:Destroy()
 			table.clear(self.Parts)
 			table.clear(self.Dynamic)
+			table.clear(entries)
+			table.clear(blocks)
 		end
 		group:SetColor(color)
 		group:Step()

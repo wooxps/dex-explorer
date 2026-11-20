@@ -7,6 +7,13 @@ local function Main()
 	local Results = {}
 
 	local createView
+	local function snapshotChildren(node, read, checkpoint)
+		local children = read(node, checkpoint)
+		if children == node then
+			return table.move(children, 1, #children, 1, table.create(#children))
+		end
+		return children
+	end
 	function Results.MatchesVisibility(layout, visible)
 		if not layout then
 			return false
@@ -43,7 +50,7 @@ local function Main()
 				top[#top + 1] = position
 			end
 			if #node > 0 then
-				for _, child in ipairs(readChildren(node, checkpoint)) do
+				for _, child in ipairs(snapshotChildren(node, readChildren, checkpoint)) do
 					if child.Parent == node then
 						visit(child, position, depth + 1)
 					end
@@ -51,7 +58,7 @@ local function Main()
 			end
 			ends[position] = count
 		end
-		for _, node in ipairs(readChildren(roots[1], checkpoint)) do
+		for _, node in ipairs(snapshotChildren(roots[1], readChildren, checkpoint)) do
 			local shown = not rootVisibility or context.Visible(node)
 			if rootVisibility then
 				rootVisibility[node] = shown
@@ -96,6 +103,8 @@ local function Main()
 	function Results.PrepareCharacters(layout, checkpoint)
 		local nodes, names = layout.Nodes, layout.Names
 		local parents, depths = layout.Parents, layout.Depths
+		local positions = not layout.Positions and {} or nil
+		local top = not layout.Top and {} or nil
 		local columns, matchWords, ancestorWords = table.create(36), table.create(36, 0), table.create(36, 0)
 		for lane = 1, 36 do
 			columns[lane] = { Match = Bits.Dense(#nodes), Context = Bits.Dense(#nodes), Width = 0, Depth = 1 }
@@ -128,6 +137,8 @@ local function Main()
 		end
 		for position = #nodes, 1, -1 do
 			local node, name = nodes[position], names[position]
+			if positions then positions[node] = position end
+			if top and parents[position] == 0 then top[#top + 1] = position end
 			local ownLow, ownHigh = 0, 0
 			if node ~= layout.NilRoot then
 				ownLow, ownHigh = nameMask(name)
@@ -222,6 +233,8 @@ local function Main()
 				checkpoint()
 			end
 		end
+		layout.Positions = layout.Positions or positions
+		layout.Top = layout.Top or top
 		layout.Characters = columns
 	end
 
@@ -345,6 +358,55 @@ local function Main()
 		return createView(layout, context, checkpoint, layout.Positions, result.Top, result.Match, result.Context, result.Width, result.Depth)
 	end
 
+	local function sparseNameView(layout, terms, context, checkpoint, matchesName)
+		local names, nodes = layout.Names, layout.Nodes
+		if #nodes < 1024 then return nil end
+		local needle = terms[1]
+		for i = 2, #terms do
+			if #terms[i] > #needle then needle = terms[i] end
+		end
+		local blocks = layout.NameBlocks or {}
+		layout.NameBlocks = blocks
+		local candidates = {}
+		local limit = math.max(1, #nodes // 1024)
+		for first = 1, #nodes, 128 do
+			local block = (first - 1) // 128 + 1
+			local text = blocks[block]
+			if not text then
+				text = string.lower(table.concat(names, "\0", first, math.min(first + 127, #nodes)))
+				blocks[block] = text
+			end
+			if string.find(text, needle, 1, true) then
+				candidates[#candidates + 1] = first
+				if #candidates > limit then return nil end
+			end
+			if block % 8 == 0 then checkpoint() end
+		end
+		local matches, included = Bits.Dense(#nodes), Bits.Dense(#nodes)
+		local fullPositions = layout.Positions
+		local positions, parents = fullPositions or {}, layout.Parents
+		local top, width, depth = {}, 0, 1
+		for _, first in ipairs(candidates) do
+			for i = first, math.min(first + 127, #nodes) do
+				if nodes[i] ~= layout.NilRoot and matchesName(names[i]) then
+					matches:Set(i)
+					local at = i
+					while at > 0 and included:Set(at) do
+						if not fullPositions then positions[nodes[at]] = at end
+						width = math.max(width, nodes[at].NameWidth or math.min(100, #names[at]) * 14)
+						depth = math.max(depth, layout.Depths[at])
+						local parent = parents[at]
+						if parent == 0 then top[#top + 1] = at end
+						if layout.Depths[at] % 128 == 0 then checkpoint() end
+						at = parent
+					end
+				end
+			end
+			checkpoint()
+		end
+		return createView(layout, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth)
+	end
+
 	function Results.CreateCold(roots, terms, context, checkpoint, layout)
 		if context.VisibleOnly and (not layout or not layout.RootVisibility or not Results.MatchesVisibility(layout, context.Visible)) then
 			layout = nil
@@ -356,7 +418,8 @@ local function Main()
 		local depths = layout and layout.Depths or table.create(estimate)
 		local parents = layout and layout.Parents or table.create(estimate)
 		local widths = layout and layout.Widths or {}
-		local positions, top = layout and layout.Positions or {}, {}
+		local fullPositions = layout and layout.Positions
+		local positions, top = fullPositions or {}, {}
 		local matchWords, contextWords = {}, {}
 		local rootVisibility = context.VisibleOnly and {} or nil
 		local work, width, maxDepth = 0, 0, 1
@@ -385,10 +448,6 @@ local function Main()
 		end
 		local readName, readChildren = context.Name, context.Children
 		local nodeCount = #nodes
-		local function snapshotChildren(node)
-			local children = readChildren(node, checkpoint)
-			return if children == node then table.clone(children) else children
-		end
 		local function visit(node, parent, depth, queryable)
 			if node.Del then
 				return
@@ -411,7 +470,7 @@ local function Main()
 			end
 			local included = hit
 			if #node > 0 then
-				for _, child in ipairs(snapshotChildren(node)) do
+				for _, child in ipairs(snapshotChildren(node, readChildren, checkpoint)) do
 					if child.Parent == node and visit(child, position, depth + 1, true) then
 						included = true
 					end
@@ -433,6 +492,8 @@ local function Main()
 			return included
 		end
 		if layout then
+			local sparse = sparseNameView(layout, terms, context, checkpoint, matchesName)
+			if sparse then return sparse end
 			local nextMatch = math.huge
 			local matchWord, contextWord = 0, 0
 			local matchedBits, contextBits = Bits.Dense(#nodes), Bits.Dense(#nodes)
@@ -446,7 +507,7 @@ local function Main()
 				end
 				if nextMatch <= ends[position] then
 					local parent = parents[position]
-					if not layout.Positions then
+					if not fullPositions then
 						positions[node] = position
 					end
 					contextWord = bit32.bor(contextWord, rowBit)
@@ -470,7 +531,7 @@ local function Main()
 			end
 			return createView(layout, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth)
 		else
-			for _, node in ipairs(snapshotChildren(roots[1])) do
+			for _, node in ipairs(snapshotChildren(roots[1], readChildren, checkpoint)) do
 				local shown = not rootVisibility or context.Visible(node)
 				if rootVisibility then
 					rootVisibility[node] = shown
@@ -532,7 +593,7 @@ local function Main()
 		end
 		function result:HasChildren(node)
 			local at = positions[node]
-			return at ~= nil and contextRows:Has(at) and contextRows:Rank(ends[at]) > contextRows:Rank(at)
+			return at ~= nil and ends[at] > at and contextRows:Has(at) and contextRows:Rank(ends[at]) > contextRows:Rank(at)
 		end
 		function result:Remove(node)
 			if self:Contains(node) and not self.Removed[node] then
@@ -567,22 +628,38 @@ local function Main()
 			return output
 		end
 		function result:MeasureWidths(measure, check)
-			local maximum, workDone = 0, 0
-			visible:Each(function(at)
-				local value = widths[at]
-				if not value then
-					local reusable
-					value, reusable = measure({ Node = nodes[at], Name = names[at] })
-					if reusable ~= false then
-						widths[at] = value
+			local masks, maxima = layout.WidthMasks, layout.WidthMaxima
+			if not masks then
+				masks, maxima = {}, {}
+				layout.WidthMasks, layout.WidthMaxima = masks, maxima
+			end
+			local maximum = 0
+			local data = visible.Data
+			for word = 0, buffer.len(data) // 4 - 1 do
+				local mask = buffer.readu32(data, word * 4)
+				if mask ~= 0 then
+					local index = word + 1
+					local widest = maxima[index]
+					if masks[index] ~= mask then
+						local bits, exact = mask, true
+						widest = 0
+						while bits ~= 0 do
+							local at = word * 32 + bit32.countrz(bits) + 1
+							local value = widths[at]
+							if not value then
+								local reusable
+								value, reusable = measure({ Node = nodes[at], Name = names[at] })
+								if reusable ~= false then widths[at] = value else exact = false end
+							end
+							widest = math.max(widest, value)
+							bits = bit32.band(bits, bits - 1)
+						end
+						if exact then masks[index], maxima[index] = mask, widest end
 					end
+					maximum = math.max(maximum, widest)
 				end
-				maximum = math.max(maximum, value)
-				workDone += 1
-				if workDone % 128 == 0 then
-					check()
-				end
-			end, check)
+				if word % 4 == 0 then check() end
+			end
 			return maximum
 		end
 		function result:RememberStats() end
@@ -695,7 +772,7 @@ local function Main()
 				end
 				local at = positions[node]
 				if at and contextRows:Has(at) then
-					return contextRows:Rank(ends[at]) > contextRows:Rank(at) and true or 0
+					return ends[at] > at and contextRows:Rank(ends[at]) > contextRows:Rank(at) and true or 0
 				end
 			end,
 		})

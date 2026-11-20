@@ -9,6 +9,7 @@ local function Main()
 	function Postings.Create()
 		local p = {
 			Names = {},
+			NameBlocks = {},
 			Ids = {},
 			Groups = {},
 			Cache = {},
@@ -114,6 +115,30 @@ local function Main()
 					end
 				end, checkpoint)
 				compared = candidate.Count
+			elseif #term >= 3 and #names >= 1024 then
+				compared = 0
+				for first = 1, #names, 128 do
+					local last = math.min(first + 127, #names)
+					local block = (first - 1) // 128 + 1
+					local text = self.NameBlocks[block]
+					if not text then
+						text = table.concat(names, "\0", first, last)
+						if last == first + 127 then
+							self.NameBlocks[block] = text
+						end
+					end
+					if string.find(text, term, 1, true) then
+						for id = first, last do
+							if string.find(names[id], term, 1, true) then
+								result:Set(id)
+							end
+						end
+						compared += last - first + 1
+					end
+					if checkpoint then
+						checkpoint()
+					end
+				end
 			else
 				for id, name in ipairs(names) do
 					if string.find(name, term, 1, true) then

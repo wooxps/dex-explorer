@@ -121,6 +121,10 @@ frameMT.__index.ToObjectSpace = function(cf, other)
 	return cf:Inverse() * other
 end
 local baseFrameIndex = frameMT.__index
+baseFrameIndex.GetComponents = function(cf)
+	local p, x, y, z = cf.Position, cf.RightVector, cf.UpVector, cf.ZVector
+	return p.X, p.Y, p.Z, x.X, y.X, z.X, x.Y, y.Y, z.Y, x.Z, y.Z, z.Z
+end
 frameMT.__index = function(cf, key)
 	if key == "LookVector" then
 		return -cf.ZVector
