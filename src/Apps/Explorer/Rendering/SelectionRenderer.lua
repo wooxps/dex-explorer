@@ -40,7 +40,7 @@ local function CreateModule()
 		end
 		return false
 	end
-	local function createGroupBounds(object, parent, color, workspace, excluded, descendants)
+	local function createGroupBounds(object, parent, color, workspace, excluded, descendants, owners)
 		local group = { Parts = {}, Dynamic = {}, Connections = {}, Dirty = true, Count = 0 }
 		local entries, blocks = {}, {}
 		local blockSize = 32
@@ -91,6 +91,7 @@ local function CreateModule()
 				blocks[index] = { Dirty = true }
 			end
 			group.Parts[part] = entry
+			owners[part] = group
 			group.Dynamic[part] = not part.Anchored and entry or nil
 			group.Count += 1
 			group.Dirty = true
@@ -114,11 +115,12 @@ local function CreateModule()
 					blocks[blockOf(last)].Dirty = true
 				end
 				group.Parts[part], group.Dynamic[part] = nil, nil
+				if owners[part] == group then owners[part] = nil end
 				group.Count -= 1
 				group.Dirty = true
 			end
 		end)
-		group.Connections[#group.Connections + 1] = game.ItemChanged:Connect(function(part, property)
+		function group:PropertyChanged(part, property)
 			local entry = group.Parts[part]
 			if not entry then
 				return
@@ -130,7 +132,7 @@ local function CreateModule()
 			elseif property == "Anchored" then
 				group.Dynamic[part] = not part.Anchored and entry or nil
 			end
-		end)
+		end
 		function group:Step()
 			for part, entry in pairs(self.Dynamic) do
 				local pose = part.CFrame
@@ -168,11 +170,22 @@ local function CreateModule()
 				minX, minY, minZ = math.min(minX, block.MinX), math.min(minY, block.MinY), math.min(minZ, block.MinZ)
 				maxX, maxY, maxZ = math.max(maxX, block.MaxX), math.max(maxY, block.MaxY), math.max(maxZ, block.MaxZ)
 			end
-			wire.Visible = self.Count > 0
+			local visible = self.Count > 0
+			if self.Visible ~= visible then
+				self.Visible = visible
+				wire.Visible = visible
+			end
 			if self.Count > 0 then
+				local terrainPose = workspace.Terrain.CFrame
+				if minX == self.MinX and minY == self.MinY and minZ == self.MinZ
+					and maxX == self.MaxX and maxY == self.MaxY and maxZ == self.MaxZ
+					and terrainPose == self.TerrainPose then return end
+				self.MinX, self.MinY, self.MinZ = minX, minY, minZ
+				self.MaxX, self.MaxY, self.MaxZ = maxX, maxY, maxZ
+				self.TerrainPose = terrainPose
 				self.Pivot = CFrame.new((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
 				self.Size = Vector3.new(maxX - minX, maxY - minY, maxZ - minZ)
-				wire.CFrame = workspace.Terrain.CFrame:ToObjectSpace(self.Pivot)
+				wire.CFrame = terrainPose:ToObjectSpace(self.Pivot)
 				wire.Scale = self.Size
 			end
 		end
@@ -191,6 +204,9 @@ local function CreateModule()
 		function group:Destroy()
 			disconnect(self.Connections)
 			wire:Destroy()
+			for part in self.Parts do
+				if owners[part] == self then owners[part] = nil end
+			end
 			table.clear(self.Parts)
 			table.clear(self.Dynamic)
 			table.clear(entries)
@@ -215,6 +231,7 @@ local function CreateModule()
 		manager.InspectorRecords = manager.Records
 		local selection, selectionWatches = {}, {}
 		local largeGroups = {}
+		local groupOwners, groupCount, groupConnection = {}, 0, nil
 		local options = { PartEnabled = true, GuiEnabled = true, Color = Color3.fromRGB(0, 170, 255) }
 		local pendingBounds, pendingHighlights, pendingGroups = {}, {}, {}
 		local masks = {}
@@ -642,7 +659,14 @@ local function CreateModule()
 			manager.Records[object] = record
 			manager.Counts.Roots += 1
 			if largeGroups[object] then
-				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded, descendants)
+				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded, descendants, groupOwners)
+				groupCount += 1
+				if not groupConnection then
+					groupConnection = game.ItemChanged:Connect(function(part, property)
+						local group = groupOwners[part]
+						if group then group:PropertyChanged(part, property) end
+					end)
+				end
 				if manager.Counts.Bounds < maxBounds then
 					manager.Counts.Bounds += 1
 				else
@@ -667,7 +691,9 @@ local function CreateModule()
 					watchPart(record, part)
 				end
 				record.Collecting = false
+				record.BelowGroupLimit = descendants ~= nil and record.Kind == "Model"
 				bind(record.Connections, object.DescendantAdded, function(part)
+					if record.BelowGroupLimit and part:IsA("BasePart") then record.BelowGroupLimit = false end
 					watchPart(record, part)
 				end)
 				bind(record.Connections, object.DescendantRemoving, function(part)
@@ -689,6 +715,11 @@ local function CreateModule()
 			disconnect(record.Connections)
 			if record.Group then
 				record.Group:Destroy()
+				groupCount -= 1
+				if groupCount == 0 then
+					groupConnection:Disconnect()
+					groupConnection = nil
+				end
 				if pendingGroups[record] then
 					pendingGroups[record] = nil
 					manager.Counts.OmittedBounds -= 1
@@ -734,9 +765,13 @@ local function CreateModule()
 				end
 			end
 			for _, object in ipairs(selection) do
-				if options.PartEnabled and not largeGroups[object] and (object:IsA("Folder") or object:IsA("Model")) then
+				if object == workspace then continue end
+				local existing = manager.Records[object]
+				if options.PartEnabled and not largeGroups[object] and not (existing and existing.BelowGroupLimit)
+					and (object:IsA("Folder") or object:IsA("Model")) then
 					local children = object:GetDescendants()
 					if needsGroupBounds(object, children) then largeGroups[object] = true end
+					if existing and existing.Kind == "Model" and not largeGroups[object] then existing.BelowGroupLimit = true end
 					if not manager.Records[object] and (largeGroups[object] or object:IsA("Model")) then
 						descendants[object] = children
 					end

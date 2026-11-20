@@ -60,6 +60,12 @@ for _ = 1, 120 do
 	service.RunService.RenderStepped:Fire()
 end
 assert(writes == 0, "static selections redraw unchanged bounds every frame")
+for i = 1, 120 do
+	parts[200].CFrame = CFrame.new(200 + i, 0, 0)
+	game.ItemChanged:Fire(parts[200], "CFrame")
+	service.RunService.RenderStepped:Fire()
+end
+assert(writes == 0 and wire.Scale == vec(1025, 2, 2), "interior movement rewrote the same outline")
 parts[1].CFrame = CFrame.new(-20, 0, 0)
 game.ItemChanged:Fire(parts[1], "CFrame")
 service.RunService.RenderStepped:Fire()
@@ -95,6 +101,15 @@ for _, class in { "Folder", "Model" } do
 	local detailed = manager.Records[class == "Folder" and visible or container]
 	assert(detailed and detailed.Highlight and not detailed.Group, "metadata hid the detailed outline")
 	if class == "Model" then
+		local walks = 0
+		local getDescendants = methods.GetDescendants
+		methods.GetDescendants = function(self)
+			if self == container then walks += 1 end
+			return getDescendants(self)
+		end
+		for _ = 1, 100 do manager:Update({ workspace, container }) end
+		assert(walks == 0 and manager.Records[container] == detailed and detailed.Highlight.Adornee == container)
+		methods.GetDescendants = getDescendants
 		for i = 1, 511 do
 			local part = Instance.new("Part")
 			part.CFrame, part.Size = CFrame.new(i, 0, 0), vec(1, 1, 1)
