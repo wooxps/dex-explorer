@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "d1a7705f7af0616a90ea",
+  "release": "e447df1ae7ba6f7a9009",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -444,9 +444,9 @@
       "sha256": "4b4451cfdf32edf710eccc6079fd34fdb7194bc6b46455c62abad0b1ee4cd609"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 192919,
-      "checksum": 2243316082,
-      "sha256": "94726db952fed0d3adcd71d3d5cceeaf203f3b84c57875c3470cb86c509f3565"
+      "bytes": 193163,
+      "checksum": 4031617814,
+      "sha256": "1ef09b7fae25861f65a0115b9883377eb9ba761127632c4dd6e2161670420ee3"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7173,
@@ -469,9 +469,9 @@
       "sha256": "fb385c61557993e8c63ebc871b0b26c1abaa2a338f552868ac62898c14f787a9"
     },
     "src/Apps/Explorer/Rendering/SelectionRenderer.lua": {
-      "bytes": 25244,
-      "checksum": 3982152564,
-      "sha256": "47a687aff5d6aff8110b6419073c9256efc55a3c9388146fcbf538b20ddf63c6"
+      "bytes": 28216,
+      "checksum": 3618152257,
+      "sha256": "4a281fdc50b8dce79920fac1f2850aa14d7f72cd27af90d9cc04f7ddcd7f4836"
     },
     "src/Apps/Explorer/Services/EditingService.lua": {
       "bytes": 1041,
@@ -904,14 +904,14 @@
       "sha256": "135eda62a2ad17ecfdcbf35f95d00ea84ad9f8fe9beb6087d2d3ff025dbfb07a"
     },
     "src/Apps/TransformTools/TransformSession.lua": {
-      "bytes": 12723,
-      "checksum": 600875718,
-      "sha256": "cd774344b7adc997bbf55ffe08ee4f49a21c942fbac3f12b7acd6a2619302e3b"
+      "bytes": 16190,
+      "checksum": 1454834986,
+      "sha256": "66b988c927aab7d6547ee55adb56c9279db1247b7c5bc8e2edbe546d9ba0635a"
     },
     "src/Apps/TransformTools/TransformTools.lua": {
-      "bytes": 34538,
-      "checksum": 2343961013,
-      "sha256": "f442563157e85937b484f17d91626f3150a0e971a84b76cb2632b321a8d2f2a8"
+      "bytes": 35286,
+      "checksum": 792852291,
+      "sha256": "511f219646e1234cf8ec5260d0c37466cecdde12bc3fd15fc8e36f8b9395cb16"
     },
     "src/Packages/Regex/EditorRegex.lua": {
       "bytes": 78038,

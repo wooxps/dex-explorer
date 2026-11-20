@@ -14,7 +14,7 @@ from package_runtime import ROOT, package, loader
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--publish', action='store_true')
-    parser.add_argument('--message',default='Update Dex Explorer source and runtime')
+    parser.add_argument('--message',default='Update Dex')
     args = parser.parse_args()
     package()
     if not args.publish:
@@ -73,7 +73,7 @@ def main():
     subprocess.run([str(tools/'luau-compile.exe'),str(ROOT/'loader.lua')],stdout=subprocess.DEVNULL,check=True)
     git('add','loader.lua')
     if subprocess.run(['git','diff','--cached','--quiet'],cwd=ROOT).returncode:
-        git('commit','-m','Pin public loader to tested source commit '+source_ref[:12])
+        git('commit','-m','Update loader')
     git('push','-u','origin','main')
     print('Published '+repo['html_url'])
     print('Source pin: '+source_ref)

@@ -87,6 +87,27 @@ manager:Update({}, {})
 drain()
 assert(not wire.Parent and manager.Counts.Roots == 0 and manager.Counts.Bounds == 0)
 assert(service.RunService.RenderStepped.Active == 0, "clearing a large selection leaves render work running")
+for _, class in { "Folder", "Model" } do
+	local container = Instance.new(class, workspace)
+	local visible = Instance.new("Part", container)
+	for _ = 1, 520 do Instance.new("StringValue", container) end
+	manager:Update({ container })
+	local detailed = manager.Records[class == "Folder" and visible or container]
+	assert(detailed and detailed.Highlight and not detailed.Group, "metadata hid the detailed outline")
+	if class == "Model" then
+		for i = 1, 511 do
+			local part = Instance.new("Part")
+			part.CFrame, part.Size = CFrame.new(i, 0, 0), vec(1, 1, 1)
+			part.Parent = container
+		end
+		visible.CFrame, visible.Size = CFrame.new(), vec(1, 1, 1)
+		manager:Update({ container })
+		assert(manager.Records[container].Group.Count == 512 and detailed.Destroyed)
+	end
+	manager:Update({})
+	container:Destroy()
+	drain()
+end
 manager:Destroy()
 instMT.__newindex = oldNewIndex
 host:Destroy()
@@ -98,3 +119,93 @@ baseFrameIndex.GetComponents = getComponents
 drain()
 assert(activeSignals() == baseline, "group selection leaks source or frame subscriptions")
 print("PASS: large selections use one wireframe, bounded listeners, static idle reuse, live transforms, rotated bounds and cleanup")
+
+do
+	local space = "Local"
+	local observed, order
+	local before = activeSignals()
+	local camera = workspace.CurrentCamera
+	workspace.CurrentCamera = { WorldToScreenPoint = function(_, point)
+		observed = point
+		return vec(100, 100, 1), true
+	end }
+	local multi = Renderer.Create({
+		Parent = holder, Workspace = workspace,
+		PivotSpace = function() return space end,
+		CreateSelectionPivot = function(roots, records)
+			order = roots
+			return Transform.CreateSelectionPivot(roots, records)
+		end,
+		SelectionPivot = function(roots)
+			local _, _, pivot = Transform.Bounds(roots, space)
+			return pivot
+		end,
+	})
+	local selected = {}
+	for i = 1, 768 do
+		local part = newPart(workspace, vec(i, i % 5, -i), vec(2, 3, 4))
+		part.GetPivot = methods.GetPivot
+		part.Anchored = true
+		selected[i] = part
+	end
+	multi:Update(selected)
+	local calls = 0
+	baseFrameIndex.GetComponents = function(cf)
+		calls += 1
+		return getComponents(cf)
+	end
+	for _ = 1, 120 do service.RunService.RenderStepped:Fire() end
+	assert(calls == 0, "stationary selection recomputed bounds while projecting its dot")
+	local function checkPivot()
+		local _, _, expected = Transform.Bounds(order, space)
+		assert((observed - expected.Position).Magnitude < 0.000001)
+	end
+	checkPivot()
+	local moving = order[50]
+	moving.Anchored = false
+	game.ItemChanged:Fire(moving, "Anchored")
+	moving._props.CFrame = CFrame.new(5000, 0, 100)
+	calls = 0
+	service.RunService.RenderStepped:Fire()
+	assert(calls == 32)
+	checkPivot()
+	moving.Size = vec(200, 200, 200)
+	game.ItemChanged:Fire(moving, "Size")
+	service.RunService.RenderStepped:Fire()
+	checkPivot()
+	order[1].PivotOffset = CFrame.fromAxisAngle(vec(0, 0, 1), 0.37)
+	game.ItemChanged:Fire(order[1], "PivotOffset")
+	for _, mode in { "Local", "World", "Scale" } do
+		space = mode
+		service.RunService.RenderStepped:Fire()
+		checkPivot()
+	end
+	selected[1].LocalTransparencyModifier = 1
+	game.ItemChanged:Fire(selected[1], "LocalTransparencyModifier")
+	assert(multi.Records[selected[1]].Parts[selected[1]].Invisible)
+	selected[1].LocalTransparencyModifier = 0
+	game.ItemChanged:Fire(selected[1], "LocalTransparencyModifier")
+	assert(not multi.Records[selected[1]].Parts[selected[1]].Invisible)
+	local model = Instance.new("Model", workspace)
+	model.GetPivot = methods.GetPivot
+	newPart(model, vec(-8000, 0, 0)).Anchored = true
+	selected[#selected + 1] = model
+	multi:Update(selected)
+	checkPivot()
+	local extra = newPart(nil, vec(-16000, 100, 0))
+	extra.Anchored = true
+	extra.Parent = model
+	service.RunService.RenderStepped:Fire()
+	checkPivot()
+	extra.Parent = nil
+	service.RunService.RenderStepped:Fire()
+	checkPivot()
+	extra:Destroy()
+	baseFrameIndex.GetComponents = getComponents
+	multi:Destroy()
+	drain()
+	for _, part in ipairs(selected) do part:Destroy() end
+	workspace.CurrentCamera = camera
+	assert(activeSignals() == before, "bulk selection leaked a listener")
+	print("PASS: bulk selection idle projection, physics movement, resize, pivot edits, transform modes and cleanup")
+end

@@ -35,7 +35,7 @@ local function CreateModule()
 		end
 		return result
 	end
-	local function eligible(object)
+	local function eligible(object, modelParts)
 		if
 			typeof(object) ~= "Instance"
 			or not (object:IsA("BasePart") or object:IsA("Model"))
@@ -45,7 +45,9 @@ local function CreateModule()
 		then
 			return false
 		end
+		if object:IsA("BasePart") then return not object.Locked end
 		local parts = geometry(object)
+		if modelParts then modelParts[object] = parts end
 		if #parts == 0 then
 			return false
 		end
@@ -56,11 +58,11 @@ local function CreateModule()
 		end
 		return true
 	end
-	function Transform.Collect(objects)
+	function Transform.Collect(objects, modelParts)
 		local candidates, seen = {}, {}
 		for _, value in ipairs(objects or {}) do
 			local object = typeof(value) == "Instance" and value or type(value) == "table" and value.Obj
-			if object and not seen[object] and eligible(object) then
+			if object and not seen[object] and eligible(object, modelParts) then
 				seen[object] = true
 				candidates[#candidates + 1] = object
 			end
@@ -77,19 +79,18 @@ local function CreateModule()
 		end
 		return roots
 	end
-	function Transform.Bounds(roots, space)
-		if not roots or #roots == 0 then
-			return nil
-		end
-		local orientation
+	local function selectionOrientation(roots, space)
 		if space ~= "World" then
 			local reference = space == "Scale" and roots[1]:IsA("BasePart") and roots[1].CFrame or roots[1]:GetPivot()
-			orientation = reference - reference.Position
+			return reference - reference.Position
 		end
-		local toLocal = orientation and orientation:Inverse()
+		return nil
+	end
+	local function extents(roots, first, last, toLocal)
 		local minX, minY, minZ = math.huge, math.huge, math.huge
 		local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
-		for _, root in ipairs(roots) do
+		for i = first, last do
+			local root = roots[i]
 			local cf, size
 			if root:IsA("Model") then
 				cf, size = root:GetBoundingBox()
@@ -107,9 +108,14 @@ local function CreateModule()
 			minX, minY, minZ = math.min(minX, x - ex), math.min(minY, y - ey), math.min(minZ, z - ez)
 			maxX, maxY, maxZ = math.max(maxX, x + ex), math.max(maxY, y + ey), math.max(maxZ, z + ez)
 		end
-		if minX == math.huge then
+		return minX, minY, minZ, maxX, maxY, maxZ
+	end
+	function Transform.Bounds(roots, space)
+		if not roots or #roots == 0 then
 			return nil
 		end
+		local orientation = selectionOrientation(roots, space)
+		local minX, minY, minZ, maxX, maxY, maxZ = extents(roots, 1, #roots, orientation and orientation:Inverse())
 		local center = CFrame.new((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
 		if orientation then
 			center = orientation * center
@@ -122,6 +128,90 @@ local function CreateModule()
 			pivot = CFrame.new(pivot.Position)
 		end
 		return center, Vector3.new(maxX - minX, maxY - minY, maxZ - minZ), pivot
+	end
+	function Transform.CreateSelectionPivot(roots, records)
+		local blocks, membership, moving = {}, {}, {}
+		local modelOf = {}
+		local changed = true
+		local tracker = {}
+		function tracker:AddPart(root, part)
+			local block = membership[root]
+			if not block then return end
+			membership[part] = block
+			if root ~= part then modelOf[part] = root end
+			if not part.Anchored then moving[part] = part.CFrame end
+			block.Dirty, changed = true, true
+		end
+		function tracker:RemovePart(root, part)
+			local block = membership[part]
+			if not block or modelOf[part] ~= root then return end
+			block.Dirty, changed = true, true
+			membership[part], moving[part], modelOf[part] = nil, nil, nil
+		end
+		for i, root in ipairs(roots) do
+			local index = (i - 1) // 32 + 1
+			local block = blocks[index]
+			if not block then
+				block = { Dirty = true }
+				blocks[index] = block
+			end
+			membership[root] = block
+			if root:IsA("Model") then
+				for part in pairs(records[root].Parts) do tracker:AddPart(root, part) end
+			else
+				tracker:AddPart(root, root)
+			end
+		end
+		local ok, connection = pcall(function()
+			return game.ItemChanged:Connect(function(part, property)
+				local block = membership[part]
+				if not block then return end
+				if property == "Anchored" then
+					moving[part] = if part.Anchored then nil else part.CFrame
+				elseif property ~= "CFrame" and property ~= "Size" and property ~= "PivotOffset"
+					and property ~= "WorldPivot" and property ~= "PrimaryPart"
+					and property ~= "Position" and property ~= "Orientation" and property ~= "Rotation" then
+					return
+				end
+				block.Dirty = true
+				changed = true
+			end)
+		end)
+		if not ok then return nil end
+		local previousSpace, previousOrientation, pivot
+		function tracker:Get(space)
+			for part, previous in pairs(moving) do
+				local pose = part.CFrame
+				if pose ~= previous then
+					moving[part] = pose
+					membership[part].Dirty = true
+					changed = true
+				end
+			end
+			if not changed and space == previousSpace then return pivot end
+			local orientation = selectionOrientation(roots, space)
+			local rotated = orientation ~= previousOrientation
+			local toLocal = orientation and orientation:Inverse()
+			local minX, minY, minZ = math.huge, math.huge, math.huge
+			local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+			for i, block in ipairs(blocks) do
+				if rotated or block.Dirty then
+					block[1], block[2], block[3], block[4], block[5], block[6] =
+						extents(roots, (i - 1) * 32 + 1, math.min(i * 32, #roots), toLocal)
+					block.Dirty = false
+				end
+				minX, minY, minZ = math.min(minX, block[1]), math.min(minY, block[2]), math.min(minZ, block[3])
+				maxX, maxY, maxZ = math.max(maxX, block[4]), math.max(maxY, block[5]), math.max(maxZ, block[6])
+			end
+			pivot = CFrame.new((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
+			if orientation then pivot = orientation * pivot end
+			previousSpace, previousOrientation, changed = space, orientation, false
+			return pivot
+		end
+		function tracker:Destroy()
+			connection:Disconnect()
+		end
+		return tracker
 	end
 	function Transform.Snap(value, increment)
 		if not finite(value) then

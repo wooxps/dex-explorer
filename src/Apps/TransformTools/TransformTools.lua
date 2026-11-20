@@ -522,7 +522,8 @@ local function CreateModule()
 		for _, entry in ipairs(Apps.Explorer.Selection.List) do
 			objects[#objects + 1] = entry.Obj
 		end
-		roots = Apps.TransformSession.Collect(objects)
+		local modelParts = {}
+		roots = Apps.TransformSession.Collect(objects, modelParts)
 		Tools.Roots = roots
 		boundsDirty = true
 		bar.Visible = #roots > 0 or guiActive()
@@ -532,22 +533,46 @@ local function CreateModule()
 			table.clear(buttonHovers)
 		end
 		local watchBounds = Tools.Tool ~= "Select"
+		local function selectionChanged()
+			if drag then finish(true) else refresh() end
+		end
+		local function dirty()
+			boundsDirty = true
+		end
+		local bulk = #objects >= 32
+		for _, parts in pairs(modelParts) do
+			if #parts >= 32 then bulk = true break end
+		end
+		local watched
+		if bulk then
+			local members = {}
+			local ok, connection = pcall(function()
+				return game.ItemChanged:Connect(function(part, key)
+					if not members[part] then return end
+					if key == "Locked" then
+						selectionChanged()
+					elseif watchBounds and (key == "CFrame" or key == "Size" or key == "PivotOffset"
+						or key == "Orientation" or key == "Position" or key == "Rotation") then
+						dirty()
+					end
+				end)
+			end)
+			if ok then
+				watched = members
+				selectionConnections[#selectionConnections + 1] = connection
+			end
+		end
 		for _, object in ipairs(objects) do
 			if not (object:IsA("BasePart") or object:IsA("Model")) or not object:IsDescendantOf(workspace) then
 				continue
 			end
-			selectionConnections[#selectionConnections + 1] = object.AncestryChanged:Connect(function()
-				if drag then
-					finish(true)
-				else
-					refresh()
-				end
-			end)
-			local function dirty()
-				boundsDirty = true
-			end
+			selectionConnections[#selectionConnections + 1] = object.AncestryChanged:Connect(selectionChanged)
 			local function watch(part)
 				if part:IsA("BasePart") then
+					if watched then
+						watched[part] = true
+						return
+					end
 					if watchBounds then
 						for _, key in ipairs({ "CFrame", "Size", "PivotOffset" }) do
 							selectionConnections[#selectionConnections + 1] = part:GetPropertyChangedSignal(key)
@@ -555,18 +580,12 @@ local function CreateModule()
 						end
 					end
 					selectionConnections[#selectionConnections + 1] = part:GetPropertyChangedSignal("Locked")
-						:Connect(function()
-							if drag then
-								finish(true)
-							else
-								refresh()
-							end
-						end)
+						:Connect(selectionChanged)
 				end
 			end
 			watch(object)
 			if object:IsA("Model") then
-				for _, part in ipairs(object:GetDescendants()) do
+				for _, part in ipairs(modelParts[object] or object:GetDescendants()) do
 					watch(part)
 				end
 				if watchBounds then

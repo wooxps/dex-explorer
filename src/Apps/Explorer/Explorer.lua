@@ -6333,14 +6333,21 @@ return search]==]
 			holder.DisplayOrder = Main.DisplayOrders.Core
 			Lib.ShowGui(holder)
 			Explorer.SelectionVisualsHolder = holder
+			local function pivotSpace()
+				local tools = Apps.TransformTools
+				return tools and (tools.Tool == "Scale" and "Scale" or tools.Space) or "World"
+			end
 			manager = Apps.SelectionRenderer.Create({
 				Parent = holder,
 				Workspace = service.Workspace,
 				GeometryMask = type(Instance.fromExisting) == "function" and Apps.SelectionGeometryMask or nil,
+				PivotSpace = pivotSpace,
+				CreateSelectionPivot = function(roots, records)
+					local transform = Apps.TransformSession
+					return transform and transform.CreateSelectionPivot(roots, records)
+				end,
 				SelectionPivot = function(roots)
-					local tools = Apps.TransformTools
-					local space = tools and (tools.Tool == "Scale" and "Scale" or tools.Space) or "World"
-					local _, _, pivot = Apps.TransformSession.Bounds(roots, space)
+					local _, _, pivot = Apps.TransformSession.Bounds(roots, pivotSpace())
 					return pivot
 				end,
 				ReportFailure = function(object, problem)

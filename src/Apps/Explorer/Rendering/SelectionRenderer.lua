@@ -27,7 +27,20 @@ local function CreateModule()
 		local localT = part.LocalTransparencyModifier or 0
 		return 1 - (1 - t) * (1 - localT) >= 1
 	end
-	local function createGroupBounds(object, parent, color, workspace, excluded)
+	local function needsGroupBounds(object, descendants)
+		if #descendants < 512 then return false end
+		local folder = object:IsA("Folder")
+		local count = 0
+		for _, child in ipairs(descendants) do
+			-- Folder expansion also installs watches on nested folders and models.
+			if child:IsA("BasePart") or (folder and (child:IsA("Folder") or child:IsA("Model"))) then
+				count += 1
+				if count >= 512 then return true end
+			end
+		end
+		return false
+	end
+	local function createGroupBounds(object, parent, color, workspace, excluded, descendants)
 		local group = { Parts = {}, Dynamic = {}, Connections = {}, Dirty = true, Count = 0 }
 		local entries, blocks = {}, {}
 		local blockSize = 32
@@ -82,7 +95,7 @@ local function CreateModule()
 			group.Count += 1
 			group.Dirty = true
 		end
-		for _, part in ipairs(object:GetDescendants()) do
+		for _, part in ipairs(descendants or object:GetDescendants()) do
 			add(part)
 		end
 		group.Connections[#group.Connections + 1] = object.DescendantAdded:Connect(add)
@@ -204,6 +217,10 @@ local function CreateModule()
 		local largeGroups = {}
 		local options = { PartEnabled = true, GuiEnabled = true, Color = Color3.fromRGB(0, 170, 255) }
 		local pendingBounds, pendingHighlights, pendingGroups = {}, {}, {}
+		local masks = {}
+		local selectionPivot
+		local sharedOpacity = {}
+		local opacityConnection
 		local frameConnection, reconcileQueued, balanceQueued
 		local reconcile, balance, updateRoot, removeRecord
 		local function excluded(object)
@@ -340,6 +357,8 @@ local function CreateModule()
 				return
 			end
 			state.Destroyed = true
+			if sharedOpacity[part] == record then sharedOpacity[part] = nil end
+			if selectionPivot and record.Kind == "Model" then selectionPivot:RemovePart(record.Object, part) end
 			record.Parts[part] = nil
 			disconnect(state.Connections)
 			if state.Invisible then
@@ -359,6 +378,7 @@ local function CreateModule()
 			end
 			local state = { Object = part, Connections = {}, Invisible = invisible(part) }
 			record.Parts[part] = state
+			if selectionPivot and record.Kind == "Model" then selectionPivot:AddPart(record.Object, part) end
 			if state.Invisible then
 				record.HiddenParts += 1
 			else
@@ -367,12 +387,15 @@ local function CreateModule()
 			if record.Mask then
 				record.Mask:Add(part)
 			end
-			bind(state.Connections, part:GetPropertyChangedSignal("Transparency"), function()
-				updatePart(record, state)
-			end)
-			bind(state.Connections, part:GetPropertyChangedSignal("LocalTransparencyModifier"), function()
-				updatePart(record, state)
-			end)
+			if opacityConnection and part == record.Object then
+				sharedOpacity[part] = record
+			else
+				local function opacityChanged()
+					updatePart(record, state)
+				end
+				bind(state.Connections, part:GetPropertyChangedSignal("Transparency"), opacityChanged)
+				bind(state.Connections, part:GetPropertyChangedSignal("LocalTransparencyModifier"), opacityChanged)
+			end
 			if not record.Collecting then
 				updateRoot(record)
 				if state.Invisible and not record.PreparingMask and not record.MaskActive then
@@ -409,6 +432,7 @@ local function CreateModule()
 				end
 			end
 			local maskReady = record.Mask and record.Mask.Ready and not record.Mask.Failed
+			masks[record] = record.Mask
 			local wasPreparing = record.PreparingMask
 			record.PreparingMask = record.Mask ~= nil and not maskReady
 			if record.PreparingMask then
@@ -504,26 +528,20 @@ local function CreateModule()
 			end
 		end
 		local dotRoots = {}
+		local function stepMask(mask)
+			local ok, problem = pcall(mask.Step, mask)
+			if not ok then mask:Fail(problem) end
+		end
 		local function updateDots()
 			local roots = dotRoots
-			table.clear(roots)
-			for _, record in pairs(manager.Records) do
-				if record.Group then
-					record.Group:Step()
-				end
-				if record.Mask then
-					local mask = record.Mask
-					local ok, problem = pcall(mask.Step, mask)
-					if not ok then
-						mask:Fail(problem)
-					end
-				end
-				if record.Kind ~= "Gui" and record.Object.Parent then
+			for _, mask in pairs(masks) do stepMask(mask) end
+			if not selectionPivot then
+				table.clear(roots)
+				for _, record in pairs(manager.Records) do
 					if record.Group then
-						if record.Group.Count > 0 then
-							roots[#roots + 1] = record.Group
-						end
-					else
+						record.Group:Step()
+						if record.Object.Parent and record.Group.Count > 0 then roots[#roots + 1] = record.Group end
+					elseif record.Kind ~= "Gui" and record.Object.Parent then
 						roots[#roots + 1] = record.Object
 					end
 				end
@@ -538,7 +556,9 @@ local function CreateModule()
 					return nil, false
 				end
 				local pivot
-				if #roots == 1 then
+				if selectionPivot then
+					pivot = selectionPivot:Get(config.PivotSpace())
+				elseif #roots == 1 then
 					pivot = roots[1]:GetPivot()
 				elseif config.SelectionPivot then
 					pivot = config.SelectionPivot(roots)
@@ -560,6 +580,24 @@ local function CreateModule()
 			end
 		end
 		local function updateFrame()
+			if selectionPivot then
+				selectionPivot:Destroy()
+				selectionPivot = nil
+			end
+			if config.CreateSelectionPivot and manager.Counts.Roots >= 32 then
+				table.clear(dotRoots)
+				for _, record in pairs(manager.Records) do
+					if record.Group then
+						table.clear(dotRoots)
+						break
+					elseif record.Kind ~= "Gui" and record.Object.Parent then
+						dotRoots[#dotRoots + 1] = record.Object
+					end
+				end
+				if #dotRoots >= 32 then
+					selectionPivot = config.CreateSelectionPivot(dotRoots, manager.Records)
+				end
+			end
 			local needed = false
 			for _, record in pairs(manager.Records) do
 				if record.Kind ~= "Gui" then
@@ -594,7 +632,7 @@ local function CreateModule()
 				updateDots()
 			end
 		end
-		local function addRecord(object, nativeOnly)
+		local function addRecord(object, nativeOnly, descendants)
 			local record = {
 				Object = object,
 				NativeOnly = nativeOnly,
@@ -604,7 +642,7 @@ local function CreateModule()
 			manager.Records[object] = record
 			manager.Counts.Roots += 1
 			if largeGroups[object] then
-				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded)
+				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded, descendants)
 				if manager.Counts.Bounds < maxBounds then
 					manager.Counts.Bounds += 1
 				else
@@ -625,7 +663,7 @@ local function CreateModule()
 				if record.Kind == "Part" then
 					watchPart(record, object)
 				end
-				for _, part in ipairs(object:GetDescendants()) do
+				for _, part in ipairs(descendants or object:GetDescendants()) do
 					watchPart(record, part)
 				end
 				record.Collecting = false
@@ -637,7 +675,6 @@ local function CreateModule()
 				end)
 				updateRoot(record)
 			end
-			bind(record.Connections, object.AncestryChanged, queueReconcile)
 			return record
 		end
 		removeRecord = function(record)
@@ -645,6 +682,8 @@ local function CreateModule()
 				return
 			end
 			record.Destroyed = true
+			masks[record] = nil
+			sharedOpacity[record.Object] = nil
 			manager.Records[record.Object] = nil
 			manager.Counts.Roots -= 1
 			disconnect(record.Connections)
@@ -684,6 +723,7 @@ local function CreateModule()
 				return
 			end
 			local expanded, folders, seen, folderMembers = {}, {}, {}, {}
+			local descendants = {}
 			local function append(object, fromFolder)
 				if fromFolder then
 					folderMembers[object] = true
@@ -694,8 +734,14 @@ local function CreateModule()
 				end
 			end
 			for _, object in ipairs(selection) do
-				if options.PartEnabled and (object:IsA("Folder") or object:IsA("Model")) and (largeGroups[object] or #object:GetDescendants() >= 512) then
-					largeGroups[object] = true
+				if options.PartEnabled and not largeGroups[object] and (object:IsA("Folder") or object:IsA("Model")) then
+					local children = object:GetDescendants()
+					if needsGroupBounds(object, children) then largeGroups[object] = true end
+					if not manager.Records[object] and (largeGroups[object] or object:IsA("Model")) then
+						descendants[object] = children
+					end
+				end
+				if options.PartEnabled and largeGroups[object] then
 					append(object)
 				elseif object:IsA("Folder") then
 					if options.PartEnabled then
@@ -765,17 +811,40 @@ local function CreateModule()
 				end
 			end
 			for object, record in pairs(manager.Records) do
-				if not wanted[object] then
+				if not wanted[object] or (largeGroups[object] and not record.Group) then
 					removeRecord(record)
 				end
 			end
+			if #expanded >= 32 and not opacityConnection then
+				local ok, connection = pcall(function()
+					return game.ItemChanged:Connect(function(object, key)
+						if key == "Transparency" or key == "LocalTransparencyModifier" then
+							local record = sharedOpacity[object]
+							if record then updatePart(record, record.Parts[object]) end
+						end
+					end)
+				end)
+				if ok then opacityConnection = connection end
+			end
 			for _, object in ipairs(expanded) do
 				if wanted[object] then
-					local record = manager.Records[object] or addRecord(object, folderMembers[object] == true)
-					record.NativeOnly = folderMembers[object] == true
-					updateRoot(record)
-					style(record)
+					local nativeOnly = folderMembers[object] == true
+					local record = manager.Records[object]
+					if not record then
+						record = addRecord(object, nativeOnly, descendants[object])
+					elseif record.NativeOnly ~= nativeOnly then
+						record.NativeOnly = nativeOnly
+						updateRoot(record)
+					end
+					if record.Color ~= options.Color then
+						style(record)
+						record.Color = options.Color
+					end
 				end
+			end
+			if opacityConnection and not next(sharedOpacity) then
+				opacityConnection:Disconnect()
+				opacityConnection = nil
 			end
 			balance()
 			updateFrame()
@@ -806,6 +875,14 @@ local function CreateModule()
 			reconcile()
 		end
 		function manager:Destroy()
+			if opacityConnection then
+				opacityConnection:Disconnect()
+				opacityConnection = nil
+			end
+			if selectionPivot then
+				selectionPivot:Destroy()
+				selectionPivot = nil
+			end
 			table.clear(dotRoots)
 			if self.Destroyed then
 				return
