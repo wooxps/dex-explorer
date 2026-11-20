@@ -42,10 +42,39 @@ local function CreateModule()
 	end
 	local function createGroupBounds(object, parent, color, workspace, excluded, descendants, owners)
 		local group = { Parts = {}, Dynamic = {}, Connections = {}, Dirty = true, Count = 0 }
-		local entries, blocks = {}, {}
-		local blockSize = 32
-		local function blockOf(slot)
-			return (slot - 1) // blockSize + 1
+		local entries, moving, levels = {}, {}, { {} }
+		local fanout = 8
+		-- Each leaf covers eight consecutive parts. A changed leaf invalidates
+		-- just its ancestors, including the root when the tree grows or shrinks.
+		local function dirtySlot(slot, resized)
+			group.Dirty = true
+			local index = (slot - 1) // fanout + 1
+			local count = (#entries + fanout - 1) // fanout
+			local depth = 1
+			while true do
+				local level = levels[depth]
+				if not level then
+					level = {}
+					levels[depth] = level
+				end
+				local block = level[index]
+				if index > count then
+					level[index] = nil
+				elseif not block then
+					level[index] = { Dirty = true }
+				elseif block.Dirty and not resized then
+					return
+				else
+					block.Dirty = true
+				end
+				if count <= 1 then
+					if resized then levels[depth + 1] = nil end
+					return
+				end
+				index = (index - 1) // fanout + 1
+				count = (count + fanout - 1) // fanout
+				depth += 1
+			end
 		end
 		local wire = Instance.new("WireframeHandleAdornment")
 		wire.Name = "SelectionGroupBounds"
@@ -76,25 +105,34 @@ local function CreateModule()
 				wire:AddLines(vertices)
 			end
 		end
+		local function setMoving(part, entry, enabled)
+			local slot = entry.MovingSlot
+			if enabled and not slot then
+				entry.MovingSlot = #moving + 1
+				moving[entry.MovingSlot] = entry
+				group.Dynamic[part] = entry
+			elseif not enabled and slot then
+				local last = #moving
+				local tail = moving[last]
+				moving[slot] = tail
+				tail.MovingSlot = slot
+				moving[last] = nil
+				entry.MovingSlot = nil
+				group.Dynamic[part] = nil
+			end
+		end
 		local function add(part)
 			if not part:IsA("BasePart") or part:IsA("Terrain") or excluded(part) or group.Parts[part] then
 				return
 			end
 			local slot = #entries + 1
-			local entry = { Pose = part.CFrame, Size = part.Size, Slot = slot }
+			local entry = { Part = part, Pose = part.CFrame, Size = part.Size, Slot = slot }
 			entries[slot] = entry
-			local index = blockOf(slot)
-			local block = blocks[index]
-			if block then
-				block.Dirty = true
-			else
-				blocks[index] = { Dirty = true }
-			end
+			dirtySlot(slot, (slot - 1) % fanout == 0)
 			group.Parts[part] = entry
 			owners[part] = group
-			group.Dynamic[part] = not part.Anchored and entry or nil
+			setMoving(part, entry, not part.Anchored)
 			group.Count += 1
-			group.Dirty = true
 		end
 		for _, part in ipairs(descendants or object:GetDescendants()) do
 			add(part)
@@ -108,16 +146,12 @@ local function CreateModule()
 				entries[entry.Slot] = tail
 				tail.Slot = entry.Slot
 				entries[last] = nil
-				blocks[blockOf(entry.Slot)].Dirty = true
-				if (last - 1) % blockSize == 0 then
-					blocks[blockOf(last)] = nil
-				else
-					blocks[blockOf(last)].Dirty = true
-				end
-				group.Parts[part], group.Dynamic[part] = nil, nil
+				dirtySlot(last, (last - 1) % fanout == 0)
+				if entry.Slot < last then dirtySlot(entry.Slot) end
+				setMoving(part, entry, false)
+				group.Parts[part] = nil
 				if owners[part] == group then owners[part] = nil end
 				group.Count -= 1
-				group.Dirty = true
 			end
 		end)
 		function group:PropertyChanged(part, property)
@@ -127,55 +161,87 @@ local function CreateModule()
 			end
 			if property == "CFrame" or property == "Size" then
 				entry.Pose, entry.Size = part.CFrame, part.Size
-				blocks[blockOf(entry.Slot)].Dirty = true
-				group.Dirty = true
+				dirtySlot(entry.Slot)
 			elseif property == "Anchored" then
-				group.Dynamic[part] = not part.Anchored and entry or nil
+				setMoving(part, entry, not part.Anchored)
 			end
 		end
+		local function partBounds(first, last)
+			local ax, ay, az = math.huge, math.huge, math.huge
+			local bx, by, bz = -math.huge, -math.huge, -math.huge
+			for slot = first, last do
+				local entry = entries[slot]
+				local x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz = entry.Pose:GetComponents()
+				local size = entry.Size
+				local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
+				local ex, ey, ez = hx, hy, hz
+				if xx ~= 1 or xy ~= 0 or xz ~= 0 or yx ~= 0 or yy ~= 1 or yz ~= 0 or zx ~= 0 or zy ~= 0 or zz ~= 1 then
+					ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
+					ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
+					ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
+				end
+				ax, ay, az = math.min(ax, x - ex), math.min(ay, y - ey), math.min(az, z - ez)
+				bx, by, bz = math.max(bx, x + ex), math.max(by, y + ey), math.max(bz, z + ez)
+			end
+			return ax, ay, az, bx, by, bz
+		end
+		local function boundsAt(depth, index)
+			local block = levels[depth][index]
+			if not block.Dirty then return block end
+			local first = (index - 1) * fanout + 1
+			if depth == 1 then
+				block.MinX, block.MinY, block.MinZ, block.MaxX, block.MaxY, block.MaxZ =
+					partBounds(first, math.min(index * fanout, #entries))
+			else
+				local ax, ay, az = math.huge, math.huge, math.huge
+				local bx, by, bz = -math.huge, -math.huge, -math.huge
+				for i = first, math.min(index * fanout, #levels[depth - 1]) do
+					local child = boundsAt(depth - 1, i)
+					ax, ay, az = math.min(ax, child.MinX), math.min(ay, child.MinY), math.min(az, child.MinZ)
+					bx, by, bz = math.max(bx, child.MaxX), math.max(by, child.MaxY), math.max(bz, child.MaxZ)
+				end
+				block.MinX, block.MinY, block.MinZ = ax, ay, az
+				block.MaxX, block.MaxY, block.MaxZ = bx, by, bz
+			end
+			block.Dirty = false
+			return block
+		end
+		local treeStale = false
 		function group:Step()
-			for part, entry in pairs(self.Dynamic) do
-				local pose = part.CFrame
+			local moved, scanAt = 0, math.max(8, self.Count // 8)
+			for _, entry in ipairs(moving) do
+				local pose = entry.Part.CFrame
 				if pose ~= entry.Pose then
 					entry.Pose = pose
-					blocks[blockOf(entry.Slot)].Dirty = true
-					self.Dirty = true
+					moved += 1
+					if moved < scanAt and not treeStale then dirtySlot(entry.Slot) end
 				end
 			end
-			if not self.Dirty then
+			if not self.Dirty and moved == 0 then
 				return
 			end
 			self.Dirty = false
-			local minX, minY, minZ = math.huge, math.huge, math.huge
-			local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
-			for index, block in ipairs(blocks) do
-				if block.Dirty then
-					local ax, ay, az = math.huge, math.huge, math.huge
-					local bx, by, bz = -math.huge, -math.huge, -math.huge
-					for slot = (index - 1) * blockSize + 1, math.min(index * blockSize, self.Count) do
-						local entry = entries[slot]
-						local x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz = entry.Pose:GetComponents()
-						local size = entry.Size
-						local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
-						local ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
-						local ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
-						local ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
-						ax, ay, az = math.min(ax, x - ex), math.min(ay, y - ey), math.min(az, z - ez)
-						bx, by, bz = math.max(bx, x + ex), math.max(by, y + ey), math.max(bz, z + ez)
-					end
-					block.MinX, block.MinY, block.MinZ = ax, ay, az
-					block.MaxX, block.MaxY, block.MaxZ = bx, by, bz
-					block.Dirty = false
-				end
-				minX, minY, minZ = math.min(minX, block.MinX), math.min(minY, block.MinY), math.min(minZ, block.MinZ)
-				maxX, maxY, maxZ = math.max(maxX, block.MaxX), math.max(maxY, block.MaxY), math.max(maxZ, block.MaxZ)
-			end
 			local visible = self.Count > 0
 			if self.Visible ~= visible then
 				self.Visible = visible
 				wire.Visible = visible
 			end
 			if self.Count > 0 then
+				local minX, minY, minZ, maxX, maxY, maxZ
+				if moved >= scanAt then
+					minX, minY, minZ, maxX, maxY, maxZ = partBounds(1, self.Count)
+					treeStale = true
+				else
+					if treeStale then
+						for _, level in ipairs(levels) do
+							for _, block in ipairs(level) do block.Dirty = true end
+						end
+						treeStale = false
+					end
+					local root = boundsAt(#levels, 1)
+					minX, minY, minZ = root.MinX, root.MinY, root.MinZ
+					maxX, maxY, maxZ = root.MaxX, root.MaxY, root.MaxZ
+				end
 				local terrainPose = workspace.Terrain.CFrame
 				if minX == self.MinX and minY == self.MinY and minZ == self.MinZ
 					and maxX == self.MaxX and maxY == self.MaxY and maxZ == self.MaxZ
@@ -210,7 +276,8 @@ local function CreateModule()
 			table.clear(self.Parts)
 			table.clear(self.Dynamic)
 			table.clear(entries)
-			table.clear(blocks)
+			table.clear(moving)
+			table.clear(levels)
 		end
 		group:SetColor(color)
 		group:Step()

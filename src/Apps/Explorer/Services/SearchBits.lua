@@ -168,11 +168,13 @@ local function Main()
 			if not self.Prefix then
 				self:Prepare()
 			end
+			if self.Count == self.Size and id % 1 == 0 then return id end
 			local prefix = assert(self.Prefix)
 			local word = (id - 1) // 32 + 1
 			local mask = rshift(0xffffffff, 31 - (id - 1) % 32)
 			return (prefix[word - 1] or 0) + pop(band(buffer.readu32(self.Data, (word - 1) * 4), mask))
 		end
+		local lastWord = 1
 		function s.Select(self: Dense, rank: number): number?
 			if rank % 1 ~= 0 or rank < 1 or rank > self.Count then
 				return nil
@@ -180,24 +182,35 @@ local function Main()
 			if not self.Prefix then
 				self:Prepare()
 			end
+			if self.Count == self.Size then return rank end
 			local prefix = assert(self.Prefix)
-			local low, high = 1, words
-			while low < high do
-				local mid = (low + high) // 2
-				if prefix[mid] < rank then
-					low = mid + 1
-				else
-					high = mid
+			local word = lastWord
+			if rank <= (prefix[word - 1] or 0) or rank > prefix[word] then
+				-- The rank can be displaced by at most the total number of missing rows.
+				local low = (rank - 1) // 32 + 1
+				local high = (rank - 1 + self.Size - self.Count) // 32 + 1
+				while low < high do
+					local mid = (low + high) // 2
+					if prefix[mid] < rank then
+						low = mid + 1
+					else
+						high = mid
+					end
 				end
+				word = low
+				lastWord = word
 			end
-			local value = buffer.readu32(self.Data, (low - 1) * 4)
-			local nth = rank - (prefix[low - 1] or 0)
+			local offset = (word - 1) * 32
+			local value = buffer.readu32(self.Data, (word - 1) * 4)
+			local nth = rank - (prefix[word - 1] or 0)
+			if value == 0xffffffff then return offset + nth end
 			for _ = 1, nth - 1 do
 				value = band(value, value - 1)
 			end
-			return (low - 1) * 32 + 31 - bit32.countlz(band(value, -value)) + 1
+			return offset + bit32.countrz(value) + 1
 		end
 		function s.Each(self: Dense, fn: Visit, checkpoint: Checkpoint?): ()
+			if self.Count == 0 and self.Prefix then return end
 			for word = 0, words - 1 do
 				local value = buffer.readu32(self.Data, word * 4)
 				while value ~= 0 do

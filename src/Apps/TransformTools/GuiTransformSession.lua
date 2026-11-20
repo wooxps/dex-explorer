@@ -64,19 +64,22 @@ local function CreateModule()
 		end
 		return roots
 	end
-	function T.Visible(object)
-		local p = object
+	local function hierarchyVisible(p)
 		while p do
 			if p:IsA("GuiObject") and not p.Visible then
 				return false
 			end
 			if p:IsA("ScreenGui") then
-				local size = object.AbsoluteSize
-				return p.Enabled and size.X > 0 and size.Y > 0
+				return p.Enabled
 			end
 			p = p.Parent
 		end
 		return false
+	end
+	function T.Visible(object)
+		if not hierarchyVisible(object) then return false end
+		local size = object.AbsoluteSize
+		return size.X > 0 and size.Y > 0
 	end
 	function T.Geometry(object)
 		local p, s = object.AbsolutePosition, object.AbsoluteSize
@@ -95,16 +98,29 @@ local function CreateModule()
 		}
 		return { Center = center, Size = s, Rotation = angle, Corners = corners }
 	end
-	function T.Bounds(roots)
+	function T.Bounds(roots, visibleOnly)
 		if #roots == 0 then
 			return nil
 		end
 		if #roots == 1 then
+			if visibleOnly and not T.Visible(roots[1]) then return nil end
 			return T.Geometry(roots[1])
 		end
+		local parents = visibleOnly and {} or nil
 		local x, y, X, Y = math.huge, math.huge, -math.huge, -math.huge
 		for _, o in ipairs(roots) do
-			local p, size = o.AbsolutePosition, o.AbsoluteSize
+			local size = o.AbsoluteSize
+			if parents then
+				local parent = o.Parent
+				if not parent or not o.Visible or not (size.X > 0 and size.Y > 0) then return nil end
+				local shown = parents[parent]
+				if shown == nil then
+					shown = hierarchyVisible(parent)
+					parents[parent] = shown
+				end
+				if not shown then return nil end
+			end
+			local p = o.AbsolutePosition
 			local w, h = size.X * 0.5, size.Y * 0.5
 			local center = Vector2.new(p.X + w, p.Y + h)
 			local angle = o.AbsoluteRotation or 0

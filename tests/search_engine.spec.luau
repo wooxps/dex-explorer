@@ -43,6 +43,20 @@ for _, size in ipairs({ 0, 1, 31, 32, 33, 63, 64, 65, 1001 }) do
 	end
 	assert(clone.Count == count and dense.Count == #values and dense:Rank(0) == 0)
 end
+do
+	local bitmap = Bits.Dense(137)
+	for i = 1, 137 do bitmap:Set(i) end
+	for i = 137, 1, -1 do assert(bitmap:Select(i) == i and bitmap:Rank(i) == i) end
+	bitmap:ClearRange(30, 65)
+	bitmap:Set(128, false)
+	local ids = {}
+	for i = 1, 137 do if bitmap:Has(i) then ids[#ids + 1] = i end end
+	for i = #ids, 1, -1 do
+		assert(bitmap:Select(i) == ids[i] and bitmap:Select(#ids + 1 - i) == ids[#ids + 1 - i])
+	end
+	bitmap:Set(64)
+	assert(bitmap:Select(30) == 64 and bitmap:Rank(64) == 30)
+end
 local posts = Apps.SearchPostings.Create()
 for _, name in ipairs({
 	"Car",
@@ -366,6 +380,17 @@ do
 	local roots = { tree }
 	local first = Apps.SearchResults.CreateCold(roots, { "absent" }, context, check)
 	local layout = first.ColdLayout
+	local broad = Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout)
+	local broadCount = #broad.MatchList
+	broad.Expanded[nested] = false
+	broad:Remove(nested[5])
+	broad:Reflow(check)
+	nested[17].NameWidth = 1901
+	local revisit = Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout)
+	assert(#revisit.MatchList == broadCount and revisit:IndexOf(nested[5]) and revisit.Width == 1901)
+	assert(#broad.MatchList == broadCount - 1 and not broad:IndexOf(nested[5]))
+	local absent = Apps.SearchResults.CreateCold(roots, { "absent", "needle" }, context, check, layout)
+	assert(#absent.Rows == 0 and absent.Depth == 1 and absent.Width == 0)
 	for _, terms in {{ "日本", "needle" }, { "tail\0head" }, { "keep\0byte" }, { "\0head" }, { "\0" }, { "needle" }, { "part" }} do
 		local actual = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
 		local full = Apps.SearchResults.CreateCold(roots, terms, context, check)
@@ -382,6 +407,10 @@ do
 	filtered:Reflow(check)
 	assert(#filtered.Rows == 2 and #filtered.MatchList == 2)
 	Apps.SearchResults.PrepareCharacters(layout, check)
+	local rare = Apps.SearchResults.CreateCold(roots, { "upper_", "日本" }, context, check, layout)
+	assert(#rare.Rows == 3 and rare.MatchList[1] == nested[129] and #rare.MatchList == 1)
+	assert(#Apps.SearchResults.CreateCold(roots, { "xylophone" }, context, check, layout).MatchList == 0)
+	assert(#Apps.SearchResults.CreateCold(roots, { "upper_zz", "日本" }, context, check, layout).Rows == 0)
 	local single = assert(Apps.SearchResults.CreateIndexed(layout, "u", context, check))
 	assert(single:IndexOf(nested[129]) and single:HasChildren(outer) and not single:IndexOf(nested[130]))
 	assert(not first:Contains(nested[129]), "promoting a cold layout changed the original view")

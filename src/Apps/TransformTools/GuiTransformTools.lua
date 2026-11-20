@@ -129,15 +129,7 @@ local function CreateModule()
 		return r
 	end
 	local function geometry()
-		if #T.Roots == 0 then
-			return nil
-		end
-		for _, o in ipairs(T.Roots) do
-			if not Apps.GuiTransformSession.Visible(o) then
-				return nil
-			end
-		end
-		return Apps.GuiTransformSession.Bounds(T.Roots)
+		return Apps.GuiTransformSession.Bounds(T.Roots, true)
 	end
 	local finish, refresh, render, begin
 	local function apply(p)
@@ -196,10 +188,6 @@ local function CreateModule()
 				end
 			end
 			ok, problem = g.Session:Resize(h.X, h.Y, dx, dy, ctrl, shift)
-			local b = geometry()
-			if b then
-				view:SetReadout(math.floor(b.Size.X + 0.5) .. " × " .. math.floor(b.Size.Y + 0.5), p)
-			end
 		else
 			if shift then
 				if math.abs(dx) > math.abs(dy) then
@@ -238,6 +226,9 @@ local function CreateModule()
 			return
 		end
 		local b = geometry()
+		if b and h.Kind == "Resize" then
+			view:SetReadout(math.floor(b.Size.X + 0.5) .. " × " .. math.floor(b.Size.Y + 0.5), p)
+		end
 		if T.Snapping and b and h.Kind == "Resize" then
 			local d, m = alignment.Snap(g.Targets.X, alignment.Features(b, "X"))
 			xMatches = math.abs(d) < 0.001 and m or {}
@@ -245,6 +236,7 @@ local function CreateModule()
 			yMatches = math.abs(d) < 0.001 and m or {}
 		end
 		view:SetGuides(T.Snapping and b and alignment.Guides(xMatches, yMatches, b) or nil)
+		return b, true
 	end
 	finish = function(cancel)
 		if not gesture then
@@ -328,15 +320,16 @@ local function CreateModule()
 			clearCursor()
 			return
 		end
-		local p
+		local p, g, measured
 		if gesture then
 			p = gesture.Pointer
-			local ok, err = pcall(apply, p)
+			local ok, geometryOrError, didMeasure = pcall(apply, p)
 			if not ok then
 				finish(true)
-				report(err)
+				report(geometryOrError)
 				return
 			end
+			g, measured = geometryOrError, didMeasure
 		else
 			local raw = input:GetMouseLocation()
 			local ok, inset = pcall(function()
@@ -344,7 +337,7 @@ local function CreateModule()
 			end)
 			p = Vector2.new(raw.X - (ok and inset.X or 0), raw.Y - (ok and inset.Y or 0))
 		end
-		local g = geometry()
+		if not measured then g = geometry() end
 		if
 			not gesture
 			and g

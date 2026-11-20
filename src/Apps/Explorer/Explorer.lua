@@ -861,33 +861,71 @@ local function CreateModule()
 		local class
 		local names = table.create(#children)
 		local byName = {}
-		local unique = true
+		local firstRepeat
+		local ordered = true
+		local fallback = false
 		for i, node in ipairs(children) do
 			if node.Del or node.ManualOrder then
-				table.sort(children, sort)
-				return
+				fallback = true
+				break
 			end
 			local nodeClass = node.Class or node.Obj.ClassName
 			if class and nodeClass ~= class then
-				table.sort(children, sort)
-				return
+				fallback = true
+				break
 			end
 			class = nodeClass
 			node.Class = nodeClass
-			local name = namesByNode[node]
-			if not name then
-				name = tostring(node.Obj)
-				namesByNode[node] = name
+			local name = namesByNode[node] or tostring(node.Obj)
+			if ordered and i > 1 then
+				local previous = names[i - 1]
+				local previousId = children[i - 1].Id
+				ordered = previous < name or (previous == name and previousId and node.Id and previousId < node.Id)
 			end
 			names[i] = name
-			if byName[name] then
-				unique = false
-			else
-				byName[name] = node
+			if not firstRepeat then
+				if byName[name] then firstRepeat = i else byName[name] = node end
 			end
 		end
 
-		if not unique then
+		if ordered and not fallback then return end
+		if fallback or firstRepeat then
+			-- Repeated names often arrive in ID order within each name. Sort just
+			-- the distinct names when that order already resolves every tie.
+			if not fallback and firstRepeat <= #children // 4 and children[1].Id then
+				local groups, keys = {}, {}
+				local orderedTies = true
+				for i, name in ipairs(names) do
+					local node = children[i]
+					local group = groups[name]
+					if group then
+						local previousId = group[#group].Id
+						if not node.Id or not previousId or node.Id <= previousId then
+							orderedTies = false
+							break
+						end
+						group[#group + 1] = node
+					else
+						groups[name] = { node }
+						keys[#keys + 1] = name
+					end
+				end
+				if orderedTies then
+					table.sort(keys)
+					local at = 1
+					for _, name in ipairs(keys) do
+						local group = groups[name]
+						table.move(group, 1, #group, at, children)
+						at += #group
+					end
+					return
+				end
+			end
+			for i, name in ipairs(names) do namesByNode[children[i]] = name end
+			if fallback then
+				table.sort(children, sort)
+				return
+			end
 			table.sort(children, function(a, b)
 				local left, right = namesByNode[a], namesByNode[b]
 				if left == right then
@@ -5584,25 +5622,18 @@ return search]==]
 		end
 	end
 	Explorer.SelectMatches = function(toggle)
-		local allSelected = #Explorer.MatchList > 0 and #selection.List == #Explorer.MatchList
-		if searchView then
-			if allSelected then
-				for _, node in ipairs(selection.List) do
-					if not searchView:PositionOfMatch(node) then
-						allSelected = false
-						break
-					end
-				end
-			end
-		else
-			for i = 1, #Explorer.MatchList do
-				if not selection.Map[Explorer.MatchList[i]] then
+		local allSelected = toggle and #Explorer.MatchList > 0 and #selection.List == #Explorer.MatchList
+		if allSelected then
+			local list = searchView and selection.List or Explorer.MatchList
+			local members = searchView and searchView.Matches or selection.Map
+			for _, node in ipairs(list) do
+				if not members[node] then
 					allSelected = false
 					break
 				end
 			end
 		end
-		if toggle and allSelected then
+		if allSelected then
 			selection:Clear()
 		elseif searchView then
 			selection:SetTable(searchView:MaterializeMatches(function(node)

@@ -227,6 +227,7 @@ local function Main()
 					if matchWord ~= 0 or ancestorWord ~= 0 then
 						buffer.writeu32(column.Match.Data, offset, matchWord)
 						buffer.writeu32(column.Context.Data, offset, bor(matchWord, ancestorWord))
+						column.Match.Count += Bits.Pop(matchWord)
 						matchWords[lane], ancestorWords[lane] = 0, 0
 					end
 				end
@@ -371,9 +372,27 @@ local function Main()
 		return createView(layout, context, checkpoint, layout.Positions, result.Top, result.Match, result.Context, result.Width, result.Depth)
 	end
 
-	local function sparseNameView(layout, terms, context, checkpoint, matchesName)
+	-- Keep immutable membership on the hierarchy snapshot. Each visit gets its own
+	-- expansion, removals and visibility, even when a user backspaces to an earlier query.
+	local function literalView(layout, terms, context, checkpoint, positions, top, matches, included, width, depth)
+		if #layout.Nodes >= 1024 and #terms == 1 and #terms[1] <= 256 then
+			local recent = layout.LiteralResults or {}
+			local largeMap = positions ~= layout.Positions and included.Count > #layout.Nodes // 16
+			for i = #recent, 1, -1 do
+				if recent[i].Term == terms[1] or (largeMap and recent[i].LargeMap) then
+					table.remove(recent, i)
+				end
+			end
+			if #recent == 6 then table.remove(recent, 1) end
+			recent[#recent + 1] = { Term = terms[1], Positions = positions, Top = top,
+				Match = matches, Context = included, Depth = depth, LargeMap = largeMap }
+			layout.LiteralResults = recent
+		end
+		return createView(layout, context, checkpoint, positions, top, matches, included, width, depth)
+	end
+
+	local function scanNameBlocks(layout, terms, checkpoint, matchesName)
 		local names, nodes = layout.Names, layout.Nodes
-		if #nodes < 1024 then return nil end
 		-- Common queries are cheaper to scan directly. Sample across the tree so a
 		-- single folder full of matches doesn't determine the path for every folder.
 		local sampledHits = 0
@@ -423,6 +442,57 @@ local function Main()
 			end
 			if block % 4 == 0 then checkpoint() end
 		end
+		return candidates
+	end
+
+	local function sparseNameView(layout, terms, context, checkpoint, matchesName)
+		local nodes, names = layout.Nodes, layout.Names
+		if #nodes < 1024 then return nil end
+		local subset
+		for _, entry in ipairs(layout.LiteralResults or {}) do
+			if #terms == 1 and terms[1] == entry.Term then
+				-- Widths may have been measured since this search last ran.
+				local width = 0
+				entry.Context:Each(function(i)
+					width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
+				end, checkpoint)
+				return createView(layout, context, checkpoint, layout.Positions or entry.Positions, entry.Top,
+					entry.Match, entry.Context, width, entry.Depth)
+			end
+			if entry.Match.Count <= #nodes // 32 and (not subset or entry.Match.Count < subset.Count) then
+				for _, term in ipairs(terms) do
+					if string.find(term, entry.Term, 1, true) then
+						subset = entry.Match
+						break
+					end
+				end
+			end
+		end
+		-- Every literal match must also contain each of its ASCII letters and digits.
+		-- A rare character can narrow a new query before any prefix has been searched.
+		if layout.Characters then
+			for _, term in ipairs(terms) do
+				for i = 1, math.min(#term, 128) do
+					local column = layout.Characters[charLanes[string.byte(term, i)]]
+					if column and column.Match.Count <= #nodes // 32 and (not subset or column.Match.Count < subset.Count) then
+						subset = column.Match
+					end
+				end
+			end
+		end
+		local candidates
+		if subset then
+			if subset.Count == 0 then
+				return createView(layout, context, checkpoint, layout.Positions or {}, {}, subset, subset, 0, 1)
+			end
+			candidates = {}
+			subset:Each(function(i)
+				if matchesName(names[i]) then candidates[#candidates + 1] = i end
+			end, checkpoint)
+		else
+			candidates = scanNameBlocks(layout, terms, checkpoint, matchesName)
+			if not candidates then return nil end
+		end
 		local matches, included = Bits.Dense(#nodes), Bits.Dense(#nodes)
 		local fullPositions = layout.Positions
 		local positions, parents = fullPositions or {}, layout.Parents
@@ -441,7 +511,7 @@ local function Main()
 			end
 			if i % 128 == 0 then checkpoint() end
 		end
-		return createView(layout, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth)
+		return literalView(layout, terms, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth)
 	end
 
 	function Results.CreateCold(roots, terms, context, checkpoint, layout)
@@ -557,7 +627,7 @@ local function Main()
 					checkpoint()
 				end
 			end
-			return createView(layout, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth)
+			return literalView(layout, terms, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth)
 		else
 			visitChildren(roots[1], snapshotChildren(roots[1], readChildren, checkpoint), 0, 1)
 			if roots[2] then visitChildren(nil, { roots[2] }, 0, 1) end
@@ -582,7 +652,7 @@ local function Main()
 			NilRoot = roots[2],
 			RootVisibility = rootVisibility,
 		}
-		return createView(layout, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth)
+		return literalView(layout, terms, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth)
 	end
 
 	createView = function(layout, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth)

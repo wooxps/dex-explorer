@@ -140,6 +140,9 @@ do
 	checkMediumOrder()
 	Explorer.SetHistoryOrder(mediumRows[32], -1)
 	checkMediumOrder()
+	for i, object in ipairs(mediumRows) do nodes[object].Id = i end
+	Explorer.SetHistoryOrder(mediumRows[32], nil)
+	checkMediumOrder()
 	local expected = {}
 	for i = 1200, 1, -1 do
 		local object = Instance.new("Folder", host)

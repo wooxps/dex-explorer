@@ -29,6 +29,16 @@ do
 	local bounds = S.Bounds(roots)
 	assert(bounds.Corners[1].X == minX and bounds.Corners[1].Y == minY)
 	assert(bounds.Corners[3].X == maxX and bounds.Corners[3].Y == maxY)
+	local shown = S.Bounds(roots, true)
+	assert(shown.Corners[3].X == maxX and shown.Corners[3].Y == maxY)
+	parent.Visible = false
+	assert(not S.Bounds(roots, true))
+	parent.Visible = true
+	screen.Enabled = false
+	assert(not S.Bounds(roots, true))
+	screen.Enabled = true
+	roots[3].Size = UDim2.fromOffset(0, 20)
+	assert(not S.Bounds(roots, true))
 	roots[3]:Destroy()
 end
 local g = S.Geometry(child)

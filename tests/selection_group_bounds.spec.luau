@@ -76,7 +76,7 @@ parts[1]._props.CFrame = CFrame.new(-30, 0, 0)
 transformed = 0
 service.RunService.RenderStepped:Fire()
 assert(wire.Scale == vec(1056, 2, 2), "physics movement is observed without property events")
-assert(transformed > 0 and transformed <= 32, "one moving part recomputed the whole folder")
+assert(transformed > 0 and transformed <= 8, "one moving part recomputed unrelated bounds")
 parts[1].Parent = workspace
 service.RunService.RenderStepped:Fire()
 assert(record.Group.Count == 1023 and wire.Scale == vec(1024, 2, 2), "removed parts leave the bounds")
@@ -89,6 +89,32 @@ service.RunService.RenderStepped:Fire()
 assert(wire.Scale == vec(1076, 10, 2), "rotated geometry uses all three world-space extents")
 manager:Update({ host, parts[2] })
 assert(manager.Counts.Roots == 1, "selected ancestors deduplicate descendant adornments")
+-- Shrink across several tree levels between frames, then regrow the same selection.
+for _, part in ipairs(host:GetChildren()) do part.Parent = workspace end
+record.Group:Step()
+assert(record.Group.Count == 0 and not wire.Visible)
+for i = 1, 513 do
+	parts[i].CFrame = CFrame.new(-2 * i, i, 0)
+	parts[i].Parent = host
+	if i == 1 or i == 8 or i == 9 or i == 64 or i == 65 or i == 512 or i == 513 then
+		record.Group:Step()
+		assert(wire.Visible and wire.Scale == vec(2 * i, i + 1, 2))
+	end
+end
+for i = 1, 513 do
+	local part = parts[i]
+	part.Anchored = false
+	game.ItemChanged:Fire(part, "Anchored")
+	part._props.CFrame = CFrame.new(i * 3, -i, 0)
+end
+record.Group:Step()
+assert(wire.Scale == vec(1538, 514, 2), "dense movement must update every extent")
+parts[2]._props.CFrame = CFrame.new(-100, 10, 0)
+record.Group:Step()
+assert(wire.Scale == vec(1641, 525, 2), "a sparse frame after dense motion must see all prior movement")
+for i = 1, 511 do parts[i].Parent = workspace end
+record.Group:Step()
+assert(wire.Scale == vec(5, 3, 2), "swapping tail parts invalidates both former and new bounds")
 manager:Update({}, {})
 drain()
 assert(not wire.Parent and manager.Counts.Roots == 0 and manager.Counts.Bounds == 0)
@@ -126,7 +152,8 @@ end
 manager:Destroy()
 instMT.__newindex = oldNewIndex
 host:Destroy()
-parts[1]:Destroy()
+for _, part in ipairs(parts) do if part.Parent then part:Destroy() end end
+rotated:Destroy()
 workspace.Terrain:Destroy()
 workspace.Terrain, workspace.CurrentCamera = oldTerrain, oldCamera
 methods.Clear, methods.AddLines = oldClear, oldLines
