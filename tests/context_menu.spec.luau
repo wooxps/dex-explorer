@@ -308,6 +308,31 @@ do
 	context.Registered.COPY_AS_JSON.OnClick()
 	assert(#payload == 2 and payload[1].Name == child.Name and payload[2].Name == outside.Name)
 	Explorer.Selection:Set(nodes[outside])
+	local previousReader = deps.env.getclipboard
+	local jsonText = '{"ClassName":"Folder","Name":"Renamed"}'
+	local decoded = { ClassName = "Folder", Name = "Renamed" }
+	service.HttpService.JSONDecode = function() return decoded end
+	deps.env.getclipboard = function() return jsonText end
+	folderClass.Properties = { { Name = "Name", ValueType = { Name = "string" } } }
+	Explorer.Selection:SetTable({ nodes[child], nodes[outside] })
+	context.Registered.PASTE.OnClick()
+	assert(child.Name == "Renamed" and outside.Name == "Renamed", "paste updates both selected folders")
+	assert(Apps.History.Undo() and child.Name == "ContextChild" and outside.Name == "ContextOutside")
+	Explorer.Selection:Set(nodes[outside])
+	local classTags = folderClass.Tags
+	folderClass.Tags = {}
+	jsonText = '[{"ClassName":"Folder"},{"ClassName":"Folder"}]'
+	decoded = { { ClassName = "Folder" }, { ClassName = "Folder" } }
+	context.Registered.PASTE.OnClick()
+	assert(#Explorer.Selection.List == 2 and Explorer.Selection.List[1].Obj.Parent == outside, "array creates children")
+	assert(Apps.History.Undo())
+	context.Registered.COPY.OnClick()
+	assert(pcall(context.Registered.PASTE.OnClick), "ordinary Copy takes priority over earlier clipboard JSON")
+	assert(#Explorer.Selection.List == 1 and Explorer.Selection.List[1].Obj.Name == outside.Name)
+	assert(Apps.History.Undo())
+	folderClass.Tags = classTags
+	deps.env.getclipboard = previousReader
+	Explorer.Selection:Set(nodes[outside])
 	service.HttpService, folderClass.Properties = previousHttp, previousProperties
 	outside.UniqueId = nil
 	deps.env.setclipboard = savedClipboard

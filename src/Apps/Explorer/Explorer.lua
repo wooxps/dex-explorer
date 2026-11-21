@@ -274,6 +274,15 @@ local function CreateModule()
 	local nilNode = { Obj = Instance.new("Folder") }
 	local idCounter = 0
 	local scrollV, scrollH, clipboard
+	local instanceCopyText
+	local function clipboardJsonText()
+		if type(env.getclipboard) == "function" then
+			local ok, value = pcall(env.getclipboard)
+			if ok and type(value) == "string" and value:match("^%s*[%[{]") then return value end
+		end
+		return nil
+	end
+
 	local renameBox, renamingNode, searchFunc
 	local sortingEnabled, autoUpdateSearch
 	local table, math = table, math
@@ -2913,7 +2922,7 @@ local function CreateModule()
 
 		local sList = table.clone(selection.List)
 		local sMap = selection.Map
-		local emptyClipboard = #clipboard == 0
+		local emptyClipboard = #clipboard == 0 and not clipboardJsonText()
 		local presentClasses = {}
 		local apiClasses = API.Classes
 
@@ -3200,6 +3209,7 @@ local function CreateModule()
 					pcall(Apps.History.Set, inst, "Parent", nil)
 				end
 				clipboard = newClipboard
+				instanceCopyText = clipboardJsonText()
 				selection:Clear()
 			end,
 		})
@@ -3226,6 +3236,7 @@ local function CreateModule()
 					end
 				end
 				clipboard = newClipboard
+				instanceCopyText = clipboardJsonText()
 			end,
 		})
 
@@ -3237,6 +3248,38 @@ local function CreateModule()
 			Shortcut = "Ctrl+Shift+V",
 			OnClick = function()
 				local sList = table.clone(selection.List)
+				local text = clipboardJsonText()
+				if text and text ~= instanceCopyText then
+					local payload = service.HttpService:JSONDecode(text)
+					local isArray = text:match("^%s*%[") ~= nil
+					local rows = if isArray then payload else { payload }
+					assert(type(payload) == "table", "Expected an object or array")
+					for _, row in ipairs(rows) do
+						assert(type(row) == "table", "Expected an object in the pasted array")
+						local class = row.ClassName
+						assert((not isArray and class == nil) or Apps.ReflectionService.GetClass(class), "Unknown or missing ClassName")
+					end
+					local pasted = {}
+					for _, node in ipairs(sList) do
+						for _, row in ipairs(rows) do
+							local target = node.Obj
+							local create = #rows > 1 or (row.ClassName ~= nil and row.ClassName ~= target.ClassName)
+							if create then
+								assert(Apps.ReflectionService.CanCreate(row.ClassName), "Cannot create " .. row.ClassName)
+								target = Instance.new(row.ClassName)
+							end
+							Apps.ReflectionService.ApplyClipboard(target, row)
+							if create then Apps.History.Set(target, "Parent", node.Obj) end
+							if nodes[target] then table.insert(pasted, nodes[target]) end
+						end
+					end
+					if #pasted > 0 then
+						selection:SetTable(pasted)
+						Explorer.ViewNode(pasted[1])
+					end
+					return
+				end
+				if #clipboard == 0 then return end
 				local newSelection = {}
 				local count = 1
 				for i = 1, #sList do
@@ -3683,6 +3726,7 @@ local function CreateModule()
 				end
 				local json = service.HttpService:JSONEncode(if #rows == 1 then rows[1] else rows)
 				env.setclipboard(json)
+				instanceCopyText = nil
 			end,
 		})
 		context:Register("COPY_UNIQUE_ID", {
@@ -5919,7 +5963,7 @@ return search]==]
 				command = shift and "DELETE_CHILDREN" or "DELETE"
 			end
 			if command and not objectPicker then
-				if #selection.List > 0 and (command ~= "PASTE" or #clipboard > 0) then
+				if #selection.List > 0 and (command ~= "PASTE" or #clipboard > 0 or type(env.getclipboard) == "function") then
 					local action = Explorer.RightClickContext.Registered[command]
 					local ok, err = pcall(action.OnClick)
 					if not ok then

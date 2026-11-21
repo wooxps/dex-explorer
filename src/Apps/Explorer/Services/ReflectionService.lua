@@ -1,11 +1,11 @@
 --!strict
 
-local API, RMD, Settings
+local Apps, API, RMD, Settings
 
 ------------------------------ Initialization ------------------------------
 
 local function InitDeps(d)
-	API, RMD, Settings = d.API, d.RMD, d.Settings
+	Apps, API, RMD, Settings = d.Apps, d.API, d.RMD, d.Settings
 end
 ------------------------------ Module ------------------------------
 
@@ -136,6 +136,62 @@ local function Main()
 		end
 		return nil
 	end
+	local function clipboardProperty(prop, value)
+		local kind = prop.ValueType.Name
+		local text = tostring(value)
+		if prop.ValueType.Category == "Enum" then return Enum[kind][text] end
+		if kind == "bool" then
+			if text == "true" then return true elseif text == "false" then return false end
+			return nil
+		end
+		if kind == "Color3" or kind == "NumberSequence" or kind == "ColorSequence" then
+			local numbers = {}
+			for token in text:gmatch("[^,%s]+") do table.insert(numbers, assert(tonumber(token))) end
+			if kind == "Color3" then
+				if #numbers == 3 then return Color3.new(table.unpack(numbers)) end
+				return nil
+			end
+			local points = {}
+			local stride = if kind == "ColorSequence" then 5 else 3
+			if #numbers % stride ~= 0 then return nil end
+			for i = 1, #numbers, stride do
+				if kind == "ColorSequence" then
+					table.insert(points, ColorSequenceKeypoint.new(numbers[i], Color3.new(numbers[i+1], numbers[i+2], numbers[i+3])))
+				else
+					table.insert(points, NumberSequenceKeypoint.new(numbers[i], numbers[i+1], numbers[i+2]))
+				end
+			end
+			return if kind == "ColorSequence" then ColorSequence.new(points) else NumberSequence.new(points)
+		end
+		if kind == "BrickColor" then return BrickColor.new(text) end
+		if kind == "ContentId" then return text end
+		if kind == "NumberRange" then text = text:match("^%s*(.-)%s*$"):gsub("%s*,%s*", ","):gsub("%s+", ",") end
+		return Apps.PropertyValueCodec.Parse(kind, text)
+	end
+
+	function Service.ApplyClipboard(object, row)
+		for key, value in pairs(row) do
+			if type(key) ~= "string" or type(value) == "table" then continue end
+			local prefix, name = key:sub(1, 1), key:sub(2)
+			if prefix == "$" or prefix == "." then
+				if name == "" or name:sub(1, 3) == "RBX" then continue end
+				if prefix == "$" then
+					pcall(Apps.History.Attribute, object, name, value)
+				elseif type(value) == "boolean" then
+					pcall(Apps.History.Tag, object, name, value)
+				end
+			elseif key ~= "Parent" and key ~= "ClassName" then
+				local prop = Service.GetProperty(object.ClassName, key)
+				local tags = prop and prop.Tags or {}
+				if prop and not tags.ReadOnly and not tags.NotScriptable and not tags.Hidden
+					and (not prop.Security or prop.Security.Write == "None") then
+					local ok, parsed = pcall(clipboardProperty, prop, value)
+					if ok and parsed ~= nil then pcall(Apps.History.Set, object, key, parsed) end
+				end
+			end
+		end
+	end
+
 	return Service
 end
 return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
