@@ -214,6 +214,16 @@ Properties.ShowExplorerProps()
 for _, prop in props do assert(not prop.PluginText) end
 end
 """
+program += "\ndo\nlocal Properties = {}\nlocal Colors = {Grid=Color3.fromRGB(32,34,39), Surface=Color3.fromRGB(25,26,31)}\n"
+program += props[props.index('\t\tProperties.EntryTemplate = create({'):props.index('\t\tlocal add = Properties.EntryTemplate')]
+program += """
+local entry = Properties.EntryTemplate
+local rowLine, columnLine = entry.RowDivider, entry.ValueFrame.Line
+assert(rowLine.BackgroundColor3 == Colors.Grid and columnLine.BackgroundColor3 == Colors.Grid)
+assert(rowLine.Size.Y.Offset == 1 and rowLine.Position.Y.Scale == 1 and rowLine.Position.Y.Offset == -1)
+assert(columnLine.Size.X.Offset == 1 and columnLine.Position.X.Offset == 0 and columnLine.Size.Y.Scale == 1)
+end
+"""
 with tempfile.TemporaryDirectory() as d:
  p=Path(d)/'check.luau';p.write_text(program,encoding='utf-8')
  try:subprocess.run([str(ROOT/'.tools/bin/luau.exe'),str(p)],check=True)

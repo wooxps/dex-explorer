@@ -2685,19 +2685,26 @@ local function CreateModule()
 				Parent = scrollThumbFrame,
 			})
 			Lib.StudioCorner(scrollThumb, 3)
+			local function paintLegacyThumb(color)
+				if service.TweenService and TweenInfo then
+					service.TweenService:Create(scrollThumb, TweenInfo.new(0.1), { BackgroundColor3 = color }):Play()
+				else
+					scrollThumb.BackgroundColor3 = color
+				end
+			end
 			scrollThumb.MouseEnter:Connect(function()
-				if not thumbPress then
+				if self.LegacyStudio or not thumbPress then
 					scrollThumb.BackgroundTransparency = self.LegacyStudio and 0 or 0.08
 					if self.LegacyStudio then
-						scrollThumb.BackgroundColor3 = self.LegacyHoverColor
+						paintLegacyThumb(self.LegacyHoverColor)
 					end
 				end
 			end)
 			scrollThumb.MouseLeave:Connect(function()
-				if not thumbPress then
+				if self.LegacyStudio or not thumbPress then
 					scrollThumb.BackgroundTransparency = self.LegacyStudio and 0 or 0.25
 					if self.LegacyStudio then
-						scrollThumb.BackgroundColor3 = self.ThumbColor
+						paintLegacyThumb(self.ThumbColor)
 					end
 				end
 			end)
@@ -2791,10 +2798,6 @@ local function CreateModule()
 							end
 							scrollThumb.BackgroundTransparency = self.LegacyStudio and 0
 								or (checkMouseInGui(scrollThumb) and 0.08 or 0.25)
-							if self.LegacyStudio then
-								scrollThumb.BackgroundColor3 = checkMouseInGui(scrollThumb) and self.LegacyHoverColor
-									or self.ThumbColor
-							end
 							thumbPress = false
 						end
 					end)
@@ -2925,6 +2928,7 @@ local function CreateModule()
 				corner:Destroy()
 			end
 			local track = self.GuiElems.ScrollThumbFrame
+			track.AutoButtonColor = false
 			track.BackgroundColor3 = Color3.fromRGB(39, 41, 48)
 			track.BackgroundTransparency = 0
 			track.BorderSizePixel = 0

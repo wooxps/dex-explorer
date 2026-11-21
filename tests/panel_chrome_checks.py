@@ -49,6 +49,18 @@ print("PASS: native filter border/hover/focus/chevron, compact geometry, non-sti
 fixture+='local plr=service.Players.LocalPlayer\n'+lib[lib.index('\tLib.ScrollBar = (function()'):lib.index('\n\tLib.Window = (function()')]+"""
 for _,horizontal in ipairs({false,true}) do
  local bar=Lib.ScrollBar.new(horizontal) bar:UseLegacyStudioStyle()
+ local rail,thumb=bar.GuiElems.ScrollThumbFrame,bar.GuiElems.ScrollThumb
+ assert(rail.AutoButtonColor==false and rail.BackgroundTransparency==0)
+ local railColor=rail.BackgroundColor3
+ thumb.MouseEnter:Fire()
+ assert(thumb.BackgroundColor3==bar.LegacyHoverColor)
+ thumb.InputBegan:Fire({UserInputType=Enum.UserInputType.MouseButton1})
+ assert(thumb.BackgroundColor3==bar.LegacyHoverColor)
+ thumb.MouseLeave:Fire()
+ assert(thumb.BackgroundColor3==bar.ThumbColor and rail.BackgroundColor3==railColor)
+ thumb.MouseEnter:Fire()
+ assert(thumb.BackgroundColor3==bar.LegacyHoverColor and rail.BackgroundColor3==railColor)
+ service.UserInputService.InputEnded:Fire({UserInputType=Enum.UserInputType.MouseButton1})
  bar.TotalSpace=100 bar.VisibleSpace=10
  local up,down=bar.GuiElems.Button1.StudioArrow,bar.GuiElems.Button2.StudioArrow
  for _,length in ipairs({200,80,300}) do

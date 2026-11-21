@@ -2560,6 +2560,8 @@ local function CreateModule()
 		Properties.EntryTemplate.BorderSizePixel = 0
 		Properties.EntryTemplate.BackgroundColor3 = Colors.Surface
 		Properties.EntryTemplate.ValueFrame.Line.BackgroundColor3 = Colors.Grid
+		Properties.EntryTemplate.ValueFrame.Line.Position = UDim2.fromOffset(0, 0)
+		Properties.EntryTemplate.ValueFrame.Line.ZIndex = 2
 		Properties.EntryTemplate.NameFrame.PropName.TextTransparency = 0
 		Properties.EntryTemplate.ValueFrame.ValueBox.TextTransparency = 0
 		Properties.EntryTemplate.NameFrame.PropName.Font = propertyFont
@@ -2569,7 +2571,8 @@ local function CreateModule()
 			Parent = Properties.EntryTemplate,
 			BackgroundColor3 = Colors.Grid,
 			BorderSizePixel = 0,
-			Position = UDim2.new(0, 0, 1, 0),
+			Position = UDim2.new(0, 0, 1, -1),
+			ZIndex = 3,
 			Size = UDim2.new(1, 0, 0, 1),
 		})
 		local add = Properties.EntryTemplate.NameFrame.ToggleAttributes
