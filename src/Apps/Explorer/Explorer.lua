@@ -2975,6 +2975,7 @@ local function CreateModule()
 			copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_AS_JSON)
 			context:Add({ Name = "Copy As", Submenu = copyItems })
 		end
+		context:QueueDivider()
 		context:AddRegistered("PASTE")
 		if hasNonService then
 			context:AddRegistered("DUPLICATE")
@@ -2986,14 +2987,15 @@ local function CreateModule()
 		if hasNonService then
 			context:AddRegistered("GROUP")
 			context:AddRegistered("GROUP_FOLDER")
-			context:AddRegistered("UNGROUP", not (presentClasses.Model or presentClasses.Folder))
+			if presentClasses.Model or presentClasses.Folder then
+				context:AddRegistered("UNGROUP")
+			end
 		end
 		local function action(key, disabled)
 			local item = table.clone(context.Registered[key])
 			item.Disabled = disabled
 			return item
 		end
-		context:QueueDivider()
 		context:Add({
 			Name = "Insert",
 			Submenu = {
@@ -3012,6 +3014,7 @@ local function CreateModule()
 			hierarchy[#hierarchy + 1] = action("CLEAR_SEARCH_AND_JUMP_TO")
 		end
 		context:Add({ Name = "Hierarchy", Submenu = hierarchy })
+		context:QueueDivider()
 		if presentClasses["BaseScript"] then
 			local readable, anyEnabled = false, false
 			for _, node in ipairs(sList) do

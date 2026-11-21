@@ -220,6 +220,13 @@ do
 		names.Copy and names.Cut and names["Paste Into"] and not names["Paste Into"].Disabled and not names["Hide Service in Explorer"] and not names["Show Services..."],
 		"ordinary selection gets editable actions"
 	)
+	local layout = {}
+	for _, item in ipairs(context.Items) do
+		table.insert(layout, if item.Divider then "|" else item.Name)
+	end
+	local groups = table.concat(layout, ",")
+	assert(groups:find("Paste Into,Duplicate,Delete,Rename,|,Group as Model,Group as Folder,Ungroup,Insert,Hierarchy,|", 1, true), groups)
+	assert(groups:find("|,Paste Into,", 1, true), groups)
 	assert(names.Insert.Submenu[2].Name == "Insert Object...")
 	assert(names.Hierarchy.Submenu[1].Name == "Select Parent(s)")
 	assert(names["Save / Export"].Submenu[1].Name == "Save to File...")
