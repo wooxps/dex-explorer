@@ -24,7 +24,7 @@ do
 	Explorer.ShowRightClick(Vector2.new(10, 10))
 	local foundShow, foundHide = false, false
 	for _, item in ipairs(Explorer.RightClickContext.Items) do
-		foundShow = foundShow or item.Name == "Show Services…"
+		foundShow = foundShow or item.Name == "Show Services..."
 		foundHide = foundHide or item.Name == "Hide Service in Explorer"
 	end
 	assert(foundShow and foundHide, "service context exposes Studio actions")

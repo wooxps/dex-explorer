@@ -2914,7 +2914,7 @@ local function CreateModule()
 		if not hasService and not hasNonService then
 			addStopViewing()
 			context:Add({
-				Name = "Show Services…",
+				Name = "Show Services...",
 				OnClick = function()
 					Apps.ServiceVisibilityDialog.Open()
 				end,
@@ -3035,7 +3035,7 @@ local function CreateModule()
 		if hasService then
 			context:QueueDivider()
 			context:Add({
-				Name = "Show Services…",
+				Name = "Show Services...",
 				OnClick = function()
 					Apps.ServiceVisibilityDialog.Open()
 				end,
@@ -3582,7 +3582,7 @@ local function CreateModule()
 		})
 
 		context:Register("JUMP_TO_PARENT", {
-			Name = "Select Parents",
+			Name = "Select Parent(s)",
 			IconMap = Explorer.MiscIcons,
 			Icon = "JumpToParent",
 			OnClick = function()
@@ -3847,7 +3847,7 @@ local function CreateModule()
 		})
 
 		context:Register("INSERT_OBJECT", {
-			Name = "Insert Object",
+			Name = "Insert Object...",
 			IconMap = Explorer.MiscIcons,
 			Icon = "InsertObject",
 			OnClick = function()
@@ -3876,7 +3876,7 @@ local function CreateModule()
 			end,
 		})
 		context:Register("SAVE_INST", {
-			Name = "Save to File",
+			Name = "Save to File...",
 			IconMap = Explorer.MiscIcons,
 			Icon = "Save",
 			OnClick = function()

@@ -202,27 +202,30 @@ do
 		"Group as Model",
 		"Group as Folder",
 		"Ungroup",
-		"Select Parents",
+		"Select Parent(s)",
 	}) do
 		assert(not names[name], "pure service selection omits non-service action " .. name)
 	end
 	assert(
-		names["Show Services…"] and names["Hide Service in Explorer"] and names["Select Children"],
+		names["Show Services..."] and names["Hide Service in Explorer"] and names["Select Children"],
 		"service actions remain available"
 	)
 	names = menu({})
 	assert(
-		names["Show Services…"] and not names["Paste Into"] and not names["Rename"] and not names["Save to File"],
+		names["Show Services..."] and not names["Paste Into"] and not names["Rename"] and not names["Save to File..."],
 		"blank menu omits actions requiring selection"
 	)
 	names = menu({ nodes[child] })
 	assert(
-		names.Copy and names.Cut and names["Paste Into"] and not names["Paste Into"].Disabled and not names["Hide Service in Explorer"] and not names["Show Services…"],
+		names.Copy and names.Cut and names["Paste Into"] and not names["Paste Into"].Disabled and not names["Hide Service in Explorer"] and not names["Show Services..."],
 		"ordinary selection gets editable actions"
 	)
+	assert(names.Insert.Submenu[2].Name == "Insert Object...")
+	assert(names.Hierarchy.Submenu[1].Name == "Select Parent(s)")
+	assert(names["Save / Export"].Submenu[1].Name == "Save to File...")
 	names = menu({ nodes[root], nodes[child], nodes[outside] })
 	assert(
-		names.Copy and names.Cut and names["Show Services…"] and names["Hide Service in Explorer"],
+		names.Copy and names.Cut and names["Show Services..."] and names["Hide Service in Explorer"],
 		"mixed selection follows any-service/any-nonservice action expectations"
 	)
 	local roots = Explorer.EditableRoots()
