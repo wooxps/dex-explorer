@@ -24,7 +24,11 @@ assert(next(config.Build({},{}))==nil,"unset options preserve upstream defaults"
 for _,raw in ipairs({{CompressionLevel="23"},{CompressionLevel="1.5"},{DecompileTimeout="-2"},{BytecodeTimeout="no"},{Object="123"},{IgnoreList="true"},{Callback="nil"},{Object="selection["}}) do assert(not pcall(config.Build,raw,{}),"bad option must fail before saving") end
 local downloads,compiles,calls=0,0,0 local received
 local originalHttp=game.HttpGet
-game.HttpGet=function(_,url) downloads+=1 assert(url:find("04546ff5c2a808c82540a2b23df9ad21d63b20c7",1,true)) return "owned fixture" end
+game.HttpGet=function(_,url)
+    downloads+=1
+    assert(url=="https://raw.githubusercontent.com/rbxlx/UniversalSynSaveInstance/main/saveinstance.luau")
+    return "owned fixture"
+end
 env.loadstring=function(source,name) compiles+=1 return function() return function(options) calls+=1 received=options return "ok" end end end
 local backend=modules.SaveBackend
 local options={Binary=false,Decompile=false}

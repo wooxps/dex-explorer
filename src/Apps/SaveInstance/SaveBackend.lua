@@ -12,10 +12,7 @@ end
 local function CreateModule()
 	local Backend = {}
 	local universal
-	Backend.Revision = "04546ff5c2a808c82540a2b23df9ad21d63b20c7"
-	Backend.SourceURL = "https://raw.githubusercontent.com/luau/UniversalSynSaveInstance/"
-		.. Backend.Revision
-		.. "/saveinstance.luau"
+	Backend.SourceURL = "https://raw.githubusercontent.com/rbxlx/UniversalSynSaveInstance/main/saveinstance.luau"
 	function Backend.Run(engine, object, path, options)
 		local args = table.clone(options or {})
 		if path and path ~= "" then
