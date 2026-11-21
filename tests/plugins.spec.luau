@@ -11,6 +11,12 @@ local function decode(_, source)
 end
 local http = { JSONEncode = encode, JSONDecode = decode }
 local ran, cleaned, clicked = 0, 0, 0
+local activeRows = 0
+Apps.Properties.RegisterPluginRow = function(owner, id, name, read)
+	assert(owner and id == "count" and name == "Count" and read({1,2}) == "2")
+	activeRows += 1
+	return function() activeRows -= 1 end, function() end
+end
 local fixture = { schema = 1, id = "example.test", name = "Test Plugin", version = "1.0", source = "fixture" }
 local packageText = encode(http, fixture)
 local listed = { "dex-explorer/plugins/installed.json", "dex-explorer/plugins/example.dexplugin" }
@@ -37,6 +43,9 @@ local env = {
 		assert(source == "fixture")
 		return function(plugin)
 			ran += 1
+			plugin:RegisterPropertyRow({ID="count", Name="Count"}, function(selection)
+				return tostring(#selection)
+			end)
 			plugin:RegisterButton("open", function()
 				clicked += 1
 				plugin:SetButtonActive("open", true)
@@ -195,7 +204,9 @@ local function verifyPlugins()
 	assert(not runtime.SetEnabled(fixture.id, false) and runtime.Get(fixture.id).Enabled and cleaned == 0)
 	failWrite = false
 	assert(runtime.Reload(fixture.id) and ran == 2 and cleaned == 1)
+	assert(activeRows == 1)
 	assert(runtime.SetEnabled(fixture.id, false) and cleaned == 2)
+	assert(activeRows == 0)
 	assert(runtime.IsInstalledPackage(assert(runtime.ReadImport("example.dexplugin"))))
 	assert(runtime.Install(linked, true) and runtime.Get(fixture.id).Link and not runtime.Get(fixture.id).Enabled)
 	assert(runtime.Remove(fixture.id))

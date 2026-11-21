@@ -588,6 +588,25 @@ local function CreateModule()
 			window:Resize(width or 520, height or 340)
 			return window, window.GuiElems.Content
 		end
+		function plugin:RegisterPropertyRow(definition, read)
+			assert(current(), "This plugin is no longer running.")
+			assert(type(definition) == "table" and validId(definition.ID), "A property row needs a lowercase ID.")
+			local name = label(definition.Name, 100)
+			assert(name and type(read) == "function", "A property row needs a name and a read callback.")
+			local remove, refresh = Apps.Properties.RegisterPluginRow(id, definition.ID, name, read)
+			self:Track(remove)
+			local function unregister()
+				if not current() then return end
+				local index = table.find(session.Cleanup, remove)
+				if index then
+					table.remove(session.Cleanup, index)
+					remove()
+				end
+			end
+			return unregister, function()
+				if current() and table.find(session.Cleanup, remove) then refresh() end
+			end
+		end
 		function plugin:RegisterButton(definition, callback)
 			assert(current(), "This plugin is no longer running.")
 			assert(type(callback) == "function", "A button callback is required.")

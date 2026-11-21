@@ -386,6 +386,54 @@ local function CreateModule()
 		end
 	end
 
+	local pluginRows = {}
+	local pluginRefreshPending = false
+	local function refreshPluginRows()
+		if not window or pluginRefreshPending then return end
+		pluginRefreshPending = true
+		task.defer(function()
+			pluginRefreshPending = false
+			if Main.Alive then Properties.ShowExplorerProps() end
+		end)
+	end
+
+	function Properties.RegisterPluginRow(owner, id, name, read)
+		for _, row in ipairs(pluginRows) do
+			assert(row.Owner ~= owner or row.ID ~= id, "Duplicate property row ID.")
+		end
+		local row = { Owner = owner, ID = id, Name = name, Read = read }
+		table.insert(pluginRows, row)
+		refreshPluginRows()
+		return function()
+			local index = table.find(pluginRows, row)
+			if index then
+				table.remove(pluginRows, index)
+				row.Read = nil
+				refreshPluginRows()
+			end
+		end, refreshPluginRows
+	end
+
+	local function appendPluginRows(selection)
+		if #pluginRows == 0 or #selection == 0 then return end
+		local objects = table.create(#selection)
+		for i, node in ipairs(selection) do objects[i] = node.Obj end
+		table.freeze(objects)
+		for _, row in ipairs(table.clone(pluginRows)) do
+			if not row.Read then continue end
+			local thread = coroutine.create(row.Read)
+			local ok, value = coroutine.resume(thread, objects)
+			if coroutine.status(thread) ~= "dead" then
+				coroutine.close(thread)
+			elseif ok and row.Read and type(value) == "string" then
+				props[#props + 1] = {
+					Class = "Plugin/" .. row.Owner, Name = row.Name, Category = "Plugins",
+					SpecialRow = "Plugin", PluginText = row.Name .. ": " .. value, Tags = {},
+				}
+			end
+		end
+	end
+
 	Properties.ShowExplorerProps = function()
 		if Properties.CancelAttributeRename then
 			Properties.CancelAttributeRename()
@@ -616,6 +664,7 @@ local function CreateModule()
 				end
 			end
 		end
+		appendPluginRows(sList)
 		Properties.Update()
 		Properties.Refresh()
 	end
@@ -788,7 +837,7 @@ local function CreateModule()
 					visible = true
 				end
 
-				if visible and propName == "UniqueId" and not prop.IsAttribute then
+				if visible and propName == "UniqueId" and not prop.IsAttribute and not prop.SpecialRow then
 					local objects = Properties.ClassLists[prop.Class] or {}
 					if #objects == 0 then
 						visible = false
@@ -835,7 +884,7 @@ local function CreateModule()
 					count = count + 1
 
 					local fullName = prop.Class .. "." .. prop.Name .. (prop.SubName or "")
-					if expanded[fullName] then
+					if not prop.SpecialRow and expanded[fullName] then
 						local nextDepth = depth + 1
 						local expandedProps = Properties.GetExpandedProps(prop)
 						if #expandedProps > 0 then
@@ -1462,6 +1511,7 @@ local function CreateModule()
 						prop.SpecialRow == "EmptyAttributes"
 						or prop.SpecialRow == "EmptyTags"
 						or prop.SpecialRow == "Tag"
+						or prop.SpecialRow == "Plugin"
 					then
 						nameFrame.Visible = false
 						valueFrame.Visible = false
@@ -1469,12 +1519,12 @@ local function CreateModule()
 						editAttributeButton.Visible = false
 						toggleAttributes.Visible = false
 						guiElems.EmptyAttributes.Visible = true
-						guiElems.EmptyAttributes.Text = prop.TagName
+						guiElems.EmptyAttributes.Text = prop.PluginText or prop.TagName
 							or (
 								prop.SpecialRow == "EmptyTags" and "No Tags have been added yet"
 								or "No Attributes have been added yet"
 							)
-						guiElems.EmptyAttributes.TextColor3 = prop.TagName and Colors.Text or Colors.ReadOnly
+						guiElems.EmptyAttributes.TextColor3 = (prop.PluginText or prop.TagName) and Colors.Text or Colors.ReadOnly
 						guiElems.TagRemove.Visible = prop.TagName ~= nil
 						entry.BackgroundColor3 = Colors.Surface
 					end
@@ -2764,6 +2814,7 @@ local function CreateModule()
 		expanded["Sound.SoundId"] = true
 		expanded["CAT_Attributes"] = true
 		expanded["CAT_Tags"] = true
+		expanded["CAT_Plugins"] = true
 
 		window = Lib.Window.new()
 		window:SetTitleBarHeight(View.HeaderHeight)

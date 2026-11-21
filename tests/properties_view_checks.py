@@ -81,6 +81,14 @@ Properties.UpdateView()
 Properties.Refresh(true)
 assert(#propEntries==#viewList and Properties.Index==0,"rows and scroll clamping use the applied panel size while AbsoluteSize lags")
 instMT.__index=priorIndex
+local original=viewList[2]
+viewList[2]={SpecialRow="Plugin",Class="Plugin/a",Name="Count",PluginText="Count: 3",Tags={}}
+Properties.Refresh()
+local cells=propEntries[2].GuiElems
+assert(cells.EmptyAttributes.Visible and cells.EmptyAttributes.Text=="Count: 3" and not cells.TagRemove.Visible)
+viewList[2]=original
+Properties.Refresh()
+assert(not cells.EmptyAttributes.Visible and cells.NameFrame.Visible)
 table.clear(viewList) Properties.ViewLayout=View.Layout(viewList) Properties.Refresh()
 assert(#propEntries==0 and not inputBox.Visible,"cleared selection removes rows and the active editor")
 local funcs={}
@@ -188,6 +196,22 @@ for _, prop in props do
  if prop.TagName then seen[prop.TagName]=true end
 end
 assert(seen.Odd and seen.Even and not Properties.ClassLists.Missing)
+local remove = Properties.RegisterPluginRow("a", "count", "Count", function(selection)
+ assert(table.isfrozen(selection) and selection[1]==list[1].Obj)
+ return tostring(#selection)
+end)
+assert(not pcall(Properties.RegisterPluginRow, "a", "count", "Duplicate", function() end))
+Properties.RegisterPluginRow("b", "count", "Broken", function() error("plugin failed") end)
+Properties.RegisterPluginRow("c", "count", "Pending", coroutine.yield)
+Properties.ShowExplorerProps()
+assert(props[#props].PluginText=="Count: 8")
+table.remove(list)
+Properties.ShowExplorerProps()
+assert(props[#props].PluginText=="Count: 7")
+remove()
+remove()
+Properties.ShowExplorerProps()
+for _, prop in props do assert(not prop.PluginText) end
 end
 """
 with tempfile.TemporaryDirectory() as d:

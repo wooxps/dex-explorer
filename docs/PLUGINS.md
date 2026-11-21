@@ -116,6 +116,22 @@ A button definition accepts `ID`, `Name`, `Icon`, and `Tooltip`. Declare buttons
 
 `plugin.Main`, `plugin.Apps`, `plugin.Lib`, and `plugin.Settings` are Dex's internal objects. You can use them, but they may change between releases.
 
+## Properties panel rows
+
+Use `RegisterPropertyRow` to add a read-only text row under **Plugins** in the Properties panel.
+
+```lua
+local plugin = ...
+local remove, refresh = plugin:RegisterPropertyRow({
+    ID = "selection-count",
+    Name = "Selected objects",
+}, function(selection)
+    return tostring(#selection)
+end)
+```
+
+The callback receives a frozen array of selected instances in selection order. Return a string to display the row or `nil` to hide it. The callback must finish without yielding. Dex skips a row if its callback fails. Rows appear for selections of real instances and follow the panel's name filter. Call `refresh()` when your plugin's data changes or `remove()` to withdraw the row. Dex removes it automatically when the plugin stops. Row IDs are unique within each plugin.
+
 ## Menu actions and shortcuts
 
 Call `RegisterAction` from your plugin's entry script. Set `startup` to `true` if the action should be ready as soon as the plugin is enabled.
