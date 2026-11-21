@@ -202,7 +202,7 @@ do
 		"Group as Model",
 		"Group as Folder",
 		"Ungroup",
-		"Jump to Parent",
+		"Select Parents",
 	}) do
 		assert(not names[name], "pure service selection omits non-service action " .. name)
 	end
@@ -217,7 +217,7 @@ do
 	)
 	names = menu({ nodes[child] })
 	assert(
-		names.Copy and names.Cut and not names["Hide Service in Explorer"] and not names["Show Services…"],
+		names.Copy and names.Cut and names["Paste Into"] and not names["Paste Into"].Disabled and not names["Hide Service in Explorer"] and not names["Show Services…"],
 		"ordinary selection gets editable actions"
 	)
 	names = menu({ nodes[root], nodes[child], nodes[outside] })
@@ -265,7 +265,7 @@ do
 	Explorer.Selection:Set(nodes[outside])
 	outside.UniqueId = "00000000-0000-0000-0000-000000000000"
 	names = menu({ nodes[outside] })
-	assert(#names["Copy As"].Submenu == 2 and names["Copy as JSON"] and not names["Unique ID"])
+	assert(#names["Copy As"].Submenu == 2 and names["Copy as JSON"] and not names["Copy Unique ID"])
 	context.Registered.COPY_UNIQUE_ID.OnClick()
 	assert(copied == nil, "unavailable IDs are not copied by direct command")
 	outside.UniqueId = "12345678-abcd-4321-9876-123456789abc"
@@ -275,7 +275,7 @@ do
 	context:OpenSubmenu(names["Copy As"])
 	local childMenu = context.ChildMenu
 	assert(
-		childMenu.Shown and context.Shown and childMenu.Items[2].Name == "Unique ID",
+		childMenu.Shown and context.Shown and childMenu.Items[2].Name == "Copy Unique ID",
 		"Copy As opens nested readable actions"
 	)
 	childMenu.Items[2].OnClick()

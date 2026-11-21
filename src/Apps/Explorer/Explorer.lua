@@ -274,13 +274,16 @@ local function CreateModule()
 	local nilNode = { Obj = Instance.new("Folder") }
 	local idCounter = 0
 	local scrollV, scrollH, clipboard
-	local instanceCopyText
+	local instanceCopyText, copiedJson
 	local function clipboardJsonText()
 		if type(env.getclipboard) == "function" then
 			local ok, value = pcall(env.getclipboard)
-			if ok and type(value) == "string" and value:match("^%s*[%[{]") then return value end
+			if ok and type(value) == "string" then
+				value = value:gsub("^\239\187\191", "")
+				return if value:match("^%s*[%[{]") then value else nil
+			end
 		end
-		return nil
+		return copiedJson
 	end
 
 	local renameBox, renamingNode, searchFunc
@@ -2843,6 +2846,7 @@ local function CreateModule()
 	end
 
 	Explorer.ShowRightClick = function(MousePos, targetNode)
+		if targetNode and not targetNode.Del and not selection.Map[targetNode] then selection:Set(targetNode) end
 		local Mouse = MousePos or Main.Mouse
 		local context = Explorer.RightClickContext
 		local absoluteSize = context.Gui.AbsoluteSize
@@ -2865,10 +2869,12 @@ local function CreateModule()
 			and Explorer.IsViewing(selectedObject)
 		context.Registered.VIEW_PLAYER.Name = stopPlayer and "Stop Viewing Player" or "View Player"
 		context.Registered.VIEW_OBJECT.Name = stopObject and "Stop Viewing Object" or "View Object"
-		if Explorer.IsViewing() and not stopPlayer and not stopObject then
-			context.Registered.STOP_VIEWING.Name = viewing.IsPlayer and "Stop Viewing Player" or "Stop Viewing Object"
-			context:AddRegistered("STOP_VIEWING")
-			context:QueueDivider()
+		local function addStopViewing()
+			if Explorer.IsViewing() and not stopPlayer and not stopObject then
+				context.Registered.STOP_VIEWING.Name = viewing.IsPlayer and "Stop Viewing Player" or "Stop Viewing Object"
+				context:AddRegistered("STOP_VIEWING")
+				context:QueueDivider()
+			end
 		end
 		local hasService, hasNonService = false, false
 		for _, node in ipairs(selection.List) do
@@ -2880,6 +2886,7 @@ local function CreateModule()
 		end
 
 		if Explorer.HasInferredSelection() then
+			addStopViewing()
 			context:Add({
 				Name = "View inference evidence",
 				OnClick = function()
@@ -2904,16 +2911,17 @@ local function CreateModule()
 			context:Show(Mouse.X, Mouse.Y)
 			return
 		end
-		context:AddRegistered("UNDO", not Apps.History.CanUndo())
-		context:AddRegistered("REDO", not Apps.History.CanRedo())
-		context:QueueDivider()
 		if not hasService and not hasNonService then
+			addStopViewing()
 			context:Add({
 				Name = "Show Services…",
 				OnClick = function()
 					Apps.ServiceVisibilityDialog.Open()
 				end,
 			})
+			context:QueueDivider()
+			context:AddRegistered("UNDO", not Apps.History.CanUndo())
+			context:AddRegistered("REDO", not Apps.History.CanRedo())
 			Explorer.LastRightClickX, Explorer.LastRightClickY = Mouse.X, Mouse.Y
 			appendPluginActions()
 			context:Show(Mouse.X, Mouse.Y)
@@ -2922,7 +2930,6 @@ local function CreateModule()
 
 		local sList = table.clone(selection.List)
 		local sMap = selection.Map
-		local emptyClipboard = #clipboard == 0 and not clipboardJsonText()
 		local presentClasses = {}
 		local apiClasses = API.Classes
 
@@ -2947,6 +2954,15 @@ local function CreateModule()
 			end
 		end
 
+		if presentClasses.LuaSourceContainer then
+			local first = sList[1] and sList[1].Obj
+			local generated = first and Apps.ModuleReconstruction and Apps.ModuleReconstruction.GetSource(first)
+			context:AddRegistered(
+				"VIEW_SCRIPT",
+				not generated and (not presentClasses.isViableDecompileScript or env.decompile == nil)
+			)
+			context:QueueDivider()
+		end
 		if hasNonService then
 			context:AddRegistered("CUT")
 			context:AddRegistered("COPY")
@@ -2954,19 +2970,16 @@ local function CreateModule()
 		if env.setclipboard then
 			local copyItems = { table.clone(context.Registered.COPY_PATH) }
 			if #sList == 1 and Explorer.GetReadableUniqueId(sList[1].Obj) then
-				local unique = table.clone(context.Registered.COPY_UNIQUE_ID)
-				unique.Name = "Unique ID"
-				copyItems[#copyItems + 1] = unique
+				copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_UNIQUE_ID)
 			end
 			copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_AS_JSON)
 			context:Add({ Name = "Copy As", Submenu = copyItems })
 		end
-		context:AddRegistered("PASTE", emptyClipboard or #sList == 0)
+		context:AddRegistered("PASTE")
 		if hasNonService then
 			context:AddRegistered("DUPLICATE")
 			context:AddRegistered("DELETE")
 		end
-		context:AddRegistered("DELETE_CHILDREN", #sList ~= 1)
 		context:AddRegistered("RENAME", #sList ~= 1)
 
 		context:AddDivider()
@@ -2999,17 +3012,7 @@ local function CreateModule()
 			hierarchy[#hierarchy + 1] = action("CLEAR_SEARCH_AND_JUMP_TO")
 		end
 		context:Add({ Name = "Hierarchy", Submenu = hierarchy })
-		context:QueueDivider()
-		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST") } })
-		context:AddRegistered("FIND_REFERENCES", #sList ~= 1)
-		context:AddRegistered("VIEW_ACTIVITY", #sList ~= 1)
-		if env.setclipboard then
-			context:AddRegistered("COPY_API_PAGE")
-		end
-
-		context:QueueDivider()
-
-		if not Apps.ExplorerQuickActions and presentClasses["BaseScript"] then
+		if presentClasses["BaseScript"] then
 			local readable, anyEnabled = false, false
 			for _, node in ipairs(sList) do
 				if node.Obj:IsA("BaseScript") then
@@ -3027,6 +3030,31 @@ local function CreateModule()
 				context:AddRegistered("TOGGLE_SCRIPTS")
 			end
 		end
+		context:QueueDivider()
+		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST") } })
+		if hasService then
+			context:QueueDivider()
+			context:Add({
+				Name = "Show Services…",
+				OnClick = function()
+					Apps.ServiceVisibilityDialog.Open()
+				end,
+			})
+			context:Add({ Name = "Hide Service in Explorer", OnClick = Explorer.HideSelectedServices })
+		end
+		context:QueueDivider()
+		context:AddRegistered("UNDO", not Apps.History.CanUndo())
+		context:AddRegistered("REDO", not Apps.History.CanRedo())
+		context:AddRegistered("DELETE_CHILDREN", #sList ~= 1)
+		context:AddRegistered("FIND_REFERENCES", #sList ~= 1)
+		context:AddRegistered("VIEW_ACTIVITY", #sList ~= 1)
+		if env.setclipboard then
+			context:AddRegistered("COPY_API_PAGE")
+		end
+
+		context:QueueDivider()
+
+		addStopViewing()
 		if presentClasses["BasePart"] or presentClasses["Model"] then
 			context:AddRegistered("TELEPORT_TO")
 			context:AddRegistered("VIEW_OBJECT")
@@ -3084,10 +3112,6 @@ local function CreateModule()
 			local first = sList[1] and sList[1].Obj
 			local generated = first and Apps.ModuleReconstruction and Apps.ModuleReconstruction.GetSource(first)
 			context:AddRegistered(
-				"VIEW_SCRIPT",
-				not generated and (not presentClasses.isViableDecompileScript or env.decompile == nil)
-			)
-			context:AddRegistered(
 				"DUMP_FUNCTIONS",
 				not presentClasses.isViableDecompileScript or env.getupvalues == nil or env.getconstants == nil
 			)
@@ -3106,16 +3130,6 @@ local function CreateModule()
 			context:AddRegistered("HIDE_NIL")
 		end
 
-		if hasService then
-			context:QueueDivider()
-			context:Add({
-				Name = "Show Services…",
-				OnClick = function()
-					Apps.ServiceVisibilityDialog.Open()
-				end,
-			})
-			context:Add({ Name = "Hide Service in Explorer", OnClick = Explorer.HideSelectedServices })
-		end
 		Explorer.LastRightClickX, Explorer.LastRightClickY = Mouse.X, Mouse.Y
 		appendPluginActions()
 		context:Show(Mouse.X, Mouse.Y)
@@ -3240,6 +3254,69 @@ local function CreateModule()
 			end,
 		})
 
+		local function pasteJson(text, sList)
+			local payload = service.HttpService:JSONDecode(text)
+			local isArray = text:match("^%s*%[") ~= nil
+			local rows = if isArray then payload else { payload }
+			assert(type(payload) == "table", "Expected an object or array")
+			for _, row in ipairs(rows) do
+				assert(type(row) == "table", "Expected an object in the pasted array")
+				local class = row.ClassName
+				assert((not isArray and class == nil) or Apps.ReflectionService.GetClass(class), "Unknown or missing ClassName")
+			end
+			local pasted = {}
+			for _, node in ipairs(sList) do
+				for _, row in ipairs(rows) do
+					local target = node.Obj
+					local create = #rows > 1 or (row.ClassName ~= nil and row.ClassName ~= target.ClassName)
+					if create then
+						assert(Apps.ReflectionService.CanCreate(row.ClassName), "Cannot create " .. row.ClassName)
+						target = Instance.new(row.ClassName)
+					end
+					Apps.ReflectionService.ApplyClipboard(target, row)
+					if create then Apps.History.Set(target, "Parent", node.Obj) end
+					if nodes[target] then table.insert(pasted, nodes[target]) end
+				end
+			end
+			if #pasted > 0 then
+				selection:SetTable(pasted)
+				Explorer.ViewNode(pasted[1])
+			end
+		end
+
+		local pasteWindow, pasteBox, pasteError, submitPaste
+		local function promptPaste(targets)
+			if not pasteWindow then
+				pasteWindow = Lib.Window.new()
+				pasteWindow:SetTitle("Paste Into")
+				pasteWindow:SetSize(320, 125)
+				pasteBox = Lib.ViewportTextBox.new()
+				pasteBox.Position = UDim2.fromOffset(8, 8)
+				pasteBox.Size = UDim2.new(1, -16, 0, 40)
+				pasteBox.TextBox.PlaceholderText = "Paste JSON here"
+				pasteBox.TextBox.MultiLine = true
+				pasteWindow:Add(pasteBox)
+				pasteError = Lib.Label.new()
+				pasteError.Position = UDim2.fromOffset(8, 51)
+				pasteError.Size = UDim2.new(1, -16, 0, 20)
+				pasteWindow:Add(pasteError)
+				local button = Lib.Button.new()
+				button.Text = "Paste Into"
+				button.Position = UDim2.new(1, -100, 1, -28)
+				button.Size = UDim2.fromOffset(92, 22)
+				button.OnClick:Connect(function() submitPaste() end)
+				pasteWindow:Add(button)
+			end
+			submitPaste = function()
+				local ok, err = pcall(Apps.History.Run, "Paste Into", pasteJson, pasteBox.TextBox.Text, targets)
+				if ok then pasteWindow:Close() else pasteError.Text = tostring(err) end
+			end
+			pasteBox.TextBox.Text = ""
+			pasteError.Text = ""
+			pasteWindow:Show()
+			pasteBox.TextBox:CaptureFocus()
+		end
+
 		context:Register("PASTE", {
 			Name = "Paste Into",
 			IconMap = Explorer.MiscIcons,
@@ -3249,37 +3326,15 @@ local function CreateModule()
 			OnClick = function()
 				local sList = table.clone(selection.List)
 				local text = clipboardJsonText()
+				if #sList == 0 then return end
 				if text and text ~= instanceCopyText then
-					local payload = service.HttpService:JSONDecode(text)
-					local isArray = text:match("^%s*%[") ~= nil
-					local rows = if isArray then payload else { payload }
-					assert(type(payload) == "table", "Expected an object or array")
-					for _, row in ipairs(rows) do
-						assert(type(row) == "table", "Expected an object in the pasted array")
-						local class = row.ClassName
-						assert((not isArray and class == nil) or Apps.ReflectionService.GetClass(class), "Unknown or missing ClassName")
-					end
-					local pasted = {}
-					for _, node in ipairs(sList) do
-						for _, row in ipairs(rows) do
-							local target = node.Obj
-							local create = #rows > 1 or (row.ClassName ~= nil and row.ClassName ~= target.ClassName)
-							if create then
-								assert(Apps.ReflectionService.CanCreate(row.ClassName), "Cannot create " .. row.ClassName)
-								target = Instance.new(row.ClassName)
-							end
-							Apps.ReflectionService.ApplyClipboard(target, row)
-							if create then Apps.History.Set(target, "Parent", node.Obj) end
-							if nodes[target] then table.insert(pasted, nodes[target]) end
-						end
-					end
-					if #pasted > 0 then
-						selection:SetTable(pasted)
-						Explorer.ViewNode(pasted[1])
-					end
+					pasteJson(text, sList)
 					return
 				end
-				if #clipboard == 0 then return end
+				if #clipboard == 0 then
+					promptPaste(sList)
+					return
+				end
 				local newSelection = {}
 				local count = 1
 				for i = 1, #sList do
@@ -3527,7 +3582,7 @@ local function CreateModule()
 		})
 
 		context:Register("JUMP_TO_PARENT", {
-			Name = "Jump to Parent",
+			Name = "Select Parents",
 			IconMap = Explorer.MiscIcons,
 			Icon = "JumpToParent",
 			OnClick = function()
@@ -3726,6 +3781,7 @@ local function CreateModule()
 				end
 				local json = service.HttpService:JSONEncode(if #rows == 1 then rows[1] else rows)
 				env.setclipboard(json)
+				copiedJson = json
 				instanceCopyText = nil
 			end,
 		})
@@ -3976,7 +4032,7 @@ local function CreateModule()
 		})
 
 		context:Register("VIEW_SCRIPT", {
-			Name = "View Script",
+			Name = "Open",
 			IconMap = Explorer.MiscIcons,
 			Icon = "ViewScript",
 			DisabledIcon = "Empty",
@@ -4012,7 +4068,7 @@ local function CreateModule()
 		end
 
 		context:Register("VIEW_SCRIPT", {
-			Name = "View Script",
+			Name = "Open",
 			IconMap = Explorer.MiscIcons,
 			Icon = "ViewScript",
 			DisabledIcon = "Empty",
@@ -5963,7 +6019,7 @@ return search]==]
 				command = shift and "DELETE_CHILDREN" or "DELETE"
 			end
 			if command and not objectPicker then
-				if #selection.List > 0 and (command ~= "PASTE" or #clipboard > 0 or type(env.getclipboard) == "function") then
+				if #selection.List > 0 then
 					local action = Explorer.RightClickContext.Registered[command]
 					local ok, err = pcall(action.OnClick)
 					if not ok then

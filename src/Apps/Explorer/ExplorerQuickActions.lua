@@ -536,7 +536,13 @@ local function CreateModule()
 			end
 		end
 		addToggle(supportedProperty, "TOGGLE_VISIBILITY", "Show", "Hide")
-		addToggle(enabledProperty, "TOGGLE_ENABLED", "Enable", "Disable")
+		local scriptOnly = #selection.List > 0
+		for _, node in ipairs(selection.List) do
+			if not node.Obj:IsA("BaseScript") then scriptOnly = false break end
+		end
+		if not scriptOnly or not (context.Added and context.Added.TOGGLE_SCRIPTS) then
+			addToggle(enabledProperty, "TOGGLE_ENABLED", "Enable", "Disable")
+		end
 		if has("ClickDetector") then
 			context:AddRegistered("RIGHT_CLICKDETECTOR", type(fireclickdetector) ~= "function")
 		end
