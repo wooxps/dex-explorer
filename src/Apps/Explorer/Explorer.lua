@@ -2944,7 +2944,6 @@ local function CreateModule()
 		end
 		if env.setclipboard then
 			local copyItems = { table.clone(context.Registered.COPY_PATH) }
-			copyItems[1].Name = "Path"
 			if #sList == 1 and Explorer.GetReadableUniqueId(sList[1].Obj) then
 				local unique = table.clone(context.Registered.COPY_UNIQUE_ID)
 				unique.Name = "Unique ID"
