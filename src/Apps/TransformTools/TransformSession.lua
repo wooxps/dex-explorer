@@ -196,17 +196,13 @@ local function CreateModule()
 			end
 		end
 		local ok, connection = pcall(function()
-			return game.ItemChanged:Connect(function(part, property)
-				local block = membership[part]
-				if not block then return end
+			local properties = { Anchored = true, CFrame = true, Size = true, PivotOffset = true, WorldPivot = true,
+				PrimaryPart = true, Position = true, Orientation = true, Rotation = true }
+			return Apps.PropertyChanges.For(properties, membership):Connect(function(part, property)
 				if property == "Anchored" then
 					trackMotion(part, not part.Anchored)
-				elseif property ~= "CFrame" and property ~= "Size" and property ~= "PivotOffset"
-					and property ~= "WorldPivot" and property ~= "PrimaryPart"
-					and property ~= "Position" and property ~= "Orientation" and property ~= "Rotation" then
-					return
 				end
-				dirty(block)
+				dirty(membership[part])
 			end)
 		end)
 		if not ok then return nil end

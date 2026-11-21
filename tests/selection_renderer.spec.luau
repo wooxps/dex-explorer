@@ -230,6 +230,45 @@ a.Transparency = 1
 grandchild.Parent = workspace
 drain()
 assert(#holder:GetChildren() == 0, "late game events cannot resurrect destroyed selection visuals")
+do
+	local previous = game.ItemChanged
+	local event = signal()
+	game._events.ItemChanged = event
+	local members = { [a] = true }
+	local selected = Apps.PropertyChanges.For({ Size = true }, members)
+	local all, hits, lateHits = 0, 0, 0
+	local replace, follower = false, nil
+	local first = Apps.PropertyChanges.For({ Size = true, Name = true }):Connect(function()
+		all += 1
+		if replace then
+			replace = false
+			follower:Disconnect()
+			follower = selected:Connect(function() lateHits += 1 end)
+		end
+	end)
+	follower = selected:Connect(function() hits += 1 end)
+	assert(event.Active == 1, "overlapping subscribers must share one engine connection")
+	event:Fire(a, "Size")
+	event:Fire(b, "Size")
+	event:Fire(a, "CFrame")
+	event:Fire(a, "Name")
+	assert(all == 3 and hits == 1)
+	members[a], members[b] = nil, true
+	event:Fire(a, "Size")
+	event:Fire(b, "Size")
+	assert(all == 5 and hits == 2, "membership changes apply to the next event")
+	replace = true
+	event:Fire(b, "Size")
+	assert(hits == 2 and lateHits == 0, "a replacement subscriber starts on the next event")
+	event:Fire(b, "Size")
+	assert(all == 7 and lateHits == 1)
+	first:Disconnect()
+	first:Disconnect()
+	assert(event.Active == 1)
+	follower:Disconnect()
+	assert(event.Active == 0)
+	game._events.ItemChanged = previous
+end
 print(
 	"PASS: selection renderer retention, live opacity and hierarchy, direct/folder selection, budgets, GUI cleanup and listener ownership"
 )

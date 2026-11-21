@@ -164,7 +164,13 @@ local function CreateModule()
 	local searchExpansionDirty = false
 	local scheduleSearchRefresh, startSearchWidths, scheduleIndexMaintenance
 	local searchRefreshQueued = false
-	local characterSearch = {}
+	local characterSearch = { WidthRevision = 0 }
+	local function setNameWidth(node, width)
+		if node.NameWidth ~= width then
+			node.NameWidth = width
+			characterSearch.WidthRevision += 1
+		end
+	end
 	local function canRefreshDisplayedSearch()
 		return not Explorer.SearchInputPending and not Explorer.SearchBusy
 	end
@@ -321,7 +327,7 @@ local function CreateModule()
 				local node = nodes[obj]
 				if node then
 					changeSearchTree()
-					node.NameWidth = nil
+					setNameWidth(node, nil)
 					markSearchDirty(node, false)
 					if node.Parent then
 						node.Parent.Sorted = false
@@ -1270,7 +1276,7 @@ local function CreateModule()
 						).X
 						rememberWidth(name, width)
 					end
-					node.NameWidth = width
+					setNameWidth(node, width)
 				end,
 			})
 		then
@@ -1407,7 +1413,7 @@ local function CreateModule()
 							nameWidth = getTextSize(textServ, objName, 14, font, size).X
 							rememberWidth(objName, nameWidth)
 						end
-						n.NameWidth = nameWidth
+						setNameWidth(n, nameWidth)
 					end
 					if nameWidth > maxNameWidth then
 						maxNameWidth = nameWidth
@@ -2637,8 +2643,8 @@ local function CreateModule()
 		for property in pairs(Apps.IconAppearance.ChangedProperties) do
 			watchedProperties[property] = true
 		end
-		itemChangedCon = Main.TrackSignal(game.ItemChanged, function(obj, prop)
-			if not watchedProperties[prop] or Main.SelectionGeometryObjects and Main.SelectionGeometryObjects[obj] then
+		itemChangedCon = Main.TrackSignal(Apps.PropertyChanges.For(watchedProperties), function(obj, prop)
+			if Main.SelectionGeometryObjects and Main.SelectionGeometryObjects[obj] then
 				return
 			end
 			if Apps.RowStatus.ChangedProperties[prop] then
@@ -2662,7 +2668,7 @@ local function CreateModule()
 				Explorer.PerformRefresh()
 			elseif prop == "Name" and nodes[obj] then
 				changeSearchTree()
-				nodes[obj].NameWidth = nil
+				setNameWidth(nodes[obj], nil)
 				markSearchDirty(nodes[obj], false)
 				if nodes[obj].Parent then
 					nodes[obj].Parent.Sorted = false
@@ -4838,7 +4844,7 @@ return search]==]
 							end
 						end
 						if reusable and node.SearchRawName == entry.Name then
-							node.NameWidth = width
+							setNameWidth(node, width)
 						end
 					end
 					checkpoint()
@@ -4916,6 +4922,7 @@ return search]==]
 		Children = coldChildren,
 		VisibleOnly = true,
 		Object = Apps.SearchQuery.Object,
+		WidthRevision = function() return characterSearch.WidthRevision end,
 		Visible = function(node)
 			return node == nilNode or Apps.ServiceVisibility.IsVisible(node.Obj)
 		end,
@@ -5248,8 +5255,10 @@ return search]==]
 			local context = characterSearch.Context
 			context.Estimate = Explorer.InitialObjectCount
 			local changed = {}
-			local className = Apps.SearchQuery.ClassFilter(predicate)
-			local matchNode = Apps.SearchQuery.ClassNodeMatcher(predicate)
+			local requiredClass = Apps.SearchQuery.RequiredClassTerm(predicate)
+			local classTerm = requiredClass or predicate
+			local className = Apps.SearchQuery.ClassFilter(classTerm)
+			local matchNode = Apps.SearchQuery.ClassNodeMatcher(classTerm)
 			for _ = 1, 2 do
 				local version = searchTreeVersion
 				local sorter = Explorer.NodeSorter
@@ -5277,7 +5286,8 @@ return search]==]
 					checkpoint,
 					roots,
 					matchNode,
-					className
+					className,
+					requiredClass ~= nil
 				)
 				if not current() then
 					if generation == searchGeneration then
@@ -5401,15 +5411,9 @@ return search]==]
 						deadline = os.clock() + budget
 					end
 				end
-				local ok, view = pcall(Apps.SearchResults.CreateCold, roots, terms, {
-					Name = coldName,
-					Children = coldChildren,
-					VisibleOnly = true,
-					Estimate = Explorer.InitialObjectCount,
-					Visible = function(node)
-						return node == nilNode or Apps.ServiceVisibility.IsVisible(node.Obj)
-					end,
-				}, checkpoint, layout)
+				local context = characterSearch.Context
+				context.Estimate = Explorer.InitialObjectCount
+				local ok, view = pcall(Apps.SearchResults.CreateCold, roots, terms, context, checkpoint, layout)
 				if characterSearch.RemovedNodes == removed then
 					characterSearch.RemovedNodes = nil
 				end

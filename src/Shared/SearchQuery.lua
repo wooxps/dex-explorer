@@ -38,6 +38,7 @@ local function Main()
 	end
 	local literalTerms = setmetatable({}, { __mode = "k" })
 	local classTerms = setmetatable({}, { __mode = "k" })
+	local requiredClassTerms = setmetatable({}, { __mode = "k" })
 	local nameIndex = Apps and Apps.SearchNameIndex and Apps.SearchNameIndex.Create()
 	Search.NameIndex = nameIndex
 	Search.LiteralTerms = function(predicate)
@@ -46,6 +47,9 @@ local function Main()
 	end
 	Search.ClassFilter = function(predicate)
 		return classTerms[predicate]
+	end
+	Search.RequiredClassTerm = function(predicate)
+		return requiredClassTerms[predicate]
 	end
 	Search.ClassNodeMatcher = function(predicate)
 		local target = classTerms[predicate]
@@ -389,6 +393,7 @@ local function Main()
 				return token
 			end
 			local parseOr, parseAnd, parseAtom
+			local nameLengths, conjunctions = {}, {}
 			parseAtom = function()
 				if peek("(") then
 					pos += 1
@@ -515,10 +520,13 @@ local function Main()
 						end
 						return nil
 					end
-					return function(obj)
+					local function matchesProperty(obj)
 						local success, actual, valueType = pcall(property, obj)
 						if not success or actual == nil then
 							return false
+						end
+						if op == ":" and type(actual) == "string" then
+							return string.find(string.lower(actual), lowerValue, 1, true) ~= nil
 						end
 						local fields = unitComponents[valueType]
 						if fields then
@@ -560,6 +568,8 @@ local function Main()
 						end
 						return equal
 					end
+					if key == "name" and op == ":" then nameLengths[matchesProperty] = #lowerValue end
+					return matchesProperty
 				end
 				if not first.quoted and first.value:find(".", 1, true) then
 					local path = string.split(first.value:lower(), ".")
@@ -595,9 +605,11 @@ local function Main()
 					end
 				end
 				local lowerValue = first.value:lower()
-				return function(obj)
+				local function byName(obj)
 					return contains(obj.Name, lowerValue)
 				end
+				nameLengths[byName] = #lowerValue
+				return byName
 			end
 			parseAnd = function()
 				local terms = { parseAtom() }
@@ -610,7 +622,7 @@ local function Main()
 				if #terms == 1 then
 					return terms[1]
 				end
-				return function(obj)
+				local function conjunction(obj)
 					for _, term in ipairs(terms) do
 						if not term(obj) then
 							return false
@@ -618,6 +630,15 @@ local function Main()
 					end
 					return true
 				end
+				for _, term in ipairs(terms) do
+					local required = classTerms[term] and term or requiredClassTerms[term]
+					if required then
+						requiredClassTerms[conjunction] = required
+						break
+					end
+				end
+				conjunctions[conjunction] = terms
+				return conjunction
 			end
 			parseOr = function()
 				local terms = { parseAnd() }
@@ -666,6 +687,17 @@ local function Main()
 			end
 			if tokens[pos] then
 				error("Unexpected " .. tokens[pos].value, 0)
+			end
+			-- A mandatory name can reject a row before expensive class or property reads.
+			-- Leave evaluation inside OR branches in its original order.
+			local terms = conjunctions[predicate]
+			if terms and not indexedLiteral then
+				local best, length = 1, 0
+				for i, term in ipairs(terms) do
+					local size = nameLengths[term] or 0
+					if size > length then best, length = i, size end
+				end
+				if best > 1 then table.insert(terms, 1, table.remove(terms, best)) end
 			end
 			return predicate
 		end)

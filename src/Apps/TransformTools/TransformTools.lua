@@ -547,12 +547,12 @@ local function CreateModule()
 		if bulk then
 			local members = {}
 			local ok, connection = pcall(function()
-				return game.ItemChanged:Connect(function(part, key)
-					if not members[part] then return end
+				local properties = if watchBounds then { Locked = true, CFrame = true, Size = true, PivotOffset = true,
+					Orientation = true, Position = true, Rotation = true } else { Locked = true }
+				return Apps.PropertyChanges.For(properties, members):Connect(function(_, key)
 					if key == "Locked" then
 						selectionChanged()
-					elseif watchBounds and (key == "CFrame" or key == "Size" or key == "PivotOffset"
-						or key == "Orientation" or key == "Position" or key == "Rotation") then
+					else
 						dirty()
 					end
 				end)

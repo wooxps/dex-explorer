@@ -1,6 +1,9 @@
 --!strict
 
 -- Deterministic hierarchy/property signal double, not a Roblox renderer.
+task.spawn = function(callback, ...)
+	return coroutine.wrap(callback)(...)
+end
 local allSignals = {}
 signal = function()
 	local s = { Handlers = {}, Active = 0 }

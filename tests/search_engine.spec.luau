@@ -381,6 +381,10 @@ do
 	local first = Apps.SearchResults.CreateCold(roots, { "absent" }, context, check)
 	local layout = first.ColdLayout
 	local broad = Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout)
+	for i, node in ipairs(layout.Nodes) do
+		assert(layout.Positions[node] == i, "a broad name search must fill every missing position")
+	end
+	assert(not broad:Contains(nested[129]) and not broad:NameOf(nested[129]) and not broad:DepthOf(nested[129]))
 	local broadCount = #broad.MatchList
 	broad.Expanded[nested] = false
 	broad:Remove(nested[5])
@@ -389,6 +393,22 @@ do
 	local revisit = Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout)
 	assert(#revisit.MatchList == broadCount and revisit:IndexOf(nested[5]) and revisit.Width == 1901)
 	assert(#broad.MatchList == broadCount - 1 and not broad:IndexOf(nested[5]))
+	local version, passes = 1, 0
+	context.WidthRevision = function() return version end
+	local entry = layout.LiteralResults[#layout.LiteralResults]
+	local each = entry.Context.Each
+	entry.Context.Each = function(...)
+		passes += 1
+		return each(...)
+	end
+	assert(Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout).Width == 1901)
+	assert(Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout).Width == 1901)
+	assert(passes == 1, "reopening the same name search should reuse its width")
+	nested[17].NameWidth = 70
+	version += 1
+	local narrower = Apps.SearchResults.CreateCold(roots, { "part" }, context, check, layout)
+	assert(passes == 2 and narrower.Width < 1901 and #narrower.MatchList == broadCount)
+	entry.Context.Each = nil
 	local absent = Apps.SearchResults.CreateCold(roots, { "absent", "needle" }, context, check, layout)
 	assert(#absent.Rows == 0 and absent.Depth == 1 and absent.Width == 0)
 	for _, terms in {{ "日本", "needle" }, { "tail\0head" }, { "keep\0byte" }, { "\0head" }, { "\0" }, { "needle" }, { "part" }} do
@@ -406,6 +426,30 @@ do
 	filtered.Expanded[nested] = false
 	filtered:Reflow(check)
 	assert(#filtered.Rows == 2 and #filtered.MatchList == 2)
+	local regular, inferred = nested[130], nested[140]
+	regular.Obj.ClassName, regular.Obj.Enabled = "Part", true
+	inferred.Inferred = true
+	local function isPart(node) return node.Obj.ClassName == "Part" end
+	local calls = 0
+	local function enabledPart(obj)
+		calls += 1
+		return obj.ClassName == "Part" and obj.Enabled
+	end
+	local only = Apps.SearchResults.CreatePredicate(layout, enabledPart, context, check, roots, isPart, "Part", true)
+	assert(#only.MatchList == 1 and only.MatchList[1] == regular and calls == 2)
+	regular.Obj.Enabled = false
+	inferred.Obj.ClassName, inferred.Obj.Enabled = "Part", true
+	calls = 0
+	local changed = Apps.SearchResults.CreatePredicate(layout, enabledPart, context, check, roots, isPart, "Part", true)
+	assert(#changed.MatchList == 1 and changed.MatchList[1] == inferred and calls == 2)
+	local function isFolder(node) return node.Obj.ClassName == "Folder" end
+	local function folders(obj) return obj.ClassName == "Folder" end
+	local dense = Apps.SearchResults.CreatePredicate(layout, folders, context, check, roots, isFolder, "Folder")
+	assert(#dense.MatchList == #layout.Nodes - 2 and not layout.FilterRows)
+	local denseLive = Apps.SearchResults.CreatePredicate(layout, function(obj)
+		return folders(obj) and obj.Name == "Upper_NEEDLE_日本"
+	end, context, check, roots, isFolder, "Folder", true)
+	assert(#denseLive.MatchList == 1 and denseLive.MatchList[1] == nested[129])
 	Apps.SearchResults.PrepareCharacters(layout, check)
 	local rare = Apps.SearchResults.CreateCold(roots, { "upper_", "日本" }, context, check, layout)
 	assert(#rare.Rows == 3 and rare.MatchList[1] == nested[129] and #rare.MatchList == 1)

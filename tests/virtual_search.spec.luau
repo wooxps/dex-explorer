@@ -394,6 +394,27 @@ do
 	local classView = Explorer.SearchView
 	assert(classView.ColdLayout.ClassResults.BasePart and classView.ColdLayout == initial.ColdLayout)
 	assert(Explorer.Matches[nodes[first]] and Explorer.Matches[nodes[second]] and not Explorer.Matches[nodes[unrelated]])
+	local function requiredClass(query)
+		local term = Apps.SearchQuery.RequiredClassTerm(assert(Apps.SearchQuery.Compile(query)))
+		return term and Apps.SearchQuery.ClassFilter(term)
+	end
+	assert(requiredClass("(is:BasePart AND Anchored=true) name:Second") == "BasePart")
+	assert(not requiredClass("(is:BasePart OR is:Folder) name:Other"))
+	assert(not requiredClass("(is:BasePart AND name:First) OR is:Folder"))
+	assert(Explorer.DoSearch("is:BasePart AND (Anchored=true OR name:First)"))
+	assert(Explorer.Matches[nodes[first]] and Explorer.Matches[nodes[second]] and not Explorer.Matches[nodes[unrelated]])
+	assert(Explorer.DoSearch("name:Other AND (is:BasePart OR is:Folder)") and Explorer.Matches[nodes[unrelated]])
+	local classReads = 0
+	local probe = { Name = "Other", IsA = function()
+		classReads += 1
+		return true
+	end }
+	local namedPart = assert(Apps.SearchQuery.Compile("is:BasePart AND name:First"))
+	assert(not namedPart(probe) and classReads == 0)
+	probe.Name = "FIRST"
+	assert(namedPart(probe) and classReads == 1, "mandatory names read the current value")
+	local unreadable = setmetatable({ IsA = probe.IsA }, { __index = function() error("unreadable name") end })
+	assert(assert(Apps.SearchQuery.Compile("name:First OR is:BasePart"))(unreadable))
 	assert(Explorer.DoSearch("is:BasePart OR is:Folder") and Explorer.Matches[nodes[unrelated]])
 	host.Parent = nil
 	Explorer.SyncHistoryObject(host)

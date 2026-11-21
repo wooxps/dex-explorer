@@ -1,11 +1,11 @@
 --!strict
 
-local Main, service
+local Main, Apps, service
 
 ------------------------------ Initialization ------------------------------
 
 local function InitDeps(d)
-	Main, service = d.Main, d.service
+	Main, Apps, service = d.Main, d.Apps, d.service
 end
 ------------------------------ Module ------------------------------
 
@@ -754,9 +754,8 @@ local function CreateModule()
 				record.Group = createGroupBounds(object, parent, options.Color, workspace, excluded, descendants, groupOwners)
 				groupCount += 1
 				if not groupConnection then
-					groupConnection = game.ItemChanged:Connect(function(part, property)
-						local group = groupOwners[part]
-						if group then group:PropertyChanged(part, property) end
+					groupConnection = Apps.PropertyChanges.For({ CFrame = true, Size = true, Anchored = true }, groupOwners):Connect(function(part, property)
+						groupOwners[part]:PropertyChanged(part, property)
 					end)
 				end
 				if manager.Counts.Bounds < maxBounds then
@@ -944,11 +943,9 @@ local function CreateModule()
 			end
 			if #expanded >= 32 and not opacityConnection then
 				local ok, connection = pcall(function()
-					return game.ItemChanged:Connect(function(object, key)
-						if key == "Transparency" or key == "LocalTransparencyModifier" then
-							local record = sharedOpacity[object]
-							if record then updatePart(record, record.Parts[object]) end
-						end
+					return Apps.PropertyChanges.For({ Transparency = true, LocalTransparencyModifier = true }, sharedOpacity):Connect(function(object)
+						local record = sharedOpacity[object]
+						updatePart(record, record.Parts[object])
 					end)
 				end)
 				if ok then opacityConnection = connection end

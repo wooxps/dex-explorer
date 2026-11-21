@@ -231,6 +231,7 @@ Main = (function()
 		"EditorBuffer",
 		"React",
 		"Signal",
+		"PropertyChanges",
 		"LoadingSplash",
 		"AntiAFK",
 		"History",

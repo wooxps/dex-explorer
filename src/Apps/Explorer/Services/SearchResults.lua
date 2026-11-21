@@ -273,7 +273,7 @@ local function Main()
 		)
 	end
 
-	function Results.CreatePredicate(layout, predicate, context, checkpoint, roots, matchNode, className)
+	function Results.CreatePredicate(layout, predicate, context, checkpoint, roots, matchNode, className, hasOtherTerms)
 		layout = layout or Results.CreateLayout(roots, context, checkpoint)
 		if not layout.Positions then
 			local positions = {}
@@ -286,22 +286,52 @@ local function Main()
 			layout.Positions = positions
 		end
 		local cache = layout.ClassResults
-		local result = className and cache and cache[className]
+		local result = not hasOtherTerms and className and cache and cache[className]
 		if not result then
 			local nodes, names, ends, depths, parents = layout.Nodes, layout.Names, layout.Ends, layout.Depths, layout.Parents
 			local allMatches, allContext = Bits.Dense(#nodes), Bits.Dense(#nodes)
 			local top, width, depth = {}, 0, 1
 			local object = context.Object
 			local bor, band, lshift = bit32.bor, bit32.band, bit32.lshift
-			local queryable = layout.NilRoot
-			for first = 1, #nodes, 32 do
-				local matchWord = 0
-				for i = first, math.min(first + 31, #nodes) do
-					local node = nodes[i]
-					if node ~= queryable then
+			local function liveMatch(node)
+				local ok, value = pcall(predicate, if object then object(node) else node.Obj)
+				return ok and value
+			end
+			local knownClass = className ~= nil and layout.FilterClass == className
+			local candidates = hasOtherTerms and knownClass and layout.FilterRows
+			if candidates then
+				for index, at in ipairs(candidates) do
+					if liveMatch(nodes[at]) then allMatches:Set(at) end
+					if index % 128 == 0 then checkpoint() end
+				end
+			else
+				local evaluate = if not hasOtherTerms then matchNode else nil
+				local nilRoot = layout.NilRoot
+				local classRows
+				if className and matchNode and not knownClass then
+					classRows = {}
+					local fallback, limit = evaluate, #nodes // 8
+					evaluate = function(node, index)
+						local hit = matchNode(node)
+						-- Inferred types can change between searches.
+						if hit or node.Inferred then
+							classRows[#classRows + 1] = index
+							if #classRows > limit then
+								classRows, evaluate = nil, fallback
+							end
+							if hasOtherTerms then return liveMatch(node) end
+						end
+						return hit
+					end
+				end
+				for first = 1, #nodes, 32 do
+					local matchWord = 0
+					for i = first, math.min(first + 31, #nodes) do
+						local node = nodes[i]
+						if node == nilRoot then continue end
 						local hit
-						if matchNode then
-							hit = matchNode(node)
+						if evaluate then
+							hit = evaluate(node, i)
 						else
 							local ok, value = pcall(predicate, if object then object(node) else node.Obj)
 							hit = ok and value
@@ -310,10 +340,11 @@ local function Main()
 							matchWord = bor(matchWord, lshift(1, i - first))
 						end
 					end
+					buffer.writeu32(allMatches.Data, (first - 1) // 8, matchWord)
+					if first % 128 == 1 then checkpoint() end
 				end
-				buffer.writeu32(allMatches.Data, (first - 1) // 8, matchWord)
-				if first % 128 == 1 then
-					checkpoint()
+				if className and matchNode and not knownClass then
+					layout.FilterClass, layout.FilterRows = className, classRows
 				end
 			end
 
@@ -358,7 +389,7 @@ local function Main()
 			end
 			allContext:Prepare(checkpoint)
 			result = { Match = allMatches, Context = allContext, Top = top, Width = width, Depth = depth }
-			if className then
+			if className and not hasOtherTerms then
 				cache = layout.ClassResults or {}
 				local order = layout.ClassOrder or {}
 				if #order >= 4 then
@@ -374,18 +405,39 @@ local function Main()
 
 	-- Keep immutable membership on the hierarchy snapshot. Each visit gets its own
 	-- expansion, removals and visibility, even when a user backspaces to an earlier query.
-	local function literalView(layout, terms, context, checkpoint, positions, top, matches, included, width, depth)
+	local function literalView(layout, terms, context, checkpoint, positions, top, matches, included, width, depth, widthRevision)
 		if #layout.Nodes >= 1024 and #terms == 1 and #terms[1] <= 256 then
+			local count = #layout.Nodes
+			-- A nearly complete row map can serve every following query on this layout.
+			if not layout.Positions and included.Count >= count - count // 8 then
+				if included.Count < count then
+					for word = 0, buffer.len(included.Data) // 4 - 1 do
+						local missing = bit32.bnot(buffer.readu32(included.Data, word * 4))
+						while missing ~= 0 do
+							local at = word * 32 + bit32.countrz(missing) + 1
+							if at > count then break end
+							positions[layout.Nodes[at]] = at
+							missing = bit32.band(missing, missing - 1)
+						end
+						if word % 32 == 0 then checkpoint() end
+					end
+				end
+				layout.Positions = layout.Positions or positions
+			end
+			positions = layout.Positions or positions
 			local recent = layout.LiteralResults or {}
 			local largeMap = positions ~= layout.Positions and included.Count > #layout.Nodes // 16
 			for i = #recent, 1, -1 do
 				if recent[i].Term == terms[1] or (largeMap and recent[i].LargeMap) then
 					table.remove(recent, i)
+				elseif layout.Positions then
+					recent[i].Positions, recent[i].LargeMap = layout.Positions, false
 				end
 			end
 			if #recent == 6 then table.remove(recent, 1) end
 			recent[#recent + 1] = { Term = terms[1], Positions = positions, Top = top,
-				Match = matches, Context = included, Depth = depth, LargeMap = largeMap }
+				Match = matches, Context = included, Depth = depth, LargeMap = largeMap,
+				Width = width, WidthSource = context.WidthRevision, WidthRevision = widthRevision }
 			layout.LiteralResults = recent
 		end
 		return createView(layout, context, checkpoint, positions, top, matches, included, width, depth)
@@ -445,17 +497,20 @@ local function Main()
 		return candidates
 	end
 
-	local function sparseNameView(layout, terms, context, checkpoint, matchesName)
+	local function sparseNameView(layout, terms, context, checkpoint, matchesName, widthRevision)
 		local nodes, names = layout.Nodes, layout.Names
 		if #nodes < 1024 then return nil end
 		local subset
 		for _, entry in ipairs(layout.LiteralResults or {}) do
 			if #terms == 1 and terms[1] == entry.Term then
-				-- Widths may have been measured since this search last ran.
-				local width = 0
-				entry.Context:Each(function(i)
-					width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
-				end, checkpoint)
+				local width = entry.Width
+				if widthRevision == nil or entry.WidthRevision ~= widthRevision or entry.WidthSource ~= context.WidthRevision then
+					width = 0
+					entry.Context:Each(function(i)
+						width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
+					end, checkpoint)
+					entry.Width, entry.WidthRevision, entry.WidthSource = width, widthRevision, context.WidthRevision
+				end
 				return createView(layout, context, checkpoint, layout.Positions or entry.Positions, entry.Top,
 					entry.Match, entry.Context, width, entry.Depth)
 			end
@@ -511,10 +566,11 @@ local function Main()
 			end
 			if i % 128 == 0 then checkpoint() end
 		end
-		return literalView(layout, terms, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth)
+		return literalView(layout, terms, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth, widthRevision)
 	end
 
 	function Results.CreateCold(roots, terms, context, checkpoint, layout)
+		local widthRevision = context.WidthRevision and context.WidthRevision()
 		if context.VisibleOnly and (not layout or not layout.RootVisibility or not Results.MatchesVisibility(layout, context.Visible)) then
 			layout = nil
 		end
@@ -590,7 +646,7 @@ local function Main()
 			return hasMatches
 		end
 		if layout then
-			local sparse = sparseNameView(layout, terms, context, checkpoint, matchesName)
+			local sparse = sparseNameView(layout, terms, context, checkpoint, matchesName, widthRevision)
 			if sparse then return sparse end
 			local nextMatch = math.huge
 			local matchWord, contextWord = 0, 0
@@ -627,7 +683,7 @@ local function Main()
 					checkpoint()
 				end
 			end
-			return literalView(layout, terms, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth)
+			return literalView(layout, terms, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth, widthRevision)
 		else
 			visitChildren(roots[1], snapshotChildren(roots[1], readChildren, checkpoint), 0, 1)
 			if roots[2] then visitChildren(nil, { roots[2] }, 0, 1) end
@@ -652,7 +708,7 @@ local function Main()
 			NilRoot = roots[2],
 			RootVisibility = rootVisibility,
 		}
-		return literalView(layout, terms, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth)
+		return literalView(layout, terms, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth, widthRevision)
 	end
 
 	createView = function(layout, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth)
