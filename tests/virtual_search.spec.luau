@@ -410,6 +410,8 @@ do
 		return true
 	end }
 	local namedPart = assert(Apps.SearchQuery.Compile("is:BasePart AND name:First"))
+	assert(Apps.SearchQuery.RequiredNameTerm(namedPart) == "first")
+	assert(not Apps.SearchQuery.RequiredNameTerm(assert(Apps.SearchQuery.Compile("(name:First AND is:Part) OR is:Folder"))))
 	assert(not namedPart(probe) and classReads == 0)
 	probe.Name = "FIRST"
 	assert(namedPart(probe) and classReads == 1, "mandatory names read the current value")

@@ -39,6 +39,10 @@ local function Main()
 	local literalTerms = setmetatable({}, { __mode = "k" })
 	local classTerms = setmetatable({}, { __mode = "k" })
 	local requiredClassTerms = setmetatable({}, { __mode = "k" })
+	local requiredNameTerms = setmetatable({}, { __mode = "k" })
+	function Search.RequiredNameTerm(predicate)
+		return requiredNameTerms[predicate]
+	end
 	local nameIndex = Apps and Apps.SearchNameIndex and Apps.SearchNameIndex.Create()
 	Search.NameIndex = nameIndex
 	Search.LiteralTerms = function(predicate)
@@ -393,7 +397,7 @@ local function Main()
 				return token
 			end
 			local parseOr, parseAnd, parseAtom
-			local nameLengths, conjunctions = {}, {}
+			local nameTerms, conjunctions = {}, {}
 			parseAtom = function()
 				if peek("(") then
 					pos += 1
@@ -568,7 +572,7 @@ local function Main()
 						end
 						return equal
 					end
-					if key == "name" and op == ":" then nameLengths[matchesProperty] = #lowerValue end
+					if key == "name" and op == ":" then nameTerms[matchesProperty] = lowerValue end
 					return matchesProperty
 				end
 				if not first.quoted and first.value:find(".", 1, true) then
@@ -608,7 +612,7 @@ local function Main()
 				local function byName(obj)
 					return contains(obj.Name, lowerValue)
 				end
-				nameLengths[byName] = #lowerValue
+				nameTerms[byName] = lowerValue
 				return byName
 			end
 			parseAnd = function()
@@ -694,10 +698,11 @@ local function Main()
 			if terms and not indexedLiteral then
 				local best, length = 1, 0
 				for i, term in ipairs(terms) do
-					local size = nameLengths[term] or 0
+					local size = if nameTerms[term] then #nameTerms[term] else 0
 					if size > length then best, length = i, size end
 				end
 				if best > 1 then table.insert(terms, 1, table.remove(terms, best)) end
+				requiredNameTerms[predicate] = nameTerms[terms[1]]
 			end
 			return predicate
 		end)

@@ -273,7 +273,7 @@ local function Main()
 		)
 	end
 
-	function Results.CreatePredicate(layout, predicate, context, checkpoint, roots, matchNode, className, hasOtherTerms)
+	function Results.CreatePredicate(layout, predicate, context, checkpoint, roots, matchNode, className, hasOtherTerms, requiredName)
 		layout = layout or Results.CreateLayout(roots, context, checkpoint)
 		if not layout.Positions then
 			local positions = {}
@@ -299,7 +299,23 @@ local function Main()
 			end
 			local knownClass = className ~= nil and layout.FilterClass == className
 			local candidates = hasOtherTerms and knownClass and layout.FilterRows
-			if candidates then
+			local nameMatches
+			if requiredName and layout.LiteralResults then
+				local limit = if candidates then #candidates else #nodes // 8
+				for _, entry in ipairs(layout.LiteralResults) do
+					if entry.Match.Count < limit and string.find(requiredName, entry.Term, 1, true) then
+						nameMatches, limit = entry.Match, entry.Match.Count
+					end
+				end
+			end
+			if nameMatches then
+				local visited = 0
+				nameMatches:Each(function(at)
+					if liveMatch(nodes[at]) then allMatches:Set(at) end
+					visited += 1
+					if visited % 128 == 0 then checkpoint() end
+				end, checkpoint)
+			elseif candidates then
 				for index, at in ipairs(candidates) do
 					if liveMatch(nodes[at]) then allMatches:Set(at) end
 					if index % 128 == 0 then checkpoint() end
@@ -610,6 +626,14 @@ local function Main()
 			return hit
 		end
 		local readName, readChildren = context.Name, context.Children
+		local coldMatch = matchesName
+		if not layout and termCount == 1 and #firstTerm == 1 and firstTerm == string.lower(firstTerm) then
+			local upper = string.upper(firstTerm)
+			coldMatch = function(name)
+				return string.find(name, firstTerm, 1, true) ~= nil
+					or (upper ~= firstTerm and string.find(name, upper, 1, true) ~= nil)
+			end
+		end
 		local nodeCount = #nodes
 		local function visitChildren(owner, children, parent, depth)
 			local hasMatches = false
@@ -626,8 +650,7 @@ local function Main()
 				local name = readName(node)
 				nodes[position], names[position] = node, name
 				depths[position], parents[position] = depth, parent
-				local hit = owner ~= nil and nameResults[name]
-				if hit == nil then hit = matchesName(name) end
+				local hit = owner ~= nil and coldMatch(name)
 				local childMatch = #node > 0 and visitChildren(node, snapshotChildren(node, readChildren, checkpoint), position, depth + 1)
 				ends[position] = nodeCount
 				if hit or childMatch then

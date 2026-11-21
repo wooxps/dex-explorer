@@ -426,6 +426,17 @@ do
 	filtered.Expanded[nested] = false
 	filtered:Reflow(check)
 	assert(#filtered.Rows == 2 and #filtered.MatchList == 2)
+	Apps.SearchResults.CreateCold(roots, { "needle" }, context, check, layout)
+	local nameReads = 0
+	local function enabledNeedle(obj)
+		nameReads += 1
+		return obj.Enabled and string.find(string.lower(obj.Name), "upper_needle", 1, true)
+	end
+	nested[129].Obj.Enabled = true
+	local named = Apps.SearchResults.CreatePredicate(layout, enabledNeedle, context, check, roots, nil, nil, false, "upper_needle")
+	assert(nameReads == 2 and #named.MatchList == 1 and named.MatchList[1] == nested[129])
+	nested[129].Obj.Enabled = false
+	assert(#Apps.SearchResults.CreatePredicate(layout, enabledNeedle, context, check, roots, nil, nil, false, "upper_needle").MatchList == 0)
 	local regular, inferred = nested[130], nested[140]
 	regular.Obj.ClassName, regular.Obj.Enabled = "Part", true
 	inferred.Inferred = true

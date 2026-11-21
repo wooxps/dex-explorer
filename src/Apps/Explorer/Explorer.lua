@@ -863,7 +863,15 @@ local function CreateModule()
 		return compareNodes(a, b, sortingNames)
 	end
 	local defaultNodeSorter = Explorer.NodeSorter
-	local function sortNamedSiblings(children, namesByNode, sort)
+	local function coldName(node)
+		local name = node.SearchRawName
+		if name == nil then
+			name = node.Obj.Name
+			node.SearchRawName = name
+		end
+		return name
+	end
+	local function sortNamedSiblings(children, namesByNode, sort, readName)
 		local class
 		local names = table.create(#children)
 		local byName = {}
@@ -882,7 +890,7 @@ local function CreateModule()
 			end
 			class = nodeClass
 			node.Class = nodeClass
-			local name = namesByNode[node] or tostring(node.Obj)
+			local name = namesByNode[node] or (if readName then readName(node) else tostring(node.Obj))
 			if ordered and i > 1 then
 				local previous = names[i - 1]
 				local previousId = children[i - 1].Id
@@ -954,12 +962,6 @@ local function CreateModule()
 		else
 			table.sort(children, sort)
 		end
-	end
-
-	local function coldName(node)
-		local name = node.SearchRawName or node.Obj.Name
-		node.SearchRawName = name
-		return name
 	end
 
 	local function sortColdItems(items, less, check)
@@ -1196,7 +1198,7 @@ local function CreateModule()
 				return compareNodes(a, b, names, true)
 			end
 			if #items >= 16 and #items <= 512 then
-				sortNamedSiblings(items, names, less)
+				sortNamedSiblings(items, names, less, coldName)
 				check()
 				return remember(items)
 			end
@@ -2308,14 +2310,21 @@ local function CreateModule()
 			hoverNode, hoveredWithin = Explorer.ResolveHoveredNode(Explorer.HoveredObject)
 		end
 		if Settings.Explorer.ExpandHierarchy == false then
+			local siblingVisibility = {}
 			for _, selectedNode in ipairs(selection.List) do
-				local parent = selectedNode
-				while parent and not Explorer.IsNodeVisible(parent) do
-					parent = parent.Parent
+				local parent = selectedNode.Parent
+				-- Outside search, siblings below a service share the same visible ancestor.
+				local shared = not searchView and parent and parent.Obj ~= game
+				local ancestor = if shared then siblingVisibility[parent] else nil
+				if ancestor == nil then
+					ancestor = selectedNode
+					while ancestor and not Explorer.IsNodeVisible(ancestor) do
+						ancestor = ancestor.Parent
+					end
+					ancestor = if ancestor ~= selectedNode then ancestor else false
+					if shared then siblingVisibility[parent] = ancestor or false end
 				end
-				if parent and parent ~= selectedNode then
-					hiddenSelectionParents[parent] = true
-				end
+				if ancestor then hiddenSelectionParents[ancestor] = true end
 			end
 		end
 		local treeSize = treeFrame.AbsoluteSize
@@ -5287,7 +5296,8 @@ return search]==]
 					roots,
 					matchNode,
 					className,
-					requiredClass ~= nil
+					requiredClass ~= nil,
+					Apps.SearchQuery.RequiredNameTerm(predicate)
 				)
 				if not current() then
 					if generation == searchGeneration then

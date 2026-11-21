@@ -374,6 +374,19 @@ assert(
 	visibleParent and visibleParent.SelectionWithin.Visible,
 	"collapsed visible ancestor highlights hidden selection"
 )
+do
+	Explorer.Selection:SetTable({ nodes[part], nodes[second] })
+	local original = Explorer.IsNodeVisible
+	local siblingChecks = 0
+	Explorer.IsNodeVisible = function(node)
+		if node == nodes[part] or node == nodes[second] then siblingChecks += 1 end
+		return original(node)
+	end
+	Explorer.Refresh()
+	Explorer.IsNodeVisible = original
+	assert(siblingChecks == 1 and visibleParent.SelectionWithin.Visible, "collapsed siblings share a visibility check")
+	Explorer.Selection:Set(nodes[part])
+end
 assert(
 	visibleParent.Insert.Position.X.Offset < Explorer.GuiElems.TreeFrame.AbsoluteSize.X - 40,
 	"insert sits beside short object name"

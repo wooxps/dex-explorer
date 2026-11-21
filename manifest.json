@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "07b52bcfafb9f9e84bd2",
+  "release": "ebc2321a7628eb9d1cde",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -445,9 +445,9 @@
       "sha256": "4b4451cfdf32edf710eccc6079fd34fdb7194bc6b46455c62abad0b1ee4cd609"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 195125,
-      "checksum": 497686971,
-      "sha256": "db10c33068d0442abcc3c19ce898b1222206329e62e857456f51892bb58479a8"
+      "bytes": 195712,
+      "checksum": 1712315911,
+      "sha256": "0504d0dfedb63944b5260d3068c3c2bb84dda64ac8ebd7c9ae0e5ea16b1106bd"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7173,
@@ -515,9 +515,9 @@
       "sha256": "0836a3cd5c1656716b2413c4d170161a8fa54732af0659402f34b70a862fa420"
     },
     "src/Apps/Explorer/Services/SearchResults.lua": {
-      "bytes": 31030,
-      "checksum": 1534392217,
-      "sha256": "97a34c51db1f7e21e639b44c9bd8c093e6600327a8a5b99abce7316c30b46353"
+      "bytes": 31928,
+      "checksum": 2059932894,
+      "sha256": "8c47062a76481c793104448432f4cc71eff6f1bcf6c37b33c6f05fdcfc771e10"
     },
     "src/Apps/Explorer/Services/SearchSnapshot.lua": {
       "bytes": 16836,
@@ -965,9 +965,9 @@
       "sha256": "a5fe1fdcfd580c8ed33bb012cc1d205f7b4d7ba1433704755ad9fa921db8e244"
     },
     "src/Shared/SearchQuery.lua": {
-      "bytes": 19938,
-      "checksum": 3009390516,
-      "sha256": "68ef2f31cd0e7d1f1f1104522ea1b41a96079f19050296258190eeca1acfd1c5"
+      "bytes": 20160,
+      "checksum": 1359345304,
+      "sha256": "27ac7a9d55fba0bb82ecaf8e426e4d94615200510029e7dc72f691ad85104780"
     },
     "src/Shared/Signal.lua": {
       "bytes": 2047,
