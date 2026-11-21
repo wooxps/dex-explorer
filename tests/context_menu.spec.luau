@@ -265,12 +265,12 @@ do
 	Explorer.Selection:Set(nodes[outside])
 	outside.UniqueId = "00000000-0000-0000-0000-000000000000"
 	names = menu({ nodes[outside] })
-	assert(#names["Copy As"].Submenu == 1, "all-zero IDs never expose Copy Unique ID")
+	assert(#names["Copy As"].Submenu == 2 and names["Copy as JSON"] and not names["Unique ID"])
 	context.Registered.COPY_UNIQUE_ID.OnClick()
 	assert(copied == nil, "unavailable IDs are not copied by direct command")
 	outside.UniqueId = "12345678-abcd-4321-9876-123456789abc"
 	names = menu({ nodes[outside] })
-	assert(#names["Copy As"].Submenu == 2, "readable nonzero ID exposes guarded copy")
+	assert(#names["Copy As"].Submenu == 3, "readable nonzero ID exposes guarded copy")
 	context:Show(12, 12)
 	context:OpenSubmenu(names["Copy As"])
 	local childMenu = context.ChildMenu
@@ -285,6 +285,30 @@ do
 	)
 	context.Registered.COPY_UNIQUE_ID.OnClick()
 	assert(copied == outside.UniqueId, "copy uses actual unique ID")
+	local previousHttp = service.HttpService
+	local payload
+	service.HttpService = { JSONEncode = function(_, object)
+		payload = object
+		return "encoded fixture"
+	end }
+	local folderClass = API.Classes.Folder
+	local previousProperties = folderClass.Properties
+	folderClass.Properties = { { Name = "Archivable" }, { Name = "Parent" }, { Name = "Unchanged" } }
+	for _, obj in { outside, child } do
+		obj.GetAttributes = function() return { Enabled = false, Count = 3 } end
+		rawset(obj, "GetTags", function() return { "Example" } end)
+		obj.IsPropertyModified = function(_, key) return key == "Archivable" end
+		obj.Archivable = false
+	end
+	context.Registered.COPY_AS_JSON.OnClick()
+	assert(copied == "encoded fixture" and payload.ClassName == "Folder" and payload.Name == outside.Name)
+	assert(payload.Archivable == "false" and payload.Parent == nil and payload.Unchanged == nil)
+	assert(payload["$Enabled"] == false and payload["$Count"] == 3 and payload[".Example"] == true)
+	Explorer.Selection:SetTable({ nodes[child], nodes[outside] })
+	context.Registered.COPY_AS_JSON.OnClick()
+	assert(#payload == 2 and payload[1].Name == child.Name and payload[2].Name == outside.Name)
+	Explorer.Selection:Set(nodes[outside])
+	service.HttpService, folderClass.Properties = previousHttp, previousProperties
 	outside.UniqueId = nil
 	deps.env.setclipboard = savedClipboard
 	local oldScript = API.Classes.BaseScript

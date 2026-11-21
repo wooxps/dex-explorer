@@ -81,6 +81,44 @@ local function Main()
 			return object[property]
 		end)
 	end
+	local function clipboardValue(value)
+		local kind = typeof(value)
+		if kind == "EnumItem" then return value.Name end
+		if kind == "Instance" or kind == "buffer" or value == nil then return nil end
+		return tostring(value)
+	end
+
+	function Service.DescribeForClipboard(object)
+		local className = object.ClassName
+		local result = { ClassName = className }
+		if object.Name ~= className then result.Name = object.Name end
+		local class = API.Classes[className]
+		while class do
+			for _, prop in ipairs(class.Properties or {}) do
+				local key, tags = prop.Name, prop.Tags or {}
+				if key ~= "Parent" and key ~= "Name" and not tags.ReadOnly and not tags.Hidden
+					and not tags.NotScriptable and (not prop.Security or prop.Security.Read == "None")
+				then
+					local ok, modified = pcall(object.IsPropertyModified, object, key)
+					if ok and modified then
+						local readable, value = Service.Read(object, key)
+						if readable then result[key] = clipboardValue(value) end
+					end
+				end
+			end
+			class = class.Superclass
+		end
+		for key, value in pairs(object:GetAttributes()) do
+			local kind = typeof(value)
+			if kind == "boolean" or kind == "number" then
+				result["$" .. key] = value
+			else
+				result["$" .. key] = clipboardValue(value)
+			end
+		end
+		for _, tag in ipairs(object:GetTags()) do result["." .. tag] = true end
+		return result
+	end
 	function Service.GetProperty(name, property)
 		local seen = {}
 		while name and not seen[name] do

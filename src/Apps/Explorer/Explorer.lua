@@ -2950,6 +2950,7 @@ local function CreateModule()
 				unique.Name = "Unique ID"
 				copyItems[#copyItems + 1] = unique
 			end
+			copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_AS_JSON)
 			context:Add({ Name = "Copy As", Submenu = copyItems })
 		end
 		context:AddRegistered("PASTE", emptyClipboard or #sList == 0)
@@ -3673,6 +3674,18 @@ local function CreateModule()
 			end,
 		})
 
+		context:Register("COPY_AS_JSON", {
+			Name = "Copy as JSON",
+			OnClick = function()
+				if not env.setclipboard or #selection.List == 0 or Explorer.HasInferredSelection() then return end
+				local rows = table.create(#selection.List)
+				for index, node in ipairs(selection.List) do
+					rows[index] = Apps.ReflectionService.DescribeForClipboard(node.Obj)
+				end
+				local json = service.HttpService:JSONEncode(if #rows == 1 then rows[1] else rows)
+				env.setclipboard(json)
+			end,
+		})
 		context:Register("COPY_UNIQUE_ID", {
 			Name = "Copy Unique ID",
 			OnClick = function()
