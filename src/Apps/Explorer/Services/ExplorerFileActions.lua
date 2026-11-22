@@ -93,15 +93,40 @@ end
 
 local rgb = Color3.fromRGB
 
-local function configuration(targets, onReady)
-	local hasTerrain = false
+local function includesTerrain(targets)
 	for _, target in ipairs(targets) do
 		local class = target.Obj.ClassName
-		if class == "Terrain" or class == "Workspace" or class == "DataModel" then
-			hasTerrain = true
-			break
-		end
+		if class == "Terrain" or class == "Workspace" or class == "DataModel" then return true end
 	end
+	return false
+end
+
+local function terrainFields(d, y)
+	local camera = service.Workspace.CurrentCamera
+	local center = if camera then camera.Focus.Position else Vector3.zero
+	local halfSize = Vector3.new(128,64,128)
+	local function coordinates(point)
+		return string.format("%d, %d, %d",math.round(point.X),math.round(point.Y),math.round(point.Z))
+	end
+	local lower = d.input("Terrain minimum (X, Y, Z in studs)",coordinates(center-halfSize),y)
+	local upper = d.input("Terrain maximum (X, Y, Z in studs)",coordinates(center+halfSize),y+68)
+	lower.Name, upper.Name = "TerrainMinimum", "TerrainMaximum"
+	return lower, upper
+end
+
+local function terrainBounds(lower, upper)
+	local function point(input)
+		local x,y,z = input:match("^%s*([^,%s]+)[,%s]+([^,%s]+)[,%s]+([^,%s]+)%s*$")
+		x,y,z = tonumber(x),tonumber(y),tonumber(z)
+		if x and y and z then return Vector3.new(x,y,z) end
+	end
+	local min,max = point(lower.Text),point(upper.Text)
+	Apps.GltfTerrain.Bounds(min,max)
+	return {Min=min,Max=max}
+end
+
+local function configuration(targets, onReady)
+	local hasTerrain = includesTerrain(targets)
 	local d = Apps.StudioPopup.Open("Export Configuration",if hasTerrain then 462 else 320)
 	if d.sprite then
 		d.sprite(d.panel,"Information",22,52,32,32,50)
@@ -116,22 +141,7 @@ local function configuration(targets, onReady)
 	d.label(d.panel,"Include",64,106,380,24,15,true)
 	local options = {Skinning=true,Textures=true,Attachments=true,Cages=false}
 	local lowerBox, upperBox
-	if hasTerrain then
-		local camera = service.Workspace.CurrentCamera
-		local center = if camera then camera.Focus.Position else Vector3.zero
-		local function coordinates(point)
-			return string.format("%d, %d, %d",math.round(point.X),math.round(point.Y),math.round(point.Z))
-		end
-		local halfSize = Vector3.new(128,64,128)
-		lowerBox = d.input("Terrain minimum (X, Y, Z in studs)",coordinates(center-halfSize),253)
-		upperBox = d.input("Terrain maximum (X, Y, Z in studs)",coordinates(center+halfSize),321)
-		lowerBox.Name, upperBox.Name = "TerrainMinimum", "TerrainMaximum"
-	end
-	local function readPoint(input)
-		local x,y,z = input:match("^%s*([^,%s]+)[,%s]+([^,%s]+)[,%s]+([^,%s]+)%s*$")
-		x,y,z = tonumber(x),tonumber(y),tonumber(z)
-		if x and y and z then return Vector3.new(x,y,z) end
-	end
+	if hasTerrain then lowerBox, upperBox = terrainFields(d,253) end
 	-- One worker owns mesh/image allocations. Changes invalidate the in-flight result
 	-- and coalesce while Roblox yields to read an asset.
 	local revision, running = 0, false
@@ -153,11 +163,7 @@ local function configuration(targets, onReady)
 				local function cancelled() return not d.isOpen() or generation ~= revision end
 				local ok, data, details = pcall(function()
 					checkTargets(targets)
-					if lowerBox then
-						local min,max = readPoint(lowerBox.Text),readPoint(upperBox.Text)
-						Apps.GltfTerrain.Bounds(min,max)
-						snapshot.TerrainBounds = {Min=min,Max=max}
-					end
+					if lowerBox then snapshot.TerrainBounds = terrainBounds(lowerBox,upperBox) end
 					return Apps.GltfExporter.Export(targets,snapshot,cancelled)
 				end)
 				if not cancelled() then
@@ -357,10 +363,10 @@ function Actions.SaveModel(targets, path, cancelled)
 	if not cancelled or not cancelled() then env.writefile(path,bytes) end
 end
 
-local function exportComplete(path, details)
+local function exportComplete(path, details, format)
 	local d = Apps.StudioPopup.Open("Export Complete", if details then 218 else 180)
 	if d.sprite then d.sprite(d.panel,"Information",24,53,32,32,50) end
-	d.label(d.panel,"glTF exported",if d.sprite then 66 else 24,48,410,24,15,true)
+	d.label(d.panel,(format or "glTF") .. " exported",if d.sprite then 66 else 24,48,410,24,15,true)
 	local file = d.label(d.panel,path,if d.sprite then 66 else 24,75,420,22,14)
 	file.TextTruncate = Enum.TextTruncate.AtEnd
 	if details then
@@ -371,15 +377,70 @@ local function exportComplete(path, details)
 	d.hideCancel()
 end
 
+local function exportObj(targets, stem)
+	local hasTerrain = includesTerrain(targets)
+	local d = Apps.StudioPopup.Open("Export as Obj",if hasTerrain then 365 else 222)
+	local input = d.input("Workspace path",stem .. ".obj",52)
+	local lower, upper
+	if hasTerrain then lower,upper = terrainFields(d,124) end
+	local pending
+	local function exists(path)
+		if env.isfile then return env.isfile(path) end
+		if env.readfile then return pcall(env.readfile,path) end
+		return false
+	end
+	d.action("Export",64,function(cancelled)
+		local path = pathFor(input.Text,{"obj"},"obj")
+		assert(not path:find("#",1,true), "Use a file name without #")
+		local boundsKey = if lower then lower.Text .. "\n" .. upper.Text else ""
+		local files, details
+		if pending and pending.path == path and pending.bounds == boundsKey then
+			files, details = pending.files,pending.details
+		else
+			checkTargets(targets)
+			local bounds = if lower then terrainBounds(lower,upper) else nil
+			files, details = Apps.ObjExporter.Export(targets,path,bounds,cancelled)
+			if cancelled() then return end
+			for _, file in ipairs(files) do
+				if exists(file.path) then
+					pending = {path=path,bounds=boundsKey,files=files,details=details}
+					error("A file already exists. Click Export again to replace the export files.",0)
+				end
+			end
+		end
+		if cancelled() then return end
+		local written = {}
+		local ok, err = pcall(function()
+			for _, file in ipairs(files) do
+				local alreadyExists = exists(file.path)
+				local previous = if alreadyExists and env.readfile then env.readfile(file.path) else nil
+				table.insert(written,{path=file.path,previous=previous,created=not alreadyExists})
+				env.writefile(file.path,file.data)
+			end
+		end)
+		if not ok then
+			for i = #written,1,-1 do
+				local file = written[i]
+				if file.previous ~= nil then pcall(env.writefile,file.path,file.previous)
+				elseif file.created and env.delfile then pcall(env.delfile,file.path) end
+			end
+			error(err,0)
+		end
+		if not cancelled() then exportComplete(path,details,"OBJ") end
+	end)
+	input:CaptureFocus()
+end
+
 function Actions.Open(action, targets)
 	local first = targets[1]
 	if not first then return end
 	local name = if #targets == 1 then first.Obj.Name else "Selection"
+	local stem = name:gsub('[<>:"/\\|?*%c#]', "_"):gsub("[%. ]+$", "")
+	if stem == "" then stem = "Selection" end
 	local function save(extension, data, details)
-		local stem = name:gsub('[<>:"/\\|?*%c]', "_"):gsub("[%. ]+$", "")
 		local overwrite
 		filePrompt(if extension=="csv" then "Save as CSV" elseif extension=="rbxm" then "Save to File" else "Save glTF",
-			"Save","File name",(stem ~= "" and stem or "Selection") .. "." .. extension,false,function(input,_,cancelled)
+			"Save","File name",stem .. "." .. extension,false,function(input,_,cancelled)
 				if extension == "rbxm" then
 					input = input:match("^%s*(.-)%s*$"):gsub("%.[^./\\]+$", "")
 					assert(input:match("[^/\\]+$"), "Enter a model file name")
@@ -413,6 +474,7 @@ function Actions.Open(action, targets)
 		end)
 	elseif action == "SAVE_CSV" then save("csv")
 	elseif action == "SAVE_MODEL" then save("rbxm")
+	elseif action == "EXPORT_OBJ" then exportObj(targets,stem)
 	else configuration(targets,function(data, details) save("gltf",data,details) end) end
 end
 

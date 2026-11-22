@@ -19,7 +19,9 @@ local function add(array, value)
 	return index
 end
 
-function Exporter.Export(targets, options, cancelled)
+Exporter.MetersPerStud = meters
+
+function Exporter.Build(targets, options, cancelled)
 	options = options or {}
 	local skinning, textures = options.Skinning ~= false, options.Textures ~= false
 	local attachments, cages = options.Attachments ~= false, options.Cages == true
@@ -195,6 +197,13 @@ function Exporter.Export(targets, options, cancelled)
 		return add(doc.textures, { source = image })
 	end)
 	local materials, shapes, meshes, primitives = {}, {}, {}, {}
+	local function baseTexture(...)
+		if not options.ClassicMaterials then return texture(...) end
+		local ok, image, alpha = pcall(texture,...)
+		checkCancelled()
+		if not ok then omit("mesh image unavailable"); return nil end
+		return image, alpha
+	end
 	local pixelTextures = {}
 	local function pixelTexture(image)
 		local index = pixelTextures[image.index]
@@ -219,28 +228,30 @@ function Exporter.Export(targets, options, cancelled)
 		local data = { name = part.Material.Name, pbrMetallicRoughness = pbr, doubleSided = twoSided }
 		if textures and surface then
 			if surface.AlphaMode == Enum.AlphaMode.Overlay and surface.ColorMapContent ~= Content.none then
-				pbr.baseColorTexture = texture(surface.ColorMapContent, part.Color, color)
+				pbr.baseColorTexture = baseTexture(surface.ColorMapContent, part.Color, color)
 				pbr.baseColorFactor = {1,1,1,alpha}
 			else
-				pbr.baseColorTexture = texture(surface.ColorMapContent)
+				pbr.baseColorTexture = baseTexture(surface.ColorMapContent)
 			end
-			data.normalTexture = texture(surface.NormalMapContent)
-			pbr.metallicRoughnessTexture = packedMaps(surface.MetalnessMapContent, surface.RoughnessMapContent)
-			if pbr.metallicRoughnessTexture then pbr.metallicFactor = 1 end
 			if surface.AlphaMode == Enum.AlphaMode.Transparency then blend = true end
-			local emissive = texture(surface.EmissiveMaskContent)
-			if emissive then
-				local tint = surface.EmissiveTint
-				data.emissiveTexture = emissive
-				data.emissiveFactor = {linear(tint.R),linear(tint.G),linear(tint.B)}
-				if surface.EmissiveStrength ~= 1 then
-					data.extensions = { KHR_materials_emissive_strength = { emissiveStrength = surface.EmissiveStrength } }
-					doc.extensionsUsed = {"KHR_materials_emissive_strength"}
+			if not options.ClassicMaterials then
+				data.normalTexture = texture(surface.NormalMapContent)
+				pbr.metallicRoughnessTexture = packedMaps(surface.MetalnessMapContent, surface.RoughnessMapContent)
+				if pbr.metallicRoughnessTexture then pbr.metallicFactor = 1 end
+				local emissive = texture(surface.EmissiveMaskContent)
+				if emissive then
+					local tint = surface.EmissiveTint
+					data.emissiveTexture = emissive
+					data.emissiveFactor = {linear(tint.R),linear(tint.G),linear(tint.B)}
+					if surface.EmissiveStrength ~= 1 then
+						data.extensions = { KHR_materials_emissive_strength = { emissiveStrength = surface.EmissiveStrength } }
+						doc.extensionsUsed = {"KHR_materials_emissive_strength"}
+					end
 				end
 			end
 		elseif textures and tex then
 			local texAlpha
-			pbr.baseColorTexture, texAlpha = texture(tex)
+			pbr.baseColorTexture, texAlpha = baseTexture(tex)
 			blend = blend or texAlpha
 		end
 		if alpha < 1 or blend then data.alphaMode = "BLEND" end
@@ -277,7 +288,7 @@ function Exporter.Export(targets, options, cancelled)
 	end
 
 	local function readGeometry(content, surface)
-		local tangents = textures and surface ~= nil and surface.NormalMapContent ~= Content.none
+		local tangents = textures and not options.ClassicMaterials and surface ~= nil and surface.NormalMapContent ~= Content.none
 		local bucket = meshes[tangents] or {}
 		meshes[tangents] = bucket
 		if not bucket[content] then bucket[content] = Apps.GltfGeometry.ReadMesh(content, emit, tangents, skinning, checkCancelled) end
@@ -450,16 +461,22 @@ function Exporter.Export(targets, options, cancelled)
 	assert(#scene.nodes > 0, "The selection contains none of the included components")
 	if length == 0 then
 		doc.meshes, doc.materials, doc.bufferViews, doc.accessors = nil, nil, nil, nil
-	else
-		if #doc.materials == 0 then doc.materials = nil end
-		local bytes = buffer.fromstring(table.concat(chunks))
-		doc.buffers = {{ byteLength = length, uri = "data:application/octet-stream;base64,"
-			.. buffer.tostring(service.EncodingService:Base64Encode(bytes)) }}
+	elseif #doc.materials == 0 then
+		doc.materials = nil
 	end
 	local skipped = {}
 	for kind, count in pairs(omitted) do table.insert(skipped, kind .. " (" .. count .. ")") end
 	table.sort(skipped)
-	return service.HttpService:JSONEncode(doc), if #skipped > 0 then "Omitted: " .. table.concat(skipped, ", ") else nil
+	return doc, buffer.fromstring(table.concat(chunks)), if #skipped > 0 then "Omitted: " .. table.concat(skipped, ", ") else nil
+end
+
+function Exporter.Export(targets, options, cancelled)
+	local doc, bytes, details = Exporter.Build(targets,options,cancelled)
+	if buffer.len(bytes) > 0 then
+		doc.buffers = {{ byteLength = buffer.len(bytes), uri = "data:application/octet-stream;base64,"
+			.. buffer.tostring(service.EncodingService:Base64Encode(bytes)) }}
+	end
+	return service.HttpService:JSONEncode(doc), details
 end
 
 return {

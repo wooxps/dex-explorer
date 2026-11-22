@@ -12,7 +12,7 @@ local function loadModule(name)
 	control.InitDeps({service=service,Apps=apps,env=env})
 	apps[name] = control.Main()
 end
-for _, name in {"GltfGeometry","GltfTerrain","GltfFacs","GltfTextures","GltfExporter","ExplorerFileActions","LocalizationCsv"} do loadModule(name) end
+for _, name in {"GltfGeometry","GltfTerrain","GltfFacs","GltfTextures","GltfExporter","ObjExporter","ExplorerFileActions","LocalizationCsv"} do loadModule(name) end
 local function base64(s)
 	local characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	local chars = {}
@@ -246,3 +246,22 @@ fs.writeFile(".build/fixture-facs.gltf",facs)
 local neutral = serde.decode("json",apps.GltfExporter.Export({{Obj=part}},{Skinning=false,Textures=false}))
 assert(not neutral.meshes[1].extras and not neutral.skins)
 print("Terrain chunk seams and water, tiled face overlays, permissions, and weighted FACS targets exported.")
+
+-- The same scene is exported as static OBJ, using Roblox studs and
+-- independent vertex, UV and normal indices across mixed primitives.
+local objTargets = {root,{Obj=objects[1],Parent=root},{Obj=cube},{Obj=part}}
+local files, warnings = apps.ObjExporter.Export(objTargets,".build/fixture export.obj")
+assert(not warnings and #files==4)
+local obj, mtl = files[#files].data, files[#files-1].data
+assert(obj:find("mtllib fixture export.mtl",1,true))
+assert(mtl:find("map_Kd fixture export_texture_1.png",1,true))
+assert(mtl:find("map_d -imfchan m",1,true) and mtl:find("map_Kd fixture export_texture_2.png",1,true))
+assert(obj:find("o Printed box",1,true) and obj:find("o Skinned",1,true))
+assert(not obj:find("Bone21",1,true) and not obj:find("OuterCage",1,true))
+for _, file in ipairs(files) do fs.writeFile(file.path,file.data) end
+local terrainFiles, terrainWarnings = apps.ObjExporter.Export({{Obj=terrain}},".build/fixture terrain.obj",{
+	Min=v3(0,0,0),Max=v3(108,8,12),
+})
+assert(not terrainWarnings and #terrainFiles==2 and terrainFiles[2].data:find("o Water",1,true))
+for _, file in ipairs(terrainFiles) do fs.writeFile(file.path,file.data) end
+print("OBJ exports static geometry, textured materials and bounded terrain.")

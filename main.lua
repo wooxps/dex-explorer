@@ -242,6 +242,7 @@ Main = (function()
 		"GltfFacs",
 		"GltfTextures",
 		"GltfExporter",
+		"ObjExporter",
 		"StudioPopup",
 		"ExplorerFileActions",
 		"ReflectionService",

@@ -122,6 +122,38 @@ do
 	fileName:GetPropertyChangedSignal("Text"):Fire()
 	click("Save")
 	assert(called=="My model.rbxm")
+	local previousObj, previousIsfile, previousDelete = Apps.ObjExporter.Export, deps.env.isfile, deps.env.delfile
+	local storage = {["Rig.mtl"]="old material"}
+	deps.env.isfile = function(path) return storage[path] ~= nil end
+	deps.env.readfile = function(path) return storage[path] end
+	deps.env.delfile = function(path) storage[path] = nil end
+	local failWrite = true
+	deps.env.writefile = function(path,data)
+		if path=="Rig.obj" and failWrite then error("Disk write failed",0) end
+		storage[path] = data
+	end
+	local builds = 0
+	Apps.ObjExporter.Export = function(_,path)
+		assert(path=="Rig.obj")
+		builds += 1
+		return {{path="Rig_texture_1.png",data="texture"},{path="Rig.mtl",data="material"},{path=path,data="geometry"}}
+	end
+	Apps.ExplorerFileActions.Open("EXPORT_OBJ",{node})
+	assert(find("Export as Obj") and find("NameBox").Text=="Preview.obj")
+	find("NameBox").Text = "Rig"
+	click("Export")
+	deferred()
+	assert(find("A file already exists. Click Export again to replace the export files.") and builds==1)
+	assert(not storage["Rig_texture_1.png"])
+	click("Export")
+	deferred()
+	assert(find("Disk write failed") and storage["Rig.mtl"]=="old material" and not storage["Rig_texture_1.png"])
+	failWrite = false
+	click("Export")
+	deferred()
+	assert(find("OBJ exported") and storage["Rig.obj"]=="geometry" and storage["Rig.mtl"]=="material" and builds==1)
+	click("Done")
+	Apps.ObjExporter.Export, deps.env.isfile, deps.env.delfile = previousObj, previousIsfile, previousDelete
 	-- A terrain selection exposes an editable, camera-centered region.
 	obj.ClassName = "Terrain"
 	local mockWorkspace, mockVector3 = service.Workspace, Vector3
