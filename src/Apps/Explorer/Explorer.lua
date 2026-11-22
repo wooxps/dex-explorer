@@ -797,7 +797,6 @@ local function CreateModule()
 		scrollH.VisibleSpace = viewport.X
 		scrollH.TotalSpace = Explorer.ViewWidth + Explorer.FreeWidth
 		treeFrame.CanvasSize = UDim2.fromOffset(Explorer.ViewWidth + Explorer.FreeWidth, #tree * Explorer.RowHeight)
-		Explorer.Window.GuiElems.Content.ScrollCorner.Visible = false
 		scrollV:Update()
 		scrollH:Update()
 		renameBox.Size = UDim2.fromOffset(math.max(60, viewport.X - 100), Explorer.RowHeight - 2)
@@ -6718,19 +6717,6 @@ return search]==]
 				},
 			},
 			{
-				11,
-				"Frame",
-				{
-					BackgroundColor3 = Color3.new(0.15686275064945, 0.15686275064945, 0.15686275064945),
-					BorderSizePixel = 0,
-					Name = "ScrollCorner",
-					Parent = { 1 },
-					Position = UDim2.new(1, -16, 1, -16),
-					Size = UDim2.new(0, 16, 0, 16),
-					Visible = false,
-				},
-			},
-			{
 				12,
 				"ScrollingFrame",
 				{
@@ -6799,7 +6785,6 @@ return search]==]
 					or dialog and dialog.Closed == false
 			end,
 		})
-		explorerItems.ScrollCorner.Parent = window.GuiElems.Content
 
 		Explorer.InitRenameBox()
 		Explorer.InitSearch()
