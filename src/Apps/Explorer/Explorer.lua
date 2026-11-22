@@ -175,14 +175,20 @@ local function CreateModule()
 		return not Explorer.SearchInputPending and not Explorer.SearchBusy
 	end
 	local branchViews = {}
+	local defaultNodeSorter
 	local sortedSearchChildren = setmetatable({}, { __mode = "k" })
 	local function invalidateBranch(node, marked)
 		if projection and not marked then
 			projection:Mark(node)
 		end
+		if node then
+			sortedSearchChildren[node] = nil
+			if node.Parent then sortedSearchChildren[node.Parent] = nil end
+		end
+		local customOrder = Explorer.NodeSorter ~= defaultNodeSorter
 		while node do
 			branchViews[node] = nil
-			sortedSearchChildren[node] = nil
+			if customOrder then sortedSearchChildren[node] = nil end
 			node = node.Parent
 		end
 	end
@@ -265,10 +271,13 @@ local function CreateModule()
 		end)
 	end
 	local searchGeneration, searchTreeVersion = 0, 0
-	local function changeSearchTree(removal)
+	local function changeSearchTree(removal, parent)
 		searchTreeVersion += 1
 		if not removal then
-			characterSearch.ContentVersion = (characterSearch.ContentVersion or 0) + 1
+			local scan = characterSearch.ColdScan
+			if scan and (not parent or not scan.Visited or parent == scan.Root or scan.Visited[parent]) then
+				scan.Stale = true
+			end
 		end
 		characterSearch.Layout = nil
 		if characterSearch.Schedule and not characterSearch.Pending then
@@ -348,7 +357,7 @@ local function CreateModule()
 			obj:GetPropertyChangedSignal("Name"):Connect(function()
 				local node = nodes[obj]
 				if node then
-					changeSearchTree()
+					changeSearchTree(false, node.Parent)
 					setNameWidth(node, nil)
 					markSearchDirty(node, false)
 					if node.Parent then
@@ -392,7 +401,7 @@ local function CreateModule()
 			isNil = true
 		end
 
-		changeSearchTree()
+		changeSearchTree(false, par)
 		local newNode = { Obj = root, Parent = par }
 		nodes[root] = newNode
 		indexEvidenceCandidate(root, newNode)
@@ -886,7 +895,7 @@ local function CreateModule()
 	Explorer.NodeSorter = function(a, b)
 		return compareNodes(a, b, sortingNames)
 	end
-	local defaultNodeSorter = Explorer.NodeSorter
+	defaultNodeSorter = Explorer.NodeSorter
 	local function coldName(node)
 		local name = node.SearchRawName
 		if name == nil then
@@ -1184,13 +1193,15 @@ local function CreateModule()
 			return parent
 		end
 		local cached = sortedSearchChildren[parent]
-		if cached and cached.Sorter == Explorer.NodeSorter then
+		if cached and cached.Items and cached.Sorter == Explorer.NodeSorter then
 			return cached.Items
 		end
-		local version, sorter = searchTreeVersion, Explorer.NodeSorter
+		local version = searchTreeVersion
+		local building = { Sorter = Explorer.NodeSorter }
+		sortedSearchChildren[parent] = building
 		local function remember(items)
-			if searchTreeVersion == version and Explorer.NodeSorter == sorter then
-				sortedSearchChildren[parent] = { Sorter = sorter, Items = items }
+			if sortedSearchChildren[parent] == building and (building.Sorter == defaultNodeSorter or searchTreeVersion == version) then
+				building.Items = items
 			end
 			return items
 		end
@@ -1660,6 +1671,9 @@ local function CreateModule()
 		for _, item in ipairs(state) do
 			local node = nodes[item.Obj]
 			if node then
+				if node.ManualOrder ~= item.Order and node.Parent then
+					sortedSearchChildren[node.Parent] = nil
+				end
 				changed = changed or node.ManualOrder ~= item.Order
 				node.ManualOrder = item.Order
 				if node.Parent then
@@ -1718,6 +1732,7 @@ local function CreateModule()
 				for i, node in ipairs(moved) do
 					table.insert(parent, math.min(index + i - 1, #parent + 1), node)
 				end
+				sortedSearchChildren[parent] = nil
 				for i, node in ipairs(parent) do
 					node.ManualOrder = i
 				end
@@ -2700,7 +2715,7 @@ local function CreateModule()
 			then
 				Explorer.PerformRefresh()
 			elseif prop == "Name" and nodes[obj] then
-				changeSearchTree()
+				changeSearchTree(false, nodes[obj].Parent)
 				setNameWidth(nodes[obj], nil)
 				markSearchDirty(nodes[obj], false)
 				if nodes[obj].Parent then
@@ -5097,18 +5112,18 @@ return search]==]
 			return
 		end
 		characterSearch.Pending = true
-		local version = searchTreeVersion
 		task.delay(0.5, function()
 			if Main.Alive == false or not Explorer.Active then
 				characterSearch.Pending = false
 				return
 			end
-			if version ~= searchTreeVersion or not canRefreshDisplayedSearch() or searchEngine and searchEngine.Busy then
+			if not canRefreshDisplayedSearch() or searchEngine and searchEngine.Busy then
 				characterSearch.Pending = false
 				characterSearch.Schedule()
 				return
 			end
 
+			local version = searchTreeVersion
 			local nilRoot = getSearchNilRoot()
 			local sorter = Explorer.NodeSorter
 			local roots = { nodes[game], nilRoot }
@@ -5535,18 +5550,20 @@ return search]==]
 			for _ = 1, 2 do
 				local version = searchTreeVersion
 				local budget = 0.006
-				local contentVersion = characterSearch.ContentVersion
+				local visited = if not layout and (not sortingEnabled or Explorer.NodeSorter == defaultNodeSorter) then {} else nil
+				local scan = { Root = roots[1], Visited = visited }
+				characterSearch.ColdScan = scan
 				local removed = {}
 				characterSearch.RemovedNodes = removed
 				local deadline = os.clock() + budget
 				local function checkpoint()
-					if not current() or characterSearch.ContentVersion ~= contentVersion then
+					if not current() or scan.Stale then
 						error(changed, 0)
 					end
 					local now = os.clock()
 					if now >= deadline then
 						local waited = task.wait()
-						if not current() or characterSearch.ContentVersion ~= contentVersion then
+						if not current() or scan.Stale then
 							error(changed, 0)
 						end
 						budget = if waited and waited > 1 / 60 then 0.004 else math.min(budget + 0.002, 0.010)
@@ -5555,7 +5572,8 @@ return search]==]
 				end
 				local context = characterSearch.Context
 				context.Estimate = Explorer.InitialObjectCount
-				local ok, view = pcall(Apps.SearchResults.CreateCold, roots, terms, context, checkpoint, layout)
+				local ok, view = pcall(Apps.SearchResults.CreateCold, roots, terms, context, checkpoint, layout, visited)
+				if characterSearch.ColdScan == scan then characterSearch.ColdScan = nil end
 				if characterSearch.RemovedNodes == removed then
 					characterSearch.RemovedNodes = nil
 				end
@@ -5565,11 +5583,11 @@ return search]==]
 					end
 					return false
 				end
-				if ok and characterSearch.ContentVersion == contentVersion then
+				if ok and not scan.Stale then
 					for node in pairs(removed) do
 						view:Remove(node)
 					end
-					view.TreeVersion = version
+					view.TreeVersion = if next(removed) then version else searchTreeVersion
 					characterSearch.UnstableAt = nil
 					engine.LastResult, engine.LastTerms = view, terms
 					return publishSearchView(view, query, current, started)

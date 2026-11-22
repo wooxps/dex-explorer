@@ -193,7 +193,11 @@ local function CreateModule()
 							local childCopy = copyInstance(child)
 							if child:IsA("Bone") then
 								local binding = { Source = child, Copy = childCopy }
+								childCopy.CFrame = child.CFrame
 								bones[#bones + 1] = binding
+								connections[#connections + 1] = child:GetPropertyChangedSignal("CFrame"):Connect(function()
+									childCopy.CFrame = child.CFrame
+								end)
 							else
 								connections[#connections + 1] = child.Changed:Connect(function(property)
 									if property == "Parent" or property == "Name" or property == "Archivable" then
@@ -369,12 +373,8 @@ local function CreateModule()
 				table.clear(movedPoses)
 				table.clear(movedEntries)
 			end
-			for source, binding in pairs(self.Bones) do
-				local pose, transform = source.CFrame, source.Transform
-				if binding.LastPose ~= pose then
-					binding.Copy.CFrame = pose
-					binding.LastPose = pose
-				end
+			for source, binding in self.Bones do
+				local transform = source.Transform
 				if binding.LastTransform ~= transform then
 					binding.Copy.Transform = transform
 					binding.LastTransform = transform

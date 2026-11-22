@@ -160,6 +160,8 @@ do
 		b.CFrame == hidden.CFrame and mask.Bones[bone].Copy.Transform == bone.Transform,
 		"physics and animation poses follow native updates without Changed"
 	)
+	bone.CFrame = { Id = 74 }
+	assert(mask.Bones[bone].Copy.CFrame == bone.CFrame)
 	local settledWrites = poseWrites
 	for _ = 1, 120 do
 		mask:Step()

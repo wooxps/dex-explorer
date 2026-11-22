@@ -212,6 +212,65 @@ remove()
 remove()
 Properties.ShowExplorerProps()
 for _, prop in props do assert(not prop.PluginText) end
+do
+ local savedNew, savedCleanup, savedWait = Instance.new, Main.AddCleanup, task.wait
+ local cleanup, immediate
+ Main.AddCleanup=function(fn) cleanup=fn end
+ task.wait=function() end
+ local count=0
+ local function event()
+  local callbacks={}
+  local function connect(_,fn,once)
+   local c={Connected=true}
+   function c:Disconnect() self.Connected=false end
+   table.insert(callbacks,{c,fn,once})
+   return c
+  end
+  return {Connect=connect,Once=function(e,fn)return connect(e,fn,true)end,
+   fire=function() if immediate then for _,v in callbacks do
+    if v[1].Connected then if v[3] then v[1]:Disconnect() end v[2]() end
+   end end end}
+ end
+ Instance.new=function()
+  local e=event()
+  return {AttributeChanged=e,SetAttribute=e.fire,Destroy=function()end}
+ end
+ immediate=true
+ local parent={IsDescendantOf=function()return true end}
+ local selection, members, nodes={}, {}, {}
+ local tagOwners={}
+ for i=1,600 do
+  local obj={Attributes={},Tags={},ClassName="Part",Parent=parent,AttributeChanged=event(),
+   GetAttributes=function(self)return self.Attributes end,
+   HasTag=function(self,t)return table.find(self.Tags,t)~=nil end}
+  local n={Class="Part",Obj=obj}
+  members[n],nodes[obj],selection[i]=true,n,n
+ end
+ Explorer.Selection={List=selection,Map=members}
+ Explorer.GetNodes=function()return nodes end
+ service.CollectionService.GetAllTags=function()return {"Nearby"} end
+ service.CollectionService.GetTagged=function()return tagOwners end
+ local obj=selection[400].Obj
+ obj.Tags={"Nearby"} tagOwners[1]=obj
+ game.GetAttributes=function(o)count+=1 return o.Attributes end
+ Properties.ShowExplorerProps() flushTasks()
+ count=0
+ Properties.ShowExplorerProps()
+ assert(count==0,"held selection re-read cached empty attributes")
+ obj.Attributes.Level=3 obj.AttributeChanged.fire()
+ local detached=selection[599].Obj detached.Parent=nil detached.Tags={"Detached"}
+ Properties.ShowExplorerProps()
+ local names={}
+ for _,p in props do names[p.TagName or p.Name]=true end
+ assert(names.ATTR_Level and names.Detached and names.Nearby)
+ immediate=false
+ local other=selection[35].Obj other.Attributes.Late=true
+ Properties.ShowExplorerProps()
+ local found=false for _,p in props do if p.Name=="ATTR_Late" then found=true end end
+ assert(found,"a deferred attribute signal hid a same-turn edit")
+ cleanup() flushTasks()
+ Instance.new,Main.AddCleanup,task.wait=savedNew,savedCleanup,savedWait
+end
 end
 """
 program += "\ndo\nlocal Properties = {}\nlocal Colors = {Grid=Color3.fromRGB(32,34,39), Surface=Color3.fromRGB(25,26,31)}\n"

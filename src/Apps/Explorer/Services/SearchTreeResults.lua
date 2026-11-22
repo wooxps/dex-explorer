@@ -84,6 +84,53 @@ local function Main()
 		end
 		return nil
 	end
+	local function sortUniqueNames(children, entries, checkpoint): boolean
+		local first = entries[children[1].Id]
+		if first.Manual then return false end
+		local names, byName = table.create(#children), {}
+		for i, child in children do
+			local entry = entries[child.Id]
+			if entry.Manual or entry.Order ~= first.Order or byName[entry.Name] then return false end
+			names[i], byName[entry.Name] = entry.Name, child
+			if i % 256 == 0 then checkpoint() end
+		end
+		local pageSize = 512
+		local page = table.create(pageSize)
+		for firstIndex = 1, #names, pageSize do
+			local last = math.min(firstIndex + pageSize - 1, #names)
+			table.clear(page)
+			table.move(names, firstIndex, last, 1, page)
+			table.sort(page)
+			table.move(page, 1, #page, firstIndex, names)
+			checkpoint()
+		end
+		local width = pageSize
+		local scratch = if width < #names then table.create(#names) else nil
+		while width < #names do
+			for start = 1, #names, width * 2 do
+				local middle = math.min(start + width, #names + 1)
+				local last = math.min(start + width * 2 - 1, #names)
+				local left, right = start, middle
+				for i = start, last do
+					if left < middle and (right > last or names[left] < names[right]) then
+						scratch[i] = names[left]
+						left += 1
+					else
+						scratch[i] = names[right]
+						right += 1
+					end
+					if i % 512 == 0 then checkpoint() end
+				end
+			end
+			names, scratch = scratch, names
+			width *= 2
+		end
+		for i, name in names do
+			children[i] = byName[name]
+			if i % 512 == 0 then checkpoint() end
+		end
+		return true
+	end
 	function Tree.Create(state, members, context, checkpoint, previous, changes)
 		local old = previous and previous.State
 		if old and old.Postings ~= state.Postings then
@@ -248,16 +295,13 @@ local function Main()
 							end
 						end
 					else
-						local ids = {}
+						local ids = edits
 						if previousItem then
+							ids = table.clone(edits)
 							for _, item in ipairs(previousItem.Children) do
 								ids[item.Id] = true
 								tick()
 							end
-						end
-						for child in pairs(edits) do
-							ids[child] = true
-							tick()
 						end
 						for child in pairs(ids) do
 							local value = state.Entries[child]
@@ -283,7 +327,7 @@ local function Main()
 							end
 							tick()
 						end
-						if not ordered then
+						if not ordered and not (#children >= 256 and sortUniqueNames(children, state.Entries, checkpoint)) then
 							for first = 1, #children, 128 do
 								local page = {}
 								table.move(children, first, math.min(first + 127, #children), 1, page)

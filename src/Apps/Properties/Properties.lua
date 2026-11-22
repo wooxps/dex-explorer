@@ -434,6 +434,71 @@ local function CreateModule()
 		end
 	end
 
+	local emptyAttributes = {}
+	local tagWitnesses = setmetatable({}, { __mode = "v" })
+	local attributeJob, signalProbe, probeValue, probeSeen
+	local function clearAttributeCache()
+		attributeJob = nil
+		for node, connection in emptyAttributes do
+			connection:Disconnect()
+			emptyAttributes[node] = nil
+		end
+	end
+	local function prepareAttributeCache(list, enabled)
+		if not enabled or #list < 512 or not Explorer.Selection.Map then
+			if next(emptyAttributes) or attributeJob then clearAttributeCache() end
+			return
+		end
+		if not signalProbe then
+			signalProbe = Instance.new("Folder")
+			signalProbe.AttributeChanged:Connect(function() probeSeen = probeValue end)
+			Main.AddCleanup(function()
+				clearAttributeCache()
+				signalProbe:Destroy()
+			end)
+		end
+		probeValue = not probeValue
+		probeSeen = nil
+		signalProbe:SetAttribute("Immediate", probeValue)
+		if probeSeen ~= probeValue then
+			clearAttributeCache()
+			return
+		end
+		local job = {}
+		attributeJob = job
+		task.defer(function()
+			if attributeJob ~= job then return end
+			local members = Explorer.Selection.Map
+			local deadline = os.clock() + 0.001
+			local function current(i)
+				if i % 64 == 0 and os.clock() >= deadline then
+					task.wait()
+					deadline = os.clock() + 0.001
+				end
+				return attributeJob == job
+			end
+			local count = 0
+			for node, connection in emptyAttributes do
+				if not members[node] then
+					connection:Disconnect()
+					emptyAttributes[node] = nil
+				end
+				count += 1
+				if not current(count) then return end
+			end
+			for i, node in job do
+				if not current(i) then return end
+				if not emptyAttributes[node] and members[node] and not next(node.Obj:GetAttributes()) then
+					emptyAttributes[node] = node.Obj.AttributeChanged:Once(function()
+						emptyAttributes[node] = nil
+					end)
+				end
+			end
+			attributeJob = nil
+		end)
+		return emptyAttributes, job
+	end
+
 	Properties.ShowExplorerProps = function()
 		if Properties.CancelAttributeRename then
 			Properties.CancelAttributeRename()
@@ -447,6 +512,7 @@ local function CreateModule()
 			end
 		end
 		if Explorer.HasInferredSelection and Explorer.HasInferredSelection() then
+			clearAttributeCache()
 			table.clear(props)
 			local objects = {}
 			for _, node in ipairs(sList) do
@@ -492,10 +558,39 @@ local function CreateModule()
 		local getAttributes = game.GetAttributes
 		local maxAttrs = Settings.Properties.MaxAttributes
 		local showingAttrs = Settings.Properties.ShowAttributes
+		local noAttributes, warming = prepareAttributeCache(sList, showingAttrs and maxAttrs > 0)
 		local foundAttrs = {}
 		local collection = service.CollectionService
 		local getTags = collection.GetTags
 		local foundTags, tagNames = {}, {}
+		local selected = Explorer.Selection.Map
+		local indexedTags = #sList >= 512 and selected and Explorer.GetNodes and collection:GetAllTags()
+		local indexedNodes
+		if indexedTags and #indexedTags <= math.min(64, #sList // 32) then
+			indexedNodes = Explorer.GetNodes()
+			local previousWitnesses = tagWitnesses
+			tagWitnesses = setmetatable({}, { __mode = "v" })
+			for _, tag in indexedTags do
+				local witness = previousWitnesses[tag]
+				if witness and selected[indexedNodes[witness]] and witness:HasTag(tag) then
+					tagWitnesses[tag] = witness
+					foundTags[tag] = true
+					tagNames[#tagNames + 1] = tag
+					continue
+				end
+				for _, obj in collection:GetTagged(tag) do
+					if selected[indexedNodes[obj]] then
+						tagWitnesses[tag] = obj
+						foundTags[tag] = true
+						tagNames[#tagNames + 1] = tag
+						break
+					end
+				end
+			end
+		else
+			indexedTags = nil
+		end
+		local lastParent, parentInGame
 		local attrCount = 0
 		local typeof = typeof
 		local typeNameConvert = Properties.TypeNameConvert
@@ -551,15 +646,26 @@ local function CreateModule()
 				typeCounts[class] += 1
 			end
 
-			for _, tag in getTags(collection, obj) do
-				if not foundTags[tag] then
-					foundTags[tag] = true
-					tagNames[#tagNames + 1] = tag
+			if indexedTags then
+				local parent = obj.Parent
+				if parent ~= lastParent then
+					lastParent = parent
+					parentInGame = parent and (parent == game or parent:IsDescendantOf(game))
+				end
+			end
+			if not parentInGame or indexedNodes[obj] ~= node then
+				for _, tag in getTags(collection, obj) do
+					if not foundTags[tag] then
+						foundTags[tag] = true
+						tagNames[#tagNames + 1] = tag
+					end
 				end
 			end
 
-			if showingAttrs and attrCount < maxAttrs then
+			local empty = noAttributes and noAttributes[node]
+			if showingAttrs and attrCount < maxAttrs and not (empty and (parentInGame or empty.Connected)) then
 				local attrs = getAttributes(obj)
+				if warming and not next(attrs) then warming[#warming + 1] = node end
 				for name, val in pairs(attrs) do
 					local typ = typeof(val)
 					if not foundAttrs[name] then

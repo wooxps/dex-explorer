@@ -86,13 +86,16 @@ local function CreateModule()
 		end
 		return nil
 	end
-	local function extents(roots, first, last, toLocal)
+	local function extents(roots, first, last, toLocal, partEntries)
 		local minX, minY, minZ = math.huge, math.huge, math.huge
 		local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
 		for i = first, last do
 			local root = roots[i]
 			local cf, size
-			if root:IsA("Model") then
+			local entry = partEntries and partEntries[i]
+			if entry then
+				cf, size = entry.Pose, root.Size
+			elseif root:IsA("Model") then
 				cf, size = root:GetBoundingBox()
 			else
 				cf, size = root.CFrame, root.Size
@@ -102,9 +105,12 @@ local function CreateModule()
 			end
 			local x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz = cf:GetComponents()
 			local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
-			local ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
-			local ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
-			local ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
+			local ex, ey, ez = hx, hy, hz
+			if xx ~= 1 or yy ~= 1 or zz ~= 1 or xy ~= 0 or xz ~= 0 or yx ~= 0 or yz ~= 0 or zx ~= 0 or zy ~= 0 then
+				ex = math.abs(xx) * hx + math.abs(xy) * hy + math.abs(xz) * hz
+				ey = math.abs(yx) * hx + math.abs(yy) * hy + math.abs(yz) * hz
+				ez = math.abs(zx) * hx + math.abs(zy) * hy + math.abs(zz) * hz
+			end
 			minX, minY, minZ = math.min(minX, x - ex), math.min(minY, y - ey), math.min(minZ, z - ez)
 			maxX, maxY, maxZ = math.max(maxX, x + ex), math.max(maxY, y + ey), math.max(maxZ, z + ez)
 		end
@@ -132,12 +138,16 @@ local function CreateModule()
 	function Transform.CreateSelectionPivot(roots, records, groups)
 		local membership, modelOf = {}, {}
 		local moving, movingSlots = {}, {}
+		local rootSlots, partEntries = {}, {}
 		local changed = true
 		local tracker = {}
 		local function build(first, last, parent)
 			local block = { First = first, Last = last, Parent = parent, Dirty = true }
 			if last - first < 4 then
-				for i = first, last do membership[roots[i]] = block end
+				for i = first, last do
+					membership[roots[i]] = block
+					rootSlots[roots[i]] = i
+				end
 			else
 				local step = math.ceil((last - first + 1) / 8)
 				for i = first, last, step do
@@ -163,12 +173,16 @@ local function CreateModule()
 			if enabled and not slot then
 				moving[#moving + 1] = { Part = part, Pose = part.CFrame, Block = membership[part] }
 				movingSlots[part] = #moving
+				local index = rootSlots[part]
+				if index then partEntries[index] = moving[#moving] end
 			elseif slot and not enabled then
 				local last = #moving
 				local tail = moving[last]
 				moving[slot] = tail
 				movingSlots[tail.Part] = slot
 				moving[last], movingSlots[part] = nil, nil
+				local index = rootSlots[part]
+				if index then partEntries[index] = nil end
 			end
 		end
 		function tracker:AddPart(root, part)
@@ -211,7 +225,7 @@ local function CreateModule()
 			if not rotated and not block.Dirty then return end
 			if #block == 0 then
 				block.X, block.Y, block.Z, block.MaxX, block.MaxY, block.MaxZ =
-					extents(roots, block.First, block.Last, toLocal)
+					extents(roots, block.First, block.Last, toLocal, partEntries)
 			else
 				local x, y, z = math.huge, math.huge, math.huge
 				local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
@@ -240,7 +254,7 @@ local function CreateModule()
 			local orientation = selectionOrientation(roots, space)
 			local toLocal = orientation and orientation:Inverse()
 			if moved >= #roots / 4 then
-				top.X, top.Y, top.Z, top.MaxX, top.MaxY, top.MaxZ = extents(roots, 1, #roots, toLocal)
+				top.X, top.Y, top.Z, top.MaxX, top.MaxY, top.MaxZ = extents(roots, 1, #roots, toLocal, partEntries)
 			else
 				measure(top, toLocal, orientation ~= previousOrientation or rebuildTree)
 			end

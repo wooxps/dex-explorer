@@ -622,7 +622,7 @@ local function Main()
 		return literalView(layout, terms, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth, widthRevision)
 	end
 
-	function Results.CreateCold(roots, terms, context, checkpoint, layout)
+	function Results.CreateCold(roots, terms, context, checkpoint, layout, visited)
 		local widthRevision = context.WidthRevision and context.WidthRevision()
 		if context.VisibleOnly and (not layout or not layout.RootVisibility or not Results.MatchesVisibility(layout, context.Visible)) then
 			layout = nil
@@ -635,7 +635,7 @@ local function Main()
 		local parents = layout and layout.Parents or table.create(estimate)
 		local widths = layout and layout.Widths or {}
 		local fullPositions = layout and layout.Positions
-		local positions, top = fullPositions or {}, {}
+		local positions, top = fullPositions or visited or {}, {}
 		local matchWords, contextWords = {}, {}
 		local rootVisibility = context.VisibleOnly and {} or nil
 		local width, maxDepth = 0, 1
@@ -684,6 +684,7 @@ local function Main()
 				nodeCount += 1
 				if nodeCount % 128 == 0 then checkpoint() end
 				local position = nodeCount
+				if visited then visited[node] = position end
 				local name = readName(node)
 				nodes[position], names[position] = node, name
 				depths[position], parents[position] = depth, parent
@@ -692,7 +693,7 @@ local function Main()
 				ends[position] = nodeCount
 				if hit or childMatch then
 					hasMatches = true
-					positions[node] = position
+					if not visited then positions[node] = position end
 					local word = (position - 1) // 32
 					local rowBit = bit32.lshift(1, (position - 1) % 32)
 					local words = if hit then matchWords else contextWords
@@ -785,6 +786,7 @@ local function Main()
 			Widths = widths,
 			NilRoot = roots[2],
 			RootVisibility = rootVisibility,
+			Positions = visited,
 		}
 		return literalView(layout, terms, context, checkpoint, positions, top, allMatches, allContext, width, maxDepth, widthRevision)
 	end

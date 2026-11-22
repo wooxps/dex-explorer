@@ -489,6 +489,27 @@ do
 	assert(single:IndexOf(nested[129]) and single:HasChildren(outer) and not single:IndexOf(nested[130]))
 	assert(not first:Contains(nested[129]), "promoting a cold layout changed the original view")
 end
+do
+	local root = {}
+	local left = add(root, "First")
+	local right = add(root, "Second")
+	for i = 1, 1024 do add(left, "Row" .. i) end
+	local positions = {}
+	local added
+	local function checkpoint()
+		if not added and positions[left] and not positions[right] then
+			added = add(right, "New hit")
+		end
+	end
+	local context = {
+		Name = function(node) return node.Obj.Name end,
+		Children = function(node) return node end,
+		Visible = function() return true end,
+	}
+	local view = Apps.SearchResults.CreateCold({ root }, { "hit" }, context, checkpoint, nil, positions)
+	assert(added and #view.MatchList == 1 and view.MatchList[1] == added and view:Contains(right))
+	assert(positions[left] and not view:Contains(left) and view:NameOf(left) == nil)
+end
 local a = add(service, "Alpha")
 local b = add(service, "Beta")
 for i = 1, 70000 do

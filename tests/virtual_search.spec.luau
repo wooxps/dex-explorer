@@ -474,7 +474,7 @@ do
 	Explorer.ClearSearch()
 	local createCold = Apps.SearchResults.CreateCold
 	local scans, removed = 0, false
-	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, previousLayout)
+	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, previousLayout, visited)
 		scans += 1
 		local name = context.Name
 		local first = true
@@ -486,7 +486,7 @@ do
 			end
 			return name(node)
 		end
-		return createCold(roots, terms, context, checkpoint, previousLayout)
+		return createCold(roots, terms, context, checkpoint, previousLayout, visited)
 	end
 	local deletedNode = nodes[children[2]]
 	task.wait = function()
@@ -530,28 +530,40 @@ do
 	Explorer.SyncHistoryObject(host)
 	Explorer.SyncHistoryObject(outside)
 	local original = Apps.SearchResults.CreateCold
-	local scans, changed = 0, false
-	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, layout)
-		scans += 1
-		local name, first = context.Name, true
-		context.Name = function(node)
-			if first then
-				first = false
-				local deadline = os.clock() + .008
-				repeat until os.clock() >= deadline
+	local entered = false
+	local fallbacks = Explorer.SearchFallbacks
+	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, layout, visited)
+		local trial = table.clone(context)
+		trial.Children = function(node, check)
+			if not entered and node == roots[1] then
+				entered = true
+				children[1].Name = "EarlyBranchEdit"
+				game.ItemChanged:Fire(children[1], "Name")
 			end
-			return name(node)
+			return context.Children(node, check)
 		end
-		return original(roots, terms, context, checkpoint, layout)
+		return original(roots, terms, trial, checkpoint, layout, visited)
 	end
-	task.wait = function()
-		if not changed then
-			changed = true
-			children[1].Name = "FallbackNeedleRenamed"
-			game.ItemChanged:Fire(children[1], "Name")
+	assert(Explorer.DoSearch("earlybranchedit") and entered and #Explorer.MatchList == 1)
+	assert(Explorer.Matches[nodes[children[1]]] and Explorer.SearchFallbacks == fallbacks)
+	Explorer.ClearSearch()
+	children[1].Name = "FallbackNeedle001"
+	game.ItemChanged:Fire(children[1], "Name")
+	local scans, changed = 0, false
+	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, layout, visited)
+		scans += 1
+		local trial = table.clone(context)
+		trial.Name = function(node)
+			if not changed and node == nodes[host] then
+				changed = true
+				children[1].Name = "FallbackNeedleRenamed"
+				game.ItemChanged:Fire(children[1], "Name")
+			end
+			return context.Name(node)
 		end
-		return 0
+		return original(roots, terms, trial, checkpoint, layout, visited)
 	end
+	task.wait = function() return 0 end
 	assert(Explorer.DoSearch("fallbackneedle") and changed and scans == 1, "a changing game does not repeat the failed cold scan")
 	assert(#Explorer.MatchList == 101, "fallback retains every matching object")
 	assert(Explorer.HasChildren(nodes[host]), "fallback parent arrows remain available")
