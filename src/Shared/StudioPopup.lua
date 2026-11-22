@@ -32,10 +32,10 @@ function Popup.Open(title, height, compact)
 		return make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
 			BorderSizePixel=0,BackgroundColor3=color})
 	end
-	local backdrop = make("TextButton",gui,{Name="Modal",Modal=true,Text="",AutoButtonColor=false,
+	local layout = make("Frame",gui,{Name="PopupLayout",Active=false,
 		Size=UDim2.fromScale(1,1),BackgroundTransparency=1})
 	local panelWidth = if compact then 252 else 520
-	local holder = frame(backdrop,0,0,panelWidth,height,rgb(39,41,48))
+	local holder = frame(layout,0,0,panelWidth,height,rgb(39,41,48))
 	holder.BackgroundTransparency = 1
 	for i = 4, 1, -1 do
 		local shadow = frame(holder,-i,2-i,panelWidth+2*i,height+2*i,Color3.new(0,0,0))
@@ -53,10 +53,10 @@ function Popup.Open(title, height, compact)
 		ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
 	local scale = make("UIScale", holder, {})
 	local function resize()
-		local size = backdrop.AbsoluteSize
+		local size = layout.AbsoluteSize
 		scale.Scale = math.clamp(math.min((size.X-12)/panelWidth,(size.Y-12)/height),.2,1)
 	end
-	backdrop:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
+	layout:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
 	local white, pale = rgb(247,247,248), rgb(213,215,222)
 	local function label(parent, text, x,y,w,h,size,bold,color)
 		return make("TextLabel",parent,{Text=text, Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
