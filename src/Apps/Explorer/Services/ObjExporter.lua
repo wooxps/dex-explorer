@@ -28,9 +28,7 @@ local function safeName(name)
 end
 
 function Exporter.Export(targets, path, terrainBounds, cancelled)
-	local function checkCancelled()
-		if cancelled and cancelled() then error("Export cancelled",0) end
-	end
+	local checkCancelled = Apps.GltfGeometry.ExportCheckpoint(cancelled)
 	local scene, data, details = Apps.GltfExporter.Build(targets,{
 		Skinning=false, Attachments=false, Cages=false, ClassicMaterials=true, TerrainBounds=terrainBounds,
 	},cancelled)
@@ -40,8 +38,13 @@ function Exporter.Export(targets, path, terrainBounds, cancelled)
 	local stem = name:sub(1,-5)
 	local model = {"# Dex Explorer", "mtllib " .. stem .. ".mtl"}
 	local materials, files, imageNames = {}, {}, {}
-	local writtenGroups = {}
+	local writtenGroups, nextSuffix = {}, {}
 	local vertices, texcoords, normals, count = 0,0,0,0
+	local meshUses, transformedVertices = {}, {}
+	local cachedVertices = 0
+	for _, node in ipairs(scene.nodes) do
+		if node.mesh ~= nil then meshUses[node.mesh] = (meshUses[node.mesh] or 0)+1 end
+	end
 
 	local function viewOf(index)
 		return scene.bufferViews[index+1]
@@ -86,7 +89,7 @@ function Exporter.Export(targets, path, terrainBounds, cancelled)
 		return Vector3.new(buffer.readf32(data,offset),buffer.readf32(data,offset+4),buffer.readf32(data,offset+8))
 	end
 
-	local function writePrimitive(primitive, frame, objectName)
+	local function writePrimitive(primitive, frame, objectName, reusable)
 		count += 1
 		table.insert(model,"usemtl " .. materialFor(primitive.material,objectName))
 		local attributes = primitive.attributes
@@ -97,24 +100,48 @@ function Exporter.Export(targets, path, terrainBounds, cancelled)
 		local nx,ny,nz = frame.y:Cross(frame.z), frame.z:Cross(frame.x), frame.x:Cross(frame.y)
 		local sign = if frame.x:Dot(nx) < 0 then -1 else 1
 		local normalFrame = {x=nx*sign,y=ny*sign,z=nz*sign}
+		local verticesForFrame, populate
+		if reusable and vertexCount <= 2048 then
+			local byFrame = transformedVertices[primitive]
+			local key = string.pack("<fffffffff",frame.x.X,frame.x.Y,frame.x.Z,
+				frame.y.X,frame.y.Y,frame.y.Z,frame.z.X,frame.z.Y,frame.z.Z)
+			verticesForFrame = byFrame and byFrame[key]
+			if not verticesForFrame and cachedVertices+vertexCount <= 32768 then
+				byFrame = byFrame or {}
+				transformedVertices[primitive] = byFrame
+				verticesForFrame = {positions=table.create(vertexCount),attributes=table.create(vertexCount)}
+				byFrame[key] = verticesForFrame
+				cachedVertices += vertexCount
+				populate = true
+			end
+		end
 		for i = 0,vertexCount-1 do
-			local p = (frame.position+direction(frame,vectorAt(position+i*12)))/metersPerStud
-			if color then
-				local c = vectorAt(color+i*16)
-				table.insert(model,string.format("v %.9g %.9g %.9g %.9g %.9g %.9g",p.X,p.Y,p.Z,c.X,c.Y,c.Z))
+			local relative, attributesText
+			if verticesForFrame and not populate then
+				relative, attributesText = verticesForFrame.positions[i+1], verticesForFrame.attributes[i+1]
 			else
-				table.insert(model,string.format("v %.9g %.9g %.9g",p.X,p.Y,p.Z))
+				relative = direction(frame,vectorAt(position+i*12))
+				attributesText = ""
+				if color then
+					local c = vectorAt(color+i*16)
+					attributesText = string.format(" %.9g %.9g %.9g",c.X,c.Y,c.Z)
+				end
+				if uv then
+					local offset = uv+i*8
+					attributesText ..= string.format("\nvt %.9g %.9g",buffer.readf32(data,offset),1-buffer.readf32(data,offset+4))
+				end
+				if normal then
+					local n = direction(normalFrame,vectorAt(normal+i*12))
+					n = if n.Magnitude > 0 then n.Unit else Vector3.yAxis
+					attributesText ..= string.format("\nvn %.9g %.9g %.9g",n.X,n.Y,n.Z)
+				end
+				if populate then
+					verticesForFrame.positions[i+1], verticesForFrame.attributes[i+1] = relative, attributesText
+				end
 			end
-			if uv then
-				local offset = uv+i*8
-				table.insert(model,string.format("vt %.9g %.9g",buffer.readf32(data,offset),1-buffer.readf32(data,offset+4)))
-			end
-			if normal then
-				local n = direction(normalFrame,vectorAt(normal+i*12))
-				n = if n.Magnitude > 0 then n.Unit else Vector3.yAxis
-				table.insert(model,string.format("vn %.9g %.9g %.9g",n.X,n.Y,n.Z))
-			end
-			if i % 8192 == 8191 then task.wait(); checkCancelled() end
+			local p = (frame.position+relative)/metersPerStud
+			table.insert(model,string.format("v %.9g %.9g %.9g",p.X,p.Y,p.Z) .. attributesText)
+			if i % 512 == 511 then checkCancelled() end
 		end
 
 		local readIndex, index, stride, faceCorners
@@ -126,18 +153,26 @@ function Exporter.Export(targets, path, terrainBounds, cancelled)
 		else
 			faceCorners = vertexCount
 		end
-		local function corner(i)
-			local v = if readIndex then readIndex(data,index+i*stride)+1 else i+1
-			if uv and normal then return string.format("%d/%d/%d",vertices+v,texcoords+v,normals+v) end
-			if normal then return string.format("%d//%d",vertices+v,normals+v) end
-			if uv then return string.format("%d/%d",vertices+v,texcoords+v) end
-			return tostring(vertices+v)
+		local function vertexAt(i)
+			return if readIndex then readIndex(data,index+i*stride)+1 else i+1
 		end
+		local faceFormat = if uv and normal then "f %d/%d/%d %d/%d/%d %d/%d/%d"
+			elseif normal then "f %d//%d %d//%d %d//%d" elseif uv then "f %d/%d %d/%d %d/%d" else "f %d %d %d"
+		local secondStream = if normal then normals else texcoords
 		for i = 0,faceCorners-1,3 do
-			local b,c = i+1,i+2
+			local a,b,c = vertexAt(i),vertexAt(i+1),vertexAt(i+2)
 			if sign < 0 then b,c = c,b end
-			table.insert(model,"f " .. corner(i) .. " " .. corner(b) .. " " .. corner(c))
-			if i % 24576 == 24573 then task.wait(); checkCancelled() end
+			local line
+			if uv and normal then
+				line = string.format(faceFormat,vertices+a,texcoords+a,normals+a,
+					vertices+b,texcoords+b,normals+b,vertices+c,texcoords+c,normals+c)
+			elseif uv or normal then
+				line = string.format(faceFormat,vertices+a,secondStream+a,vertices+b,secondStream+b,vertices+c,secondStream+c)
+			else
+				line = string.format(faceFormat,vertices+a,vertices+b,vertices+c)
+			end
+			table.insert(model,line)
+			if i % 3072 == 3069 then checkCancelled() end
 		end
 		vertices += vertexCount
 		if uv then texcoords += vertexCount end
@@ -152,11 +187,19 @@ function Exporter.Export(targets, path, terrainBounds, cancelled)
 			local mesh = scene.meshes[node.mesh+1]
 			local label = safeName((node.name or mesh.name or "Object"):gsub(" geometry$",""))
 			local base = if label == "" then "Object" else label
-			local unique, suffix = base, 1
-			while writtenGroups[unique] do suffix += 1; unique = base .. "_" .. suffix end
+			local unique = base
+			if writtenGroups[base] then
+				local suffix = nextSuffix[base] or 2
+				unique = base .. "_" .. suffix
+				while writtenGroups[unique] do
+					suffix += 1
+					unique = base .. "_" .. suffix
+				end
+				nextSuffix[base] = suffix+1
+			end
 			writtenGroups[unique] = true
 			table.insert(model,"o " .. unique)
-			for _, primitive in ipairs(mesh.primitives) do writePrimitive(primitive,frame,unique) end
+			for _, primitive in ipairs(mesh.primitives) do writePrimitive(primitive,frame,unique,meshUses[node.mesh]>1) end
 		end
 		for _, child in ipairs(node.children or {}) do visit(child,frame) end
 	end

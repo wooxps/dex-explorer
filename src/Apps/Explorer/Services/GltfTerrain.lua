@@ -67,7 +67,7 @@ function Terrain.Read(terrain, bounds, emit, accept, checkCancelled)
 					for y = y0,y1-1 do
 						for z = z0,z1-1 do
 							step += 1
-							if step % 8192 == 0 then task.wait(); checkCancelled() end
+							if step % 1024 == 0 then checkCancelled() end
 							local solids, liquids = 0, 0
 							for i, offset in ipairs(corners) do
 								local cx,cy,cz = x+offset[1]-ax+1,y+offset[2]-ay+1,z+offset[3]-az+1

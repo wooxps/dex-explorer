@@ -68,7 +68,7 @@ function Facs.Bake(mesh, basePoses, vertices, normals, influences, bones, units,
 					minimum, maximum = minimum:Min(shift), maximum:Max(shift)
 				end
 			end
-			if i % 4096 == 0 then task.wait(); checkCancelled() end
+			if i % 1024 == 0 then checkCancelled() end
 		end
 		if #indices > 0 then
 			local position, normal = sparseAccessor(#vertices,indices,positionValues,normalValues,minimum,maximum)

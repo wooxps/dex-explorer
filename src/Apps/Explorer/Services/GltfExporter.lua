@@ -25,9 +25,7 @@ function Exporter.Build(targets, options, cancelled)
 	options = options or {}
 	local skinning, textures = options.Skinning ~= false, options.Textures ~= false
 	local attachments, cages = options.Attachments ~= false, options.Cages == true
-	local function checkCancelled()
-		if cancelled and cancelled() then error("Export cancelled", 0) end
-	end
+	local checkCancelled = Apps.GltfGeometry.ExportCheckpoint(cancelled)
 	local scene = { nodes = {} }
 	local doc = { asset = { version = "2.0", generator = "Dex Explorer" }, scene = 0, scenes = { scene },
 		nodes = {}, meshes = {}, materials = {}, bufferViews = {}, accessors = {} }
@@ -133,7 +131,10 @@ function Exporter.Build(targets, options, cancelled)
 		if g.indices then
 			local small = n <= 65535
 			local fmt = if small then "<I2" else "<I4"
-			for i, index in ipairs(g.indices) do g.indices[i] = string.pack(fmt, index) end
+			for i, index in ipairs(g.indices) do
+				g.indices[i] = string.pack(fmt, index)
+				if i % 4096 == 0 then checkCancelled() end
+			end
 			geometry.indexBytes = table.concat(g.indices)
 			geometry.indexFormat, geometry.indexStride, geometry.cornerCount = fmt, if small then 2 else 4, #g.indices
 			geometry.indices = accessor(geometry.indexBytes,"SCALAR",if small then 5123 else 5125,#g.indices,34963)
@@ -195,7 +196,7 @@ function Exporter.Build(targets, options, cancelled)
 		doc.images, doc.textures = doc.images or {}, doc.textures or {}
 		local image = add(doc.images, { bufferView = view(png), mimeType = "image/png" })
 		return add(doc.textures, { source = image })
-	end)
+	end,checkCancelled)
 	local materials, shapes, meshes, primitives = {}, {}, {}, {}
 	local function baseTexture(...)
 		if not options.ClassicMaterials then return texture(...) end
@@ -291,8 +292,9 @@ function Exporter.Build(targets, options, cancelled)
 		local tangents = textures and not options.ClassicMaterials and surface ~= nil and surface.NormalMapContent ~= Content.none
 		local bucket = meshes[tangents] or {}
 		meshes[tangents] = bucket
-		if not bucket[content] then bucket[content] = Apps.GltfGeometry.ReadMesh(content, emit, tangents, skinning, checkCancelled) end
-		return bucket[content]
+		local key = Apps.GltfTextures.AssetKey(content)
+		if not bucket[key] then bucket[key] = Apps.GltfGeometry.ReadMesh(content, emit, tangents, skinning, checkCancelled) end
+		return bucket[key]
 	end
 	local function exportOverlays(node, part, source, size, offset, only)
 		if not textures then return end
@@ -384,10 +386,7 @@ function Exporter.Build(targets, options, cancelled)
 
 	local selected = {}
 	for _, target in ipairs(targets) do selected[target] = true end
-	local visited = 0
 	local function visit(obj, parent, parentFrame)
-		visited += 1
-		if visited % 256 == 0 then task.wait() end
 		checkCancelled()
 		if obj:IsA("Terrain") then
 			if not options.TerrainBounds then omit("Terrain bounds required"); return end

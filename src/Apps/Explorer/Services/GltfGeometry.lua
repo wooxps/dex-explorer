@@ -3,6 +3,18 @@
 local Geometry = {}
 local service
 
+-- Bound the time spent on export work between rendered frames.
+function Geometry.ExportCheckpoint(cancelled)
+	local deadline = os.clock() + .006
+	return function()
+		if cancelled and cancelled() then error("Export cancelled",0) end
+		if os.clock() < deadline then return end
+		task.wait()
+		if cancelled and cancelled() then error("Export cancelled",0) end
+		deadline = os.clock() + .006
+	end
+end
+
 -- Keep authored vertex IDs separate from face-corner IDs. Hard edges and UV
 -- seams share positions in Roblox, but require separate vertices in glTF.
 function Geometry.ReadMesh(content, emit, tangents, skinning, checkCancelled)
@@ -13,49 +25,87 @@ function Geometry.ReadMesh(content, emit, tangents, skinning, checkCancelled)
 		assert(#faces > 0, "Mesh contains no faces")
 		local geometry = emit.Begin(#faces, true, #bones > 0)
 		local cache = {}
+		local positions, unitNormals, uvValues, colors, alphas = {}, {}, {}, {}, {}
+		local function position(id)
+			local value = positions[id]
+			if not value then
+				value = mesh:GetPosition(id)
+				positions[id] = value
+			end
+			return value
+		end
+		local function uvValue(id)
+			local value = uvValues[id]
+			if value == nil then
+				value = mesh:GetUV(id) or false
+				uvValues[id] = value
+			end
+			return value
+		end
+		local positive, negative, neutral = {}, {}, {}
 		for n, face in ipairs(faces) do
 			local vertices = mesh:GetFaceVertices(face)
-			local normals, uvs, colors = mesh:GetFaceNormals(face), mesh:GetFaceUVs(face), mesh:GetFaceColors(face)
-			local p1, p2, p3 = mesh:GetPosition(vertices[1]), mesh:GetPosition(vertices[2]), mesh:GetPosition(vertices[3])
-			local cross = (p2 - p1):Cross(p3 - p1)
-			local flat = if cross.Magnitude > 0 then cross.Unit else Vector3.yAxis
+			local normals, uvs, colorIds = mesh:GetFaceNormals(face), mesh:GetFaceUVs(face), mesh:GetFaceColors(face)
+			local flat
+			local hasSharedCorners = #vertices > 3
+			if hasSharedCorners then
+				table.clear(positive)
+				table.clear(negative)
+				table.clear(neutral)
+			end
 			local function corner(i, orientation, tangent, bitangent)
-				local vertex, ni, ui, ci = vertices[i], normals[i], uvs[i], colors[i]
-				local normal = ni and mesh:GetNormal(ni)
-				local key = string.format("%s/%s/%s/%s/%d", vertex, normal and normal.Magnitude > 0 and ni or ("f" .. face), ui or "", ci or "", orientation)
-				local index = cache[key]
-				if not index then
-					local uv = ui and mesh:GetUV(ui)
-					local color = ci and mesh:GetColor(ci)
-					index = emit.Vertex(geometry, mesh:GetPosition(vertex), if normal and normal.Magnitude > 0 then normal.Unit else flat,
-						uv, color, ci and mesh:GetColorAlpha(ci), vertex)
-					cache[key] = index
+				local faceCache = if not hasSharedCorners then nil elseif orientation == 0 then neutral elseif orientation > 0 then positive else negative
+				local index = faceCache and faceCache[i]
+				if index == nil then
+					local vertex, ni, ui, ci = vertices[i], normals[i], uvs[i], colorIds[i]
+					local normal = ni and unitNormals[ni]
+					if ni and normal == nil then
+						local original = mesh:GetNormal(ni)
+						normal = if original and original.Magnitude > 0 then original.Unit else false
+						unitNormals[ni] = normal
+					end
+					local key = string.format("%s/%s/%s/%s/%d", vertex, normal and ni or ("f" .. face), ui or "", ci or "", orientation)
+					index = cache[key]
+					if index == nil then
+						if not normal and not flat then
+							local p1 = position(vertices[1])
+							local cross = (position(vertices[2])-p1):Cross(position(vertices[3])-p1)
+							flat = if cross.Magnitude > 0 then cross.Unit else Vector3.yAxis
+						end
+						local color = ci and colors[ci]
+						if ci and color == nil then
+							color = mesh:GetColor(ci) or false
+							colors[ci], alphas[ci] = color, mesh:GetColorAlpha(ci)
+						end
+						index = emit.Vertex(geometry,position(vertex),normal or flat,
+							ui and uvValue(ui) or nil,color or nil,ci and alphas[ci],vertex)
+						cache[key] = index
+					end
+					if faceCache then faceCache[i] = index end
 				end
-				if tangent then emit.Tangent(geometry, index, tangent, bitangent) end
-				emit.Index(geometry, index)
+				if tangent then emit.Tangent(geometry,index,tangent,bitangent) end
+				emit.Index(geometry,index)
 			end
 			for i = 2, #vertices - 1 do
 				local orientation, tangent, bitangent = 0, nil, nil
 				if tangents then
 					assert(uvs[1] and uvs[i] and uvs[i+1], "Normal-mapped mesh is missing texture coordinates")
-					local uv = mesh:GetUV(uvs[1])
-					local u, v = mesh:GetUV(uvs[i])-uv, mesh:GetUV(uvs[i+1])-uv
+					local uv = uvValue(uvs[1])
+					local u,v = uvValue(uvs[i])-uv, uvValue(uvs[i+1])-uv
 					local det = u.X*v.Y-u.Y*v.X
 					tangent, bitangent = Vector3.zero, Vector3.zero
 					if math.abs(det) > 1e-12 then
-						local e1, e2 = mesh:GetPosition(vertices[i])-p1, mesh:GetPosition(vertices[i+1])-p1
+						local p1 = position(vertices[1])
+						local e1,e2 = position(vertices[i])-p1,position(vertices[i+1])-p1
 						tangent, bitangent = (e1*v.Y-e2*u.Y)/det, (e2*u.X-e1*v.X)/det
 						orientation = if det < 0 then -1 else 1
 					end
 				end
-				corner(1, orientation, tangent, bitangent)
-				corner(i, orientation, tangent, bitangent)
-				corner(i+1, orientation, tangent, bitangent)
+				corner(1,orientation,tangent,bitangent)
+				corner(i,orientation,tangent,bitangent)
+				corner(i+1,orientation,tangent,bitangent)
 			end
-			if n % 2048 == 0 then
-				task.wait()
-				if checkCancelled then checkCancelled() end
-			end
+			if n % 256 == 0 and checkCancelled then checkCancelled() end
 		end
 		return emit.Finish(geometry, mesh, bones)
 	end)
@@ -166,7 +216,7 @@ function Geometry.ProjectFace(source, size, offset, decal, emit, layer, checkCan
 	local geometry
 	local depth = .002+.0005*layer
 	for start = 0,source.cornerCount-1,3 do
-		if start % 12288 == 0 and start > 0 then task.wait(); checkCancelled() end
+		if start % 3072 == 0 then checkCancelled() end
 		local a,b,c = point(vertexIndex(start)),point(vertexIndex(start+1)),point(vertexIndex(start+2))
 		local normal = (b-a):Cross(c-a)
 		if normal.Magnitude > 1e-8 then

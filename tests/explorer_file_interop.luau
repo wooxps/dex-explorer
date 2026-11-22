@@ -67,7 +67,7 @@ function mesh:GetVertexBones() return {21,43} end
 function mesh:GetVertexBoneWeights() return {.6,.4} end
 function mesh:Destroy() end
 local pixels=buffer.fromstring(string.char(255,0,0,255, 0,255,0,128))
-local image = {Size=r.Vector2.new(2,1),ReadPixelsBuffer=function() return pixels end, Destroy=function() end}
+local image = {Size=r.Vector2.new(2,1),ReadPixelsBuffer=function() return buffer.fromstring(buffer.tostring(pixels)) end, Destroy=function() end}
 service.AssetService={CreateEditableMeshAsync=function() return mesh end, CreateEditableImageAsync=function() return image end}
 local part = {
 	Name="Skinned",CFrame=r.CFrame.new(1,2,3),Size=v3(2,2,2),MeshSize=v3(1,1,1),
