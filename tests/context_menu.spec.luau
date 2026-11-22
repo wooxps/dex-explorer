@@ -216,6 +216,9 @@ do
 		"blank menu omits actions requiring selection"
 	)
 	names = menu({ nodes[child] })
+	Explorer.Selection:Set(nodes[child])
+	context.Registered.COPY.OnClick()
+	names = menu({ nodes[child] })
 	assert(
 		names.Copy and names.Cut and names["Paste Into"] and not names["Paste Into"].Disabled and not names["Hide Service in Explorer"] and not names["Show Services..."],
 		"ordinary selection gets editable actions"
@@ -362,6 +365,7 @@ do
 	local decoded = { ClassName = "Folder", Name = "Renamed" }
 	service.HttpService.JSONDecode = function() return decoded end
 	deps.env.getclipboard = function() return jsonText end
+	assert(menu({nodes[outside]})["Paste Into"])
 	folderClass.Properties = { { Name = "Name", ValueType = { Name = "string" } } }
 	Explorer.Selection:SetTable({ nodes[child], nodes[outside] })
 	context.Registered.PASTE.OnClick()

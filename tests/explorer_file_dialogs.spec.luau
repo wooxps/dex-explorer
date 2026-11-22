@@ -81,6 +81,8 @@ do
 	click("Save")
 	deferred()
 	assert(written[1]=="Renamed.gltf" and written[2]=="glTF fixture " .. prepared)
+	assert(find("Export Complete") and find("Renamed.gltf") and not find("Cancel").Visible)
+	click("Done")
 	Apps.ExplorerFileActions.Open("LOAD_CSV",{node})
 	local input = find("FileInput")
 	input.Text = "locales/test.csv"
@@ -93,11 +95,20 @@ do
 	assert(input.Text=="Source,en\nHello,Hi")
 	click("Cancel")
 	Apps.ExplorerFileActions.Open("INSERT_FILE",{node})
-	click("Browse...")
-	click("▸  models")
-	click("a.rbxmx")
-	assert(find("FileInput").Text=="models/a.rbxmx")
+	assert(not pcall(find,"Browse..."))
+	assert(find("FileInput").PlaceholderText=="model.rbxm")
 	click("Cancel")
+	local serialization = service.SerializationService
+	service.SerializationService = {SerializeInstancesAsync=function(_,roots)
+		assert(#roots==1 and roots[1]==obj)
+		return buffer.fromstring("<roblox!binary")
+	end}
+	Apps.ExplorerFileActions.Open("SAVE_MODEL",{node})
+	find("FileInput").Text = "Named.rbxmx"
+	click("Save")
+	deferred()
+	assert(written[1]=="Named.rbxm" and written[2]=="<roblox!binary")
+	service.SerializationService = serialization
 	Lib.SaveAsPrompt("Original.lua","source","lua")
 	local fileName = find("NameBox")
 	fileName.Text = "folder.v1/Renamed.txt"

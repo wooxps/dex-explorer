@@ -2817,6 +2817,24 @@ local function CreateModule()
 		end)
 		return result
 	end
+	local function pastePayload()
+		local text = clipboardJsonText()
+		if not text or text == instanceCopyText then return nil end
+		local ok, payload = pcall(function() return service.HttpService:JSONDecode(text) end)
+		if not ok or type(payload) ~= "table" then return nil end
+		local isArray = text:match("^%s*%[") ~= nil
+		local rows = if isArray then payload else {payload}
+		if #rows == 0 then return nil end
+		for _, row in ipairs(rows) do
+			if type(row) ~= "table" then return nil end
+			local class = row.ClassName
+			if (isArray or class ~= nil) and (type(class) ~= "string" or not Apps.ReflectionService.GetClass(class)) then
+				return nil
+			end
+		end
+		return rows
+	end
+
 	local function canPasteOriginal()
 		if #clipboard == 0 then return false end
 		local json = clipboardJsonText()
@@ -2998,8 +3016,8 @@ local function CreateModule()
 			context:Add({ Name = "Copy As", Submenu = copyItems })
 			context:QueueDivider()
 		end
-		context:AddRegistered("PASTE")
-		context:AddRegistered("PASTE_ORIGINAL", not canPasteOriginal())
+		if #clipboard > 0 or pastePayload() then context:AddRegistered("PASTE") end
+		if canPasteOriginal() then context:AddRegistered("PASTE_ORIGINAL") end
 		if hasNonService then
 			context:AddRegistered("DUPLICATE")
 			context:AddRegistered("DELETE")
@@ -3062,7 +3080,7 @@ local function CreateModule()
 			context:AddRegistered("SAVE_CSV", not env.writefile)
 			context:AddRegistered("LOAD_CSV")
 		end
-		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST"), action("EXPORT_GLTF", not env.writefile) } })
+		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST", not env.writefile), action("EXPORT_GLTF", not env.writefile) } })
 		if hasService then
 			context:QueueDivider()
 			context:Add({
@@ -3288,16 +3306,7 @@ local function CreateModule()
 			end,
 		})
 
-		local function pasteJson(text, sList)
-			local payload = service.HttpService:JSONDecode(text)
-			local isArray = text:match("^%s*%[") ~= nil
-			local rows = if isArray then payload else { payload }
-			assert(type(payload) == "table", "Expected an object or array")
-			for _, row in ipairs(rows) do
-				assert(type(row) == "table", "Expected an object in the pasted array")
-				local class = row.ClassName
-				assert((not isArray and class == nil) or Apps.ReflectionService.GetClass(class), "Unknown or missing ClassName")
-			end
+		local function pasteJson(rows, sList)
 			local pasted = {}
 			for _, node in ipairs(sList) do
 				for _, row in ipairs(rows) do
@@ -3316,39 +3325,6 @@ local function CreateModule()
 				selection:SetTable(pasted)
 				Explorer.ViewNode(pasted[1])
 			end
-		end
-
-		local pasteWindow, pasteBox, pasteError, submitPaste
-		local function promptPaste(targets)
-			if not pasteWindow then
-				pasteWindow = Lib.Window.new()
-				pasteWindow:SetTitle("Paste Into")
-				pasteWindow:SetSize(320, 125)
-				pasteBox = Lib.ViewportTextBox.new()
-				pasteBox.Position = UDim2.fromOffset(8, 8)
-				pasteBox.Size = UDim2.new(1, -16, 0, 40)
-				pasteBox.TextBox.PlaceholderText = "Paste JSON here"
-				pasteBox.TextBox.MultiLine = true
-				pasteWindow:Add(pasteBox)
-				pasteError = Lib.Label.new()
-				pasteError.Position = UDim2.fromOffset(8, 51)
-				pasteError.Size = UDim2.new(1, -16, 0, 20)
-				pasteWindow:Add(pasteError)
-				local button = Lib.Button.new()
-				button.Text = "Paste Into"
-				button.Position = UDim2.new(1, -100, 1, -28)
-				button.Size = UDim2.fromOffset(92, 22)
-				button.OnClick:Connect(function() submitPaste() end)
-				pasteWindow:Add(button)
-			end
-			submitPaste = function()
-				local ok, err = pcall(Apps.History.Run, "Paste Into", pasteJson, pasteBox.TextBox.Text, targets)
-				if ok then pasteWindow:Close() else pasteError.Text = tostring(err) end
-			end
-			pasteBox.TextBox.Text = ""
-			pasteError.Text = ""
-			pasteWindow:Show()
-			pasteBox.TextBox:CaptureFocus()
 		end
 
 		local function pasteInstances(sList, original)
@@ -3393,17 +3369,13 @@ local function CreateModule()
 			Shortcut = "Ctrl+Shift+V",
 			OnClick = function()
 				local sList = table.clone(selection.List)
-				local text = clipboardJsonText()
 				if #sList == 0 then return end
-				if text and text ~= instanceCopyText then
-					pasteJson(text, sList)
-					return
+				local rows = pastePayload()
+				if rows then
+					pasteJson(rows, sList)
+				elseif #clipboard > 0 then
+					pasteInstances(sList, false)
 				end
-				if #clipboard == 0 then
-					promptPaste(sList)
-					return
-				end
-				pasteInstances(sList, false)
 			end,
 		})
 
@@ -3945,46 +3917,7 @@ local function CreateModule()
 			IconMap = Explorer.MiscIcons,
 			Icon = "Save",
 			OnClick = function()
-				local sList = table.clone(selection.List)
-				if #sList == 1 then
-					Lib.SaveAsPrompt(
-						"Place_"
-							.. game.PlaceId
-							.. "_"
-							.. sList[1].Obj.ClassName
-							.. "_"
-							.. sList[1].Obj.Name
-							.. "_"
-							.. os.time(),
-						function(filename)
-							env.saveinstance(sList[1].Obj, filename, {
-								Decompile = true,
-								RemovePlayerCharacters = false,
-							})
-						end
-					)
-				elseif #sList > 1 then
-					for i = 1, #sList do
-						Lib.SaveAsPrompt(
-							"Place_"
-								.. game.PlaceId
-								.. "_"
-								.. sList[i].Obj.ClassName
-								.. "_"
-								.. sList[i].Obj.Name
-								.. "_"
-								.. os.time(),
-							function(filename)
-								env.saveinstance(sList[i].Obj, filename, {
-									Decompile = true,
-									RemovePlayerCharacters = false,
-								})
-							end
-						)
-
-						task.wait(0.1)
-					end
-				end
+				Apps.ExplorerFileActions.Open("SAVE_MODEL", table.clone(selection.List))
 			end,
 		})
 

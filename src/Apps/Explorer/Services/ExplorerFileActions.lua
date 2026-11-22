@@ -253,12 +253,12 @@ local function filePrompt(title, verb, subject, initial, loadCsv, callback)
 	d.round(box,5)
 	d.make("UIStroke",box,{ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Color=rgb(76,79,91)})
 	d.make("UIPadding",box,{PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,9),PaddingTop=UDim.new(0,5),PaddingBottom=UDim.new(0,5)})
-	box.PlaceholderText = if verb=="Save" then initial elseif verb=="Insert" then "models/example.rbxm or models/example.rbxmx" else "locales/translations.csv"
+	box.PlaceholderText = if verb=="Save" then initial elseif verb=="Insert" then "model.rbxm" else "locales/translations.csv"
 	local browseButton
-	if env.listfiles and (verb=="Insert" or loadCsv) then
-		browseButton = d.button(d.panel,"Browse...",419,if loadCsv then 138 else fieldY,77,34,rgb(59,62,72),function()
+	if env.listfiles and loadCsv then
+		browseButton = d.button(d.panel,"Browse...",419,138,77,34,rgb(59,62,72),function()
 			if not d.busy then
-				browse(d,if loadCsv then {"csv"} else {"rbxm","rbxmx"},function(path) box.Text = path end)
+				browse(d,{"csv"},function(path) box.Text = path end)
 			end
 		end)
 		box.Size = UDim2.fromOffset(387,34)
@@ -291,6 +291,45 @@ local function filePrompt(title, verb, subject, initial, loadCsv, callback)
 	end)
 end
 
+function Actions.SaveModel(targets, path, cancelled)
+	checkTargets(targets)
+	local selected, roots = {}, {}
+	for _, node in ipairs(targets) do selected[node.Obj] = true end
+	for _, node in ipairs(targets) do
+		local ancestor = node.Obj.Parent
+		while ancestor and not selected[ancestor] do ancestor = ancestor.Parent end
+		if not ancestor then table.insert(roots,node.Obj) end
+	end
+	local ok, result = pcall(function()
+		return buffer.tostring(service.SerializationService:SerializeInstancesAsync(roots))
+	end)
+	local bytes = if ok then result else nil
+	if cancelled and cancelled() then return end
+	if not bytes or bytes:sub(1,8) ~= "<roblox!" then
+		local backend = Main.LoadModule("SaveBackend")
+		backend.Run("Universal",nil,path,{
+			mode = "custom", IsModel = true, Binary = true, ExtraInstances = roots,
+			Callback = function(data) bytes = data end,
+		})
+	end
+	assert(type(bytes) == "string" and bytes:sub(1,8) == "<roblox!", "The save provider could not produce a binary RBXM")
+	if not cancelled or not cancelled() then env.writefile(path,bytes) end
+end
+
+local function exportComplete(path, details)
+	local d = Apps.StudioPopup.Open("Export Complete", if details then 218 else 180)
+	if d.sprite then d.sprite(d.panel,"Information",24,53,32,32,50) end
+	d.label(d.panel,"glTF exported",if d.sprite then 66 else 24,48,410,24,15,true)
+	local file = d.label(d.panel,path,if d.sprite then 66 else 24,75,420,22,14)
+	file.TextTruncate = Enum.TextTruncate.AtEnd
+	if details then
+		local note = d.label(d.panel,details,24,100,472,50,13)
+		note.TextWrapped = true
+	end
+	d.formAction("Done",true,d.close)
+	d.hideCancel()
+end
+
 function Actions.Open(action, targets)
 	local first = targets[1]
 	if not first then return end
@@ -298,8 +337,13 @@ function Actions.Open(action, targets)
 	local function save(extension, data, details)
 		local stem = name:gsub('[<>:"/\\|?*%c]', "_"):gsub("[%. ]+$", "")
 		local overwrite
-		filePrompt(if extension=="csv" then "Save as CSV" else "Save glTF",
+		filePrompt(if extension=="csv" then "Save as CSV" elseif extension=="rbxm" then "Save to File" else "Save glTF",
 			"Save","File name",(stem ~= "" and stem or "Selection") .. "." .. extension,false,function(input,_,cancelled)
+				if extension == "rbxm" then
+					input = input:match("^%s*(.-)%s*$"):gsub("%.[^./\\]+$", "")
+					assert(input:match("[^/\\]+$"), "Enter a model file name")
+					input ..= ".rbxm"
+				end
 				local path = pathFor(input,{extension},extension)
 				if env.isfile and env.isfile(path) and overwrite ~= path then
 					overwrite = path
@@ -310,8 +354,12 @@ function Actions.Open(action, targets)
 					data = Apps.LocalizationCsv.Encode(first.Obj:GetEntries())
 				end
 				if cancelled() then return end
-				env.writefile(path,data)
-				if details then return "Saved. " .. details end
+				if extension == "rbxm" then
+					Actions.SaveModel(targets,path,cancelled)
+				else
+					env.writefile(path,data)
+					if extension == "gltf" and not cancelled() then exportComplete(path,details) end
+				end
 			end)
 	end
 	if action == "INSERT_FILE" then
@@ -323,6 +371,7 @@ function Actions.Open(action, targets)
 			Actions.LoadCsv(input,targets,paste,cancelled)
 		end)
 	elseif action == "SAVE_CSV" then save("csv")
+	elseif action == "SAVE_MODEL" then save("rbxm")
 	else configuration(targets,function(data, details) save("gltf",data,details) end) end
 end
 

@@ -37,11 +37,12 @@ function Popup.Open(title, height, compact)
 	local panelWidth = if compact then 252 else 520
 	local holder = frame(backdrop,0,0,panelWidth,height,rgb(39,41,48))
 	holder.BackgroundTransparency = 1
-	for i = 4, 1, -1 do
-		local shadow = frame(holder,-i,3-i,panelWidth+2*i,height+2*i,Color3.new(0,0,0))
+	for i = 8, 1, -1 do
+		local shadow = frame(holder,-i,5-i,panelWidth+2*i,height+2*i,Color3.new(0,0,0))
 		shadow.Name = "Shadow"
-		shadow.BackgroundTransparency = .96
+		shadow.BackgroundTransparency = if i > 4 then .984 else .965
 		round(shadow,8+i)
+		make("UIGradient",shadow,{Rotation=90,Transparency=NumberSequence.new(1,0)})
 	end
 	local panel = frame(holder,0,0,panelWidth,height,if compact then rgb(25,26,31) else rgb(39,41,48))
 	panel.ZIndex = 2
@@ -199,6 +200,7 @@ function Popup.Open(title, height, compact)
 	d.sprite = if atlas then sprite else nil
 		function d.isOpen() return current == d end
 	function d.close() if current == d then close() end end
+	function d.hideCancel() cancel.Visible = false end
 	function d.formAction(text, enabled, callback)
 		submit = if enabled then callback else nil
 		buttons(text,64,not enabled)
