@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "07e1c56062c9538b4e3e",
+  "release": "027560602b32348750d1",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -360,9 +360,9 @@
       "sha256": "4b052a5c0df6df9a3fdaee6a191b7c51a802e227b9d6b89ba424bae8d9ea64c4"
     },
     "src/Apps/Explorer/Components/ContextMenu.lua": {
-      "bytes": 23490,
-      "checksum": 1943322214,
-      "sha256": "677075ab115a269418b79198c378d56aaea60bf68a8e0928a2d8b2018fc02738"
+      "bytes": 24061,
+      "checksum": 661671881,
+      "sha256": "f17b7f70f85fd0ad5c472c86ebaa60da5849396a3abe240462b7551bf8c3ddae"
     },
     "src/Apps/Explorer/Components/ExplorerNodeRow/IconAppearance.lua": {
       "bytes": 1598,

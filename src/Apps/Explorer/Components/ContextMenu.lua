@@ -321,15 +321,30 @@ local function CreateModule()
 								end
 							end,
 						}),
-						Checkmark = not item.Divider and item.Checked and e("TextLabel", {
+						Checkmark = not item.Divider and item.Checked and e("Frame", {
 							BackgroundTransparency = 1,
-							Position = UDim2.fromOffset(self.Theme.IconInset or 4, 0),
-							Size = UDim2.new(0, 16, 1, 0),
-							Font = Enum.Font.BuilderSans,
-							TextSize = 12,
-							Text = "✓",
-							TextColor3 = item.Disabled and Settings.Theme.PlaceholderText
-								or (self.Theme.TextColor or Settings.Theme.Text),
+							AnchorPoint = Vector2.new(0, 0.5),
+							Position = UDim2.new(0, (self.Theme.IconInset or 4) + 4, 0.5, 0),
+							Size = UDim2.fromOffset(8, 7),
+						}, {
+							ShortStroke = e("Frame", {
+								AnchorPoint = Vector2.new(0.5, 0.5),
+								Position = UDim2.fromOffset(2, 4.5),
+								Size = UDim2.fromOffset(3, 1),
+								Rotation = 45,
+								BorderSizePixel = 0,
+								BackgroundColor3 = item.Disabled and Settings.Theme.PlaceholderText
+									or (self.Theme.TextColor or Settings.Theme.Text),
+							}),
+							LongStroke = e("Frame", {
+								AnchorPoint = Vector2.new(0.5, 0.5),
+								Position = UDim2.fromOffset(5, 3.5),
+								Size = UDim2.fromOffset(6, 1),
+								Rotation = -45,
+								BorderSizePixel = 0,
+								BackgroundColor3 = item.Disabled and Settings.Theme.PlaceholderText
+									or (self.Theme.TextColor or Settings.Theme.Text),
+							}),
 						}),
 						EntryName = e("TextLabel", {
 							BackgroundTransparency = 1,
