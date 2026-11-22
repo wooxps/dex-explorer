@@ -58,12 +58,21 @@ local function read(content)
 	return size, pixels
 end
 
+local function assetKey(content)
+	-- Separate Roblox Content values can point to the same asset.
+	if typeof(content) == "Content" then
+		return content.Uri or content.Object or content
+	end
+	return content
+end
+
 function Textures.Create(addImage)
 	local images, packedMaps = {}, {}
 	local function texture(content, base, tint)
 		if not content or content == Content.none then return nil, false end
-		local bucket = images[content] or {}
-		images[content] = bucket
+		local asset = assetKey(content)
+		local bucket = images[asset] or {}
+		images[asset] = bucket
 		local key = if base then string.pack("<ffffff",base.R,base.G,base.B,tint.R,tint.G,tint.B) else ""
 		if not bucket[key] then
 			local size, pixels = read(content)

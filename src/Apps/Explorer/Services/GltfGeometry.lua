@@ -150,8 +150,8 @@ function Geometry.ProjectFace(source, size, offset, decal, emit, layer, checkCan
 	local angle = math.rad(decal.Rotation or 0)
 	local cosine, sine = math.cos(angle),math.sin(angle)
 	local function uv(point)
-		local u = ((point-center):Dot(uAxis)+uSize/2-uOffset)/uTile
-		local v = ((point-center):Dot(vAxis)+vSize/2-vOffset)/vTile
+		local u = ((point-center):Dot(uAxis)+uSize/2+uOffset)/uTile
+		local v = ((point-center):Dot(vAxis)+vSize/2+vOffset)/vTile
 		u,v = u*uvScale.X-.5,v*uvScale.Y-.5
 		return Vector2.new(u*cosine+v*sine+.5+uvOffset.X,-u*sine+v*cosine+.5+uvOffset.Y)
 	end

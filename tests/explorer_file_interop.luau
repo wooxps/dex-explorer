@@ -190,12 +190,33 @@ local cube = {
 	FindFirstChildOfClass=function() end,FindFirstChildWhichIsA=function() end,GetFullName=function() return "Printed box" end,
 	GetChildren=function() return {decal,tile} end,
 }
+local projectFace = apps.GltfGeometry.ProjectFace
+local minU,minV = math.huge,math.huge
+apps.GltfGeometry.ProjectFace = function(source, size, offset, decal, emit, layer, cancel)
+	if decal == tile then
+		emit = table.clone(emit)
+		local vertex = emit.Vertex
+		emit.Vertex = function(g,p,n,uv,...)
+			minU,minV = math.min(minU,uv.X),math.min(minV,uv.Y)
+			return vertex(g,p,n,uv,...)
+		end
+	end
+	return projectFace(source,size,offset,decal,emit,layer,cancel)
+end
 local projected, skipped = apps.GltfExporter.Export({{Obj=cube}})
+apps.GltfGeometry.ProjectFace = projectFace
+assert(math.abs(minU-.25)<1e-6 and math.abs(minV-1/3)<1e-6)
+
 assert(not skipped)
 local projectedDoc = serde.decode("json",projected)
 assert(#projectedDoc.meshes==3 and #projectedDoc.images==1)
 assert(projectedDoc.meshes[2].name=="Front sticker" and projectedDoc.meshes[3].name=="Right tiles")
 assert(projectedDoc.accessors[projectedDoc.meshes[3].primitives[1].attributes.TEXCOORD_0+1].count==6)
+tile.ResampleMode = {Name="Pixelated"}
+local pixelDoc = serde.decode("json",apps.GltfExporter.Export({{Obj=cube}}))
+local pixelIndex = pixelDoc.materials[3].pbrMetallicRoughness.baseColorTexture.index
+assert(pixelDoc.samplers[1].magFilter==9728 and pixelDoc.textures[pixelIndex+1].sampler==0 and #pixelDoc.images==1)
+tile.ResampleMode = nil
 fs.writeFile(".build/fixture-overlays.gltf",projected)
 local solidOnly = serde.decode("json",apps.GltfExporter.Export({{Obj=cube}},{Textures=false}))
 assert(#solidOnly.meshes==1 and not solidOnly.images)

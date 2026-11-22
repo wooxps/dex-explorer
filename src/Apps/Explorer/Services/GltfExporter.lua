@@ -195,6 +195,16 @@ function Exporter.Export(targets, options, cancelled)
 		return add(doc.textures, { source = image })
 	end)
 	local materials, shapes, meshes, primitives = {}, {}, {}, {}
+	local pixelTextures = {}
+	local function pixelTexture(image)
+		local index = pixelTextures[image.index]
+		if index == nil then
+			doc.samplers = doc.samplers or {{magFilter=9728,minFilter=9728,wrapS=10497,wrapT=10497}}
+			index = add(doc.textures,{source=doc.textures[image.index+1].source,sampler=0})
+			pixelTextures[image.index] = index
+		end
+		return {index=index}
+	end
 	local function material(part, surface, tex, blend)
 		local color = if surface then surface.Color else part.Color
 		local alpha = 1 - part.Transparency
@@ -291,6 +301,8 @@ function Exporter.Export(targets, options, cancelled)
 			if not ok then omit(decal.ClassName .. " image unavailable"); continue end
 			local geometry = Apps.GltfGeometry.ProjectFace(source,size/meters,offset,decal,emit,layer,checkCancelled)
 			if not geometry then omit(decal.ClassName .. " face unavailable"); continue end
+			local resample = decal.ResampleMode
+			if resample and resample.Name == "Pixelated" then image = pixelTexture(image) end
 			local color = decal.Color3
 			local mat = add(doc.materials,{name=decal.Name,alphaMode="BLEND",
 				pbrMetallicRoughness={baseColorTexture=image,baseColorFactor={linear(color.R),linear(color.G),linear(color.B),1-decal.Transparency},

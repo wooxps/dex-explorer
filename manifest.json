@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "00c8066f8b1976c2cc07",
+  "release": "627e7ac65a5863d3f7b2",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -503,9 +503,9 @@
       "sha256": "cd6d04ace7489cfda9b2212a83d86dd24ce87f3137bd1b8b2147fa38a7bcb9f6"
     },
     "src/Apps/Explorer/Services/GltfExporter.lua": {
-      "bytes": 21277,
-      "checksum": 285437751,
-      "sha256": "ae090ab4e5801a3a9de1c379ac4546817a27edc684f54b3d0018485869b1c973"
+      "bytes": 21776,
+      "checksum": 4097317207,
+      "sha256": "55363ae103f66bcea80ce01445368ec77e3dbfe8555da0bcb393963c3b174d9e"
     },
     "src/Apps/Explorer/Services/GltfFacs.lua": {
       "bytes": 2979,
@@ -514,8 +514,8 @@
     },
     "src/Apps/Explorer/Services/GltfGeometry.lua": {
       "bytes": 7922,
-      "checksum": 58049315,
-      "sha256": "a5b45da684f7e09baad3ee33856efc3deabb6fb3f02fdee41d6b12236649956c"
+      "checksum": 3980575519,
+      "sha256": "545dafc2e75ebc4b41dedeb9356416ee0d51287228f6ed8043e4a972dd1a05f7"
     },
     "src/Apps/Explorer/Services/GltfTerrain.lua": {
       "bytes": 5337,
@@ -523,9 +523,9 @@
       "sha256": "2c487dae1a6bf127d64054d066cc321945521912f4d166de50a2e54688d1ed59"
     },
     "src/Apps/Explorer/Services/GltfTextures.lua": {
-      "bytes": 4728,
-      "checksum": 1533396910,
-      "sha256": "632d96f2964887bbce51f0d29780a934b18478cc6b86f9946f1c9e5195394162"
+      "bytes": 4969,
+      "checksum": 512826089,
+      "sha256": "f08a24f2a5add3a3a3ddc56aaa18099115a99591a1737277b822efeab932fa1c"
     },
     "src/Apps/Explorer/Services/InsertionService.lua": {
       "bytes": 1461,
