@@ -272,11 +272,12 @@ local function CreateModule()
 		local function update()
 			local size = part.Size
 			local length = math.clamp(size.Magnitude * 0.2, 0.4, 4)
-			local base = CFrame.new(0,size.Y/2,0) * CFrame.Angles(math.pi/2,0,0)
+			local frontMarker = Vector3.new(0, 0, -size.Z / 2 - length)
+			local base = CFrame.new(frontMarker + Vector3.new(0, length * 0.2, 0)) * CFrame.Angles(math.pi / 2, 0, 0)
 			front.CFrame, front.Length, front.Thickness = CFrame.new(0,0,-size.Z/2), length, 2
 			up.CFrame, up.Length, up.Thickness = base, length, 2
 			tip.CFrame, tip.Radius, tip.Height = base * CFrame.new(0,0,-length), length*0.12, length*0.3
-			badge.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(Vector3.new(0,0,-size.Z/2-length))
+			badge.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(frontMarker)
 		end
 		update()
 		indicators[part] = { Root = root, Connections = {
