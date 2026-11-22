@@ -2770,6 +2770,18 @@ local function CreateModule()
 		local value = uniqueIdReader.Read({ Name = "UniqueId" }, object)
 		return value ~= nil and tostring(value) or nil
 	end
+	local function firstOpenableScript()
+		local restricted = Explorer.HasInferredSelection() or Explorer.HasReconstructedSelection()
+		for _, node in ipairs(selection.List) do
+			local object = node.Obj
+			if object:IsA("LuaSourceContainer") then
+				if Apps.ModuleReconstruction and Apps.ModuleReconstruction.GetSource(object) then return object end
+				if not restricted and env.decompile and env.isViableDecompileScript and env.isViableDecompileScript(object) then
+					return object
+				end
+			end
+		end
+	end
 	Explorer.EditableRoots = function()
 		local allowed, positions, result = {}, {}, {}
 		for _, node in ipairs(selection.List) do
@@ -2955,12 +2967,7 @@ local function CreateModule()
 		end
 
 		if presentClasses.LuaSourceContainer then
-			local first = sList[1] and sList[1].Obj
-			local generated = first and Apps.ModuleReconstruction and Apps.ModuleReconstruction.GetSource(first)
-			context:AddRegistered(
-				"VIEW_SCRIPT",
-				not generated and (not presentClasses.isViableDecompileScript or env.decompile == nil)
-			)
+			context:AddRegistered("VIEW_SCRIPT", firstOpenableScript() == nil)
 			context:QueueDivider()
 		end
 		if hasNonService then
@@ -2969,13 +2976,16 @@ local function CreateModule()
 		end
 		if env.setclipboard then
 			local copyItems = { table.clone(context.Registered.COPY_PATH) }
-			if #sList == 1 and Explorer.GetReadableUniqueId(sList[1].Obj) then
-				copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_UNIQUE_ID)
+			for _, node in ipairs(sList) do
+				if Explorer.GetReadableUniqueId(node.Obj) then
+					copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_UNIQUE_ID)
+					break
+				end
 			end
 			copyItems[#copyItems + 1] = table.clone(context.Registered.COPY_AS_JSON)
 			context:Add({ Name = "Copy As", Submenu = copyItems })
+			context:QueueDivider()
 		end
-		context:QueueDivider()
 		context:AddRegistered("PASTE")
 		if hasNonService then
 			context:AddRegistered("DUPLICATE")
@@ -3791,13 +3801,13 @@ local function CreateModule()
 		context:Register("COPY_UNIQUE_ID", {
 			Name = "Copy Unique ID",
 			OnClick = function()
-				if type(env.setclipboard) ~= "function" or #selection.List ~= 1 then
-					return
+				if type(env.setclipboard) ~= "function" then return end
+				local ids = {}
+				for _, node in ipairs(selection.List) do
+					local id = Explorer.GetReadableUniqueId(node.Obj)
+					if id then ids[#ids + 1] = id end
 				end
-				local id = Explorer.GetReadableUniqueId(selection.List[1].Obj)
-				if id then
-					env.setclipboard(id)
-				end
+				if #ids > 0 then env.setclipboard(table.concat(ids, "\n")) end
 			end,
 		})
 		context:Register("TOGGLE_SCRIPTS", {
@@ -4034,22 +4044,6 @@ local function CreateModule()
 			end,
 		})
 
-		context:Register("VIEW_SCRIPT", {
-			Name = "Open",
-			IconMap = Explorer.MiscIcons,
-			Icon = "ViewScript",
-			DisabledIcon = "Empty",
-			OnClick = function()
-				local scr = selection.List[1] and selection.List[1].Obj
-				local generated = scr and Apps.ModuleReconstruction and Apps.ModuleReconstruction.GetSource(scr)
-				if not generated and (Explorer.HasInferredSelection() or Explorer.HasReconstructedSelection()) then
-					return
-				end
-				if scr then
-					ScriptViewer.ViewScript(scr)
-				end
-			end,
-		})
 		context:Register("DUMP_FUNCTIONS", {
 			Name = "Dump Functions",
 			IconMap = Explorer.MiscIcons,
@@ -4076,11 +4070,7 @@ local function CreateModule()
 			Icon = "ViewScript",
 			DisabledIcon = "Empty",
 			OnClick = function()
-				local scr = selection.List[1] and selection.List[1].Obj
-				local generated = scr and Apps.ModuleReconstruction and Apps.ModuleReconstruction.GetSource(scr)
-				if not generated and (Explorer.HasInferredSelection() or Explorer.HasReconstructedSelection()) then
-					return
-				end
+				local scr = firstOpenableScript()
 				if scr then
 					ScriptViewer.ViewScript(scr)
 				end

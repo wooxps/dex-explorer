@@ -102,7 +102,8 @@ print("PASS module source/bytecode contracts, nested tables, field writes, argum
  harness += ['do local restored,foldResets=0,0;local active;local boundary=function() end;local historyAliases=function() end;local restore=function() restored+=1 end;local renderTabs=function() end;local codeFrame={ResetFolds=function() foldResets+=1 end};local ScriptViewer={};ScriptViewer.RefreshGeneratedDocument=function(doc,source)'+refresh+';local resets=0;local doc={text="old",folds={[1]=true},undoStack={reset=function() resets+=1 end}};active=doc;assert(ScriptViewer.RefreshGeneratedDocument(doc,"new") and doc.text=="new" and resets==1 and restored==1 and foldResets==1 and doc.folds==nil);doc.dirty=true;assert(not ScriptViewer.RefreshGeneratedDocument(doc,"replacement") and doc.text=="new");end']
  explorer=(root/'src/Apps/Explorer/Explorer.lua').read_text(encoding='utf-8')
  compact_explorer = ''.join(explorer.split())
- assert 'context:AddRegistered("VIEW_SCRIPT",notgeneratedand' in compact_explorer
+ assert 'context:AddRegistered("VIEW_SCRIPT",firstOpenableScript()==nil)' in compact_explorer
+ assert 'Apps.ModuleReconstruction.GetSource(object)thenreturnobject' in compact_explorer
  assert '(notnode.Inferredor(Apps.ModuleReconstructionandApps.ModuleReconstruction.GetSource(node.Obj)))' in compact_explorer
  target=root/'tests/.module-reconstruction.luau'
  try:

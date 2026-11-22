@@ -226,7 +226,7 @@ do
 	end
 	local groups = table.concat(layout, ",")
 	assert(groups:find("Paste Into,Duplicate,Delete,Rename,|,Group as Model,Group as Folder,Ungroup,Insert,Hierarchy,|", 1, true), groups)
-	assert(groups:find("|,Paste Into,", 1, true), groups)
+	assert(groups:find(if deps.env.setclipboard then "|,Paste Into," else "Copy,Paste Into,", 1, true), groups)
 	assert(names.Insert.Submenu[2].Name == "Insert Object...")
 	assert(names.Hierarchy.Submenu[1].Name == "Select Parent(s)")
 	assert(names["Save / Export"].Submenu[1].Name == "Save to File...")
@@ -295,6 +295,34 @@ do
 	)
 	context.Registered.COPY_UNIQUE_ID.OnClick()
 	assert(copied == outside.UniqueId, "copy uses actual unique ID")
+	do
+		child.UniqueId = "abcdef01-abcd-4321-9876-123456789abc"
+		assert(menu({nodes[child], nodes[outside]})["Copy Unique ID"])
+		context.Registered.COPY_UNIQUE_ID.OnClick()
+		assert(copied == child.UniqueId .. "\n" .. outside.UniqueId)
+		child.UniqueId = nil
+		deps.env.setclipboard = nil
+		menu({nodes[outside]})
+		local seen = false
+		for i, item in ipairs(context.Items) do
+			if item.Name == "Paste Into" then seen = context.Items[i-1].Name == "Copy" end
+		end
+		assert(seen, "Copy directly precedes Paste Into without clipboard support")
+		deps.env.setclipboard = function(value) copied = value end
+		local scriptObject = Instance.new("LocalScript", workspace)
+		Explorer.SyncHistoryObject(scriptObject)
+		local oldView, oldCheck, oldDecompile = Apps.ScriptViewer.ViewScript, deps.env.isViableDecompileScript, deps.env.decompile
+		local opened
+		Apps.ScriptViewer.ViewScript = function(object) opened = object end
+		deps.env.isViableDecompileScript = function(object) return object == scriptObject end
+		deps.env.decompile = function() end
+		Explorer.Selection:SetTable({nodes[outside], nodes[scriptObject]})
+		context.Registered.VIEW_SCRIPT.OnClick()
+		assert(opened == scriptObject, "Open uses the first eligible selected script")
+		Apps.ScriptViewer.ViewScript, deps.env.isViableDecompileScript, deps.env.decompile = oldView, oldCheck, oldDecompile
+		Explorer.Selection:Set(nodes[outside])
+		scriptObject:Destroy()
+	end
 	local previousHttp = service.HttpService
 	local payload
 	service.HttpService = { JSONEncode = function(_, object)
