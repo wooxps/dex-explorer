@@ -275,7 +275,7 @@ local function CreateModule()
 		searchTreeVersion += 1
 		if not removal then
 			local scan = characterSearch.ColdScan
-			if scan and (not parent or not scan.Visited or parent == scan.Root or scan.Visited[parent]) then
+			if scan and (not parent or not scan.Visited or parent == scan.Root or scan.Visited[parent] or not next(scan.Visited)) then
 				scan.Stale = true
 			end
 		end
@@ -4880,7 +4880,7 @@ return search]==]
 					deadline = os.clock() + 0.004
 				end
 				return current() and version == searchTreeVersion
-			end, { Revision = version, Incremental = true })
+			end, { Revision = version, Incremental = true, Provisional = provisional })
 			if not current() then
 				return cancelled()
 			end

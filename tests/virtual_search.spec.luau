@@ -535,7 +535,7 @@ do
 	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, layout, visited)
 		local trial = table.clone(context)
 		trial.Children = function(node, check)
-			if not entered and node == roots[1] then
+			if not entered and visited and next(visited) and not visited[nodes[host]] then
 				entered = true
 				children[1].Name = "EarlyBranchEdit"
 				game.ItemChanged:Fire(children[1], "Name")

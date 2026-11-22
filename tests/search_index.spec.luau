@@ -58,6 +58,15 @@ do
 		end
 		return matches
 	end
+	local first = assert(Apps.SearchQuery.Compile("name:PART12"))
+	local opts = { Revision = revision, Incremental = true, Provisional = true }
+	assert(not Apps.SearchQuery.Scan(roots, first, {}, {}, {}, function() return false end, opts))
+	local provisional, directMatches, open = {}, {}, {}
+	assert(Apps.SearchQuery.Scan(roots, first, provisional, directMatches, open, nil, opts))
+	assert(Apps.SearchQuery.LastScanStats.Mode == "Literal" and open[parent] == true)
+	local expected = check("name:PART12")
+	for node in directMatches do assert(expected[node]) end
+	for node in expected do assert(directMatches[node]) end
 	check("part")
 	check('"Part123"')
 	assert(Apps.SearchQuery.LastScanStats.Mode == "NameIndex", "quoted literal searches use the index")

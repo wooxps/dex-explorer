@@ -306,10 +306,13 @@ local function Main()
 		return { Choices = choices, First = if quoted then quoteStart else cursor - #prefix, Last = last }
 	end
 
+	local triedProvisionalScan = false
 	Search.Scan = function(roots, predicate, results, matches, expand, checkpoint, options)
 		local started = os.clock()
 		local literal = literalTerms[predicate]
-		if nameIndex and literal and options and options.Revision ~= nil then
+		local direct = nameIndex and type(literal) == "string" and options and options.Provisional
+			and not triedProvisionalScan and nameIndex.Stats.Builds == 0
+		if not direct and nameIndex and literal and options and options.Revision ~= nil then
 			local complete = nameIndex.Scan(
 				roots,
 				type(literal) == "table" and literal[1] or literal,
@@ -331,6 +334,22 @@ local function Main()
 			}
 			return complete
 		end
+		if direct then
+			local seen, count = {}, 0
+			predicate = function(obj)
+				local name = obj.Name
+				if type(name) ~= "string" then return false end
+				local hit = seen[name]
+				if hit == nil then
+					hit = string.find(string.lower(name), literal, 1, true) ~= nil
+					if count < 8192 then
+						seen[name] = hit
+						count += 1
+					end
+				end
+				return hit
+			end
+		end
 		local visited = 0
 		local stack, indices = {}, {}
 		for _, root in ipairs(roots) do
@@ -344,10 +363,11 @@ local function Main()
 					depth -= 1
 				else
 					indices[depth] = index + 1
-					local ok, matched =
-						pcall(predicate, (node.Inferred and not node.Materialized) and searchObject(node) or node.Obj)
+					local object = if not direct and node.Inferred and not node.Materialized then searchObject(node) else node.Obj
+					local ok, matched = pcall(predicate, object)
 					if ok and matched then
-						expand[node], results[node], matches[node] = 0, true, true
+						if not direct or expand[node] == nil then expand[node] = 0 end
+						results[node], matches[node] = true, true
 						local ancestor = node.Parent
 						while ancestor and (not results[ancestor] or expand[ancestor] == 0) do
 							expand[ancestor], results[ancestor] = true, true
@@ -365,8 +385,9 @@ local function Main()
 				end
 			end
 		end
+		if direct then triedProvisionalScan = true end
 		Search.LastScanStats =
-			{ Mode = "Predicate", Seconds = os.clock() - started, Candidates = visited, Complete = true }
+			{ Mode = if direct then "Literal" else "Predicate", Seconds = os.clock() - started, Candidates = visited, Complete = true }
 		return true
 	end
 
