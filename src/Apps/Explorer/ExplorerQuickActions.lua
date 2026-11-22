@@ -260,6 +260,7 @@ local function CreateModule()
 			return item
 		end
 		local blue, green = Color3.fromRGB(50,145,255), Color3.fromRGB(76,205,99)
+		local front = adorn("LineHandleAdornment", blue)
 		local tip = adorn("ConeHandleAdornment", green)
 		local badge = Instance.new("BillboardGui", root)
 		badge.Adornee, badge.AlwaysOnTop, badge.Size = part, true, UDim2.fromOffset(20,20)
@@ -271,7 +272,10 @@ local function CreateModule()
 		local function update()
 			local size = part.Size
 			local length = math.clamp(size.Magnitude * 0.2, 0.4, 4)
-			frontDistance = size.Z / 2 + length
+			local lineLength = length * 0.5
+			front.CFrame = CFrame.new(0, 0, -size.Z / 2)
+			front.Length, front.Thickness = lineLength, 2
+			frontDistance = size.Z / 2 + lineLength
 			local frontMarker = Vector3.new(0, 0, -frontDistance)
 			local base = CFrame.new(frontMarker + Vector3.new(0, length * 0.2, 0)) * CFrame.Angles(math.pi / 2, 0, 0)
 			tip.CFrame, tip.Radius, tip.Height = base, length * 0.12, length * 0.3
