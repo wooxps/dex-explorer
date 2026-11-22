@@ -127,6 +127,8 @@ local function dialog(title, height)
 	panel.AnchorPoint, panel.Position = Vector2.new(.5,.5), UDim2.fromScale(.5,.5)
 	panel.ClipsDescendants, panel.Active = true, true
 	round(panel,8)
+	make("UIStroke",panel,{Name="WindowBorder",Thickness=1,Color=rgb(120,120,120),Transparency=.5,
+		ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
 	local scale = make("UIScale", panel, {})
 	local function resize()
 		local size = backdrop.AbsoluteSize
@@ -175,10 +177,10 @@ local function dialog(title, height)
 	gui.Destroying:Connect(function() moving:Disconnect(); released:Disconnect() end)
 	local logo = frame(titlebar,8,7,16,16,rgb(21,22,26))
 	round(logo,3)
-	local brand = Main.GetStudioAsset("branding/dex/toolbar-white-v1")
+	local brand = Main.GetStudioAsset("branding/dex/caption-12-v1")
 	if brand then
-		make("ImageLabel",logo,{Name="DexIcon",BackgroundTransparency=1,Position=UDim2.fromOffset(1,1),
-			Size=UDim2.fromOffset(14,14),Image=brand,ScaleType=Enum.ScaleType.Fit})
+		make("ImageLabel",logo,{Name="DexIcon",BackgroundTransparency=1,Position=UDim2.fromOffset(2,2),
+			Size=UDim2.fromOffset(12,12),Image=brand,ResampleMode=Enum.ResamplerMode.Pixelated})
 	else
 		label(logo,"D",3,-1,14,17,14,true,white)
 	end
@@ -234,10 +236,11 @@ local function dialog(title, height)
 		primary.BackgroundColor3 = if busy then rgb(45,68,152) else rgb(51,95,255)
 		primary.TextColor3 = if busy then rgb(157,168,200) else white
 	end
-	function d.setPrimary(text, width, callback, message)
+	function d.setPrimary(text, callback, message)
 		submit = callback
 		status.Text = message or ""
-		buttons(text,width,callback == nil)
+		-- Reserve the processing label width across every export state.
+		buttons(text,89,callback == nil)
 	end
 	d.sprite = if atlas then sprite else nil
 	function d.action(text, width, callback)
@@ -290,7 +293,7 @@ local function configuration(targets, onReady)
 	local revision, running = 0, false
 	local function prepare()
 		revision += 1
-		d.setPrimary("Processing...",89,nil)
+		d.setPrimary("Processing...",nil)
 		if running then return end
 		running = true
 		task.defer(function()
@@ -305,9 +308,9 @@ local function configuration(targets, onReady)
 				if not cancelled() then
 					running = false
 					if ok then
-						d.setPrimary("Export",53,function() onReady(data,details) end)
+						d.setPrimary("Export",function() onReady(data,details) end)
 					else
-						d.setPrimary("Retry",53,prepare,tostring(data):gsub("^.-:%d+: ", ""))
+						d.setPrimary("Retry",prepare,tostring(data):gsub("^.-:%d+: ", ""))
 					end
 					return
 				end

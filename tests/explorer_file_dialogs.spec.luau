@@ -24,7 +24,8 @@ do
 	local generated = 0
 	local config = function() Apps.ExplorerFileActions.Open("EXPORT_GLTF",{node}) end
 	config()
-	assert(find("DexIcon").Image == Main.GetStudioAsset("branding/dex/toolbar-white-v1"))
+	assert(find("DexIcon").Image == Main.GetStudioAsset("branding/dex/caption-12-v1"))
+	assert(find("DexIcon").Size.X.Offset == 12 and find("WindowBorder").Thickness == 1)
 	local checked = find("Checked")
 	assert(checked.Size.X.Offset == 19 and checked.ImageRectSize.X == 19)
 	local closeButton, closeIcon = find("Close"), find("CloseIcon")
@@ -55,7 +56,10 @@ do
 	config()
 	deferred()
 	assert(generated == 2 and find("Export").Interactable and not written)
+	local primaryPosition, primarySize, cancelPosition = find("Export").Position, find("Export").Size, find("Cancel").Position
 	click("Skinning")
+	assert(find("Processing...").Position == primaryPosition and find("Processing...").Size == primarySize)
+	assert(find("Cancel").Position == cancelPosition)
 	assert(find("Processing...").Interactable == false)
 	fail = true
 	deferred()
