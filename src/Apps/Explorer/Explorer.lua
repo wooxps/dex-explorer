@@ -3391,7 +3391,7 @@ local function CreateModule()
 			end,
 		})
 		for key, label in pairs({
-			INSERT_FILE = "Insert from File...",
+			INSERT_FILE = "Import Roblox Model",
 			SAVE_CSV = "Save as CSV...",
 			LOAD_CSV = "Load from CSV...",
 			EXPORT_OBJ = "Export as Obj",

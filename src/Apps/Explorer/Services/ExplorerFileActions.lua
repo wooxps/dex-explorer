@@ -51,7 +51,7 @@ function Actions.Insert(input, targets, cancelled)
 		end
 		if cancelled and cancelled() then error("Insert cancelled",0) end
 		checkTargets(targets)
-		Apps.History.Run("Insert from File", function()
+		Apps.History.Run("Import Roblox Model", function()
 			local selected = {}
 			for i, batch in ipairs(batches) do
 				for _, obj in ipairs(batch) do
@@ -465,7 +465,7 @@ function Actions.Open(action, targets)
 			end)
 	end
 	if action == "INSERT_FILE" then
-		filePrompt("Insert from File","Insert","Insert into " .. name,"",false,function(input,_,cancelled)
+		filePrompt("Import Roblox Model","Insert","Insert into " .. name,"",false,function(input,_,cancelled)
 			Actions.Insert(input,targets,cancelled)
 		end)
 	elseif action == "LOAD_CSV" then

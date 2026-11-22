@@ -232,7 +232,7 @@ do
 	assert(groups:find("Paste Into,Paste into at Original Location,Duplicate,Delete,Rename,|,Group as Model,Group as Folder,Ungroup,Insert,Hierarchy,|", 1, true), groups)
 	assert(groups:find(if deps.env.setclipboard then "|,Paste Into," else "Copy,Paste Into,", 1, true), groups)
 	assert(names.Insert.Submenu[2].Name == "Insert Object...")
-	assert(names.Insert.Submenu[3].Name == "Insert from File...")
+	assert(names.Insert.Submenu[3].Name == "Import Roblox Model")
 	assert(names["Save / Export"].Submenu[2].Name == "Export as Obj")
 	assert(names["Save / Export"].Submenu[3].Name == "Export as glTF")
 	assert(not names["Load from CSV..."] and not names["Save as CSV..."])
