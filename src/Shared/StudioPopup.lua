@@ -37,10 +37,10 @@ function Popup.Open(title, height, compact)
 	local panelWidth = if compact then 252 else 520
 	local holder = frame(backdrop,0,0,panelWidth,height,rgb(39,41,48))
 	holder.BackgroundTransparency = 1
-	for i = 8, 1, -1 do
-		local shadow = frame(holder,-i,5-i,panelWidth+2*i,height+2*i,Color3.new(0,0,0))
+	for i = 4, 1, -1 do
+		local shadow = frame(holder,-i,2-i,panelWidth+2*i,height+2*i,Color3.new(0,0,0))
 		shadow.Name = "Shadow"
-		shadow.BackgroundTransparency = if i > 4 then .984 else .965
+		shadow.BackgroundTransparency = .98
 		round(shadow,8+i)
 		make("UIGradient",shadow,{Rotation=90,Transparency=NumberSequence.new(1,0)})
 	end
