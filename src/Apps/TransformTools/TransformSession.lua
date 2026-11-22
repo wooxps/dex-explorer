@@ -135,6 +135,105 @@ local function CreateModule()
 		end
 		return center, Vector3.new(maxX - minX, maxY - minY, maxZ - minZ), pivot
 	end
+	local function pivotProperty(root)
+		if root:IsA("Model") then
+			if not root.PrimaryPart then return root, "WorldPivot" end
+			return root.PrimaryPart, "PivotOffset"
+		end
+		return root, "PivotOffset"
+	end
+	function Transform.PivotBox(root)
+		if root:IsA("Model") then return root:GetBoundingBox() end
+		return root.CFrame, root.Size
+	end
+	function Transform.ResetPivot(root)
+		local object, key = pivotProperty(root)
+		local box = Transform.PivotBox(root)
+		Apps.History.Set(object, key, if key == "WorldPivot" then box else object.CFrame:ToObjectSpace(box))
+	end
+	function Transform.BeginPivot(roots, snap)
+		if #roots ~= 1 or not eligible(roots[1]) then return nil, "Select one unlocked part or model." end
+		local root = roots[1]
+		local object, key = pivotProperty(root)
+		local initial, origin = object[key], root:GetPivot()
+		local box, size = Transform.PivotBox(root)
+		local function update(pose)
+			if not root:IsDescendantOf(workspace) or pivotProperty(root) ~= object then return false, "Pivot target changed." end
+			object[key] = if key == "WorldPivot" then pose else object.CFrame:ToObjectSpace(pose)
+			return true
+		end
+		local session = {}
+		function session:Move(delta)
+			local pos = origin.Position + delta
+			if snap and snap() then
+				local point = box:PointToObjectSpace(pos)
+				local function nearest(value, span)
+					return if span > 0 then math.clamp(math.round(2*value/span), -1, 1)*span/2 else 0
+				end
+				local hotspot = Vector3.new(nearest(point.X,size.X), nearest(point.Y,size.Y), nearest(point.Z,size.Z))
+				if (hotspot-point).Magnitude <= math.clamp(size.Magnitude*0.07, 0.08, 1) then
+					pos = box:PointToWorldSpace(hotspot)
+				end
+			end
+			return update(origin.Rotation + pos)
+		end
+		function session:Rotate(axis, angle)
+			return update(CFrame.fromAxisAngle(axis,angle) * origin.Rotation + origin.Position)
+		end
+		function session:Cancel()
+			object[key] = initial
+			return true
+		end
+		function session:Commit()
+			local value = object[key]
+			if value ~= initial then
+				Apps.History.Run("Edit Pivot", function()
+					Apps.History.Record(function() return object[key] end, function(v) object[key] = v end, initial, value)
+				end)
+			end
+			return true
+		end
+		return session
+	end
+
+	function Transform.AlignPlan(roots, mode, space, relative, axes)
+		if #roots < 2 then return end
+		local active = roots[#roots]
+		local basis = if space == "Local" then active:GetPivot().Rotation else CFrame.new()
+		local inverse = basis:Inverse()
+		local boxes = {}
+		local low, high
+		for i, root in roots do
+			local x,y,z,xx,yy,zz = extents(roots, i, i, inverse)
+			local a,b = Vector3.new(x,y,z),Vector3.new(xx,yy,zz)
+			boxes[i] = { a,b }
+			low = if low then low:Min(a) else a
+			high = if high then high:Max(b) else b
+		end
+		local function anchor(a,b)
+			return if mode == "Min" then a elseif mode == "Max" then b else (a+b)*0.5
+		end
+		local dest = if relative == "Active Object" then anchor(table.unpack(boxes[#roots])) else anchor(low,high)
+		local moves = table.create(#roots)
+		for i, box in boxes do
+			local delta = dest - anchor(box[1],box[2])
+			moves[i] = basis:VectorToWorldSpace(Vector3.new(if axes.X then delta.X else 0,
+				if axes.Y then delta.Y else 0, if axes.Z then delta.Z else 0))
+		end
+		return moves, basis, dest, low, high
+	end
+	function Transform.ApplyAlign(roots, mode, space, relative, axes)
+		local moves = Transform.AlignPlan(roots, mode, space, relative, axes)
+		if not moves then return end
+		Apps.History.Run("Align", function()
+			for i, root in roots do
+				if moves[i].Magnitude <= 1e-7 then continue end
+				assert(eligible(root), "Selection changed during alignment.")
+				Apps.History.Change("Align", function() return root:GetPivot() end,
+					function(v) root:PivotTo(v) end, root:GetPivot() + moves[i])
+			end
+		end)
+	end
 	function Transform.CreateSelectionPivot(roots, records, groups)
 		local membership, modelOf = {}, {}
 		local moving, movingSlots = {}, {}

@@ -20,6 +20,7 @@ local function CreateModule()
 		Snapping = false,
 		Dragging = false,
 	}
+	local hotspotFolder, hotspotBox, hotspotSize
 	local gui, bar, options, readout, gizmo, frameConnection
 	local roots = {}
 	local selectionConnections = {}
@@ -118,7 +119,7 @@ local function CreateModule()
 		return r.Origin, r.Direction.Unit
 	end
 	local function snapped(value, step)
-		local enabled = Tools.Snapping and not Lib.IsShiftDown()
+		local enabled = Tools.Snapping and not Lib.IsShiftDown() and (not Tools.EditingPivot or Tools.Tool == "Rotate")
 		return enabled and Apps.TransformSession.Snap(value, step) or value
 	end
 	local function releaseConnections()
@@ -131,6 +132,11 @@ local function CreateModule()
 		if boundsDirty then
 			cachedBox, cachedSize, cachedPivot =
 				Apps.TransformSession.Bounds(roots, Tools.Tool == "Scale" and "Scale" or Tools.Space)
+			if Tools.EditingPivot and #roots == 1 then
+				local pivot = roots[1]:GetPivot()
+				cachedPivot = if Tools.Space == "World" then CFrame.new(pivot.Position) else pivot
+				cachedBox = cachedPivot
+			end
 			boundsDirty = false
 		end
 		return cachedBox, cachedSize, cachedPivot
@@ -221,7 +227,14 @@ local function CreateModule()
 		if not box then
 			return false
 		end
-		local ok, session, problem = pcall(Apps.TransformSession.Begin, roots, Tools.Tool, pivot or box, size)
+		local ok, session, problem
+		if Tools.EditingPivot then
+			ok, session, problem = pcall(Apps.TransformSession.BeginPivot, roots, function()
+				return Tools.Snapping and not Lib.IsShiftDown()
+			end)
+		else
+			ok, session, problem = pcall(Apps.TransformSession.Begin, roots, Tools.Tool, pivot or box, size)
+		end
 		if not ok or not session then
 			report(problem or session)
 			return false
@@ -413,6 +426,34 @@ local function CreateModule()
 			or toolbarDrag ~= nil
 			or (Tools.Enabled and (Tools.Tool ~= "Select" or Tools.WorldSelection) and not overUI(Vector2.new(x, y)))
 	end
+	local function clearHotspots()
+		if hotspotFolder then hotspotFolder:Destroy() end
+		hotspotFolder, hotspotBox, hotspotSize = nil, nil, nil
+	end
+	local function drawHotspots()
+		if not Tools.EditingPivot or not Tools.Snapping or Lib.IsShiftDown() then
+			if hotspotFolder then clearHotspots() end
+			return
+		end
+		local box, size = Apps.TransformSession.PivotBox(roots[1])
+		if box == hotspotBox and size == hotspotSize then return end
+		if not hotspotFolder then hotspotFolder = node("Folder", {Name="PivotHotspots",Parent=gui}) end
+		local parts = hotspotFolder:GetChildren()
+		local localBox = workspace.Terrain.CFrame:ToObjectSpace(box)
+		local i = 0
+		for x=-1,1 do
+			for y=-1,1 do
+				for z=-1,1 do
+					i += 1
+					local dot = parts[i] or node("SphereHandleAdornment",{Parent=hotspotFolder,Adornee=workspace.Terrain,
+						Color3=Color3.fromRGB(230,52,175),AlwaysOnTop=true,ZIndex=2})
+					dot.CFrame = localBox * CFrame.new(Vector3.new(x,y,z)*size*0.5)
+					dot.Radius = math.clamp(size.Magnitude*0.013,0.03,0.16)
+				end
+			end
+		end
+		hotspotBox, hotspotSize = box, size
+	end
 	render = function()
 		if destroyed or not Tools.Enabled or guiActive() or #roots == 0 or Tools.Tool == "Select" then
 			if gizmo then
@@ -425,6 +466,7 @@ local function CreateModule()
 			gizmo:Hide()
 			return
 		end
+		drawHotspots()
 		local position = drag and drag.Pointer or mousePoint()
 		if drag then
 			local ok, problem = pcall(applyDrag, position)
@@ -489,6 +531,7 @@ local function CreateModule()
 			frameConnection:Disconnect()
 			frameConnection = nil
 		end
+		if not needed and hotspotFolder then clearHotspots() end
 		if not needed and gizmo then
 			gizmo:Hide()
 		end
@@ -507,6 +550,7 @@ local function CreateModule()
 		end
 		releaseConnections()
 		if not Tools.Enabled then
+			Tools.EditingPivot = false
 			roots = {}
 			Tools.Roots = roots
 			bar.Visible = false
@@ -525,6 +569,7 @@ local function CreateModule()
 		local modelParts = {}
 		roots = Apps.TransformSession.Collect(objects, modelParts)
 		Tools.Roots = roots
+		if #roots ~= 1 or guiActive() then Tools.EditingPivot = false end
 		boundsDirty = true
 		bar.Visible = #roots > 0 or guiActive()
 		if not bar.Visible then
@@ -641,6 +686,7 @@ local function CreateModule()
 			return
 		end
 		finish(true)
+		if tool == "Scale" or tool == "Select" then Tools.EditingPivot = false end
 		Tools.Tool = tool
 		Tools.Enabled = true
 		hover = nil
@@ -729,17 +775,25 @@ local function CreateModule()
 	end
 	local function positionOptions()
 		if options then
-			options.Position = UDim2.fromOffset(132, bar.AbsolutePosition.Y < 120 and bar.AbsoluteSize.Y + 8 or -120)
+			options.Position = UDim2.fromOffset(132, bar.AbsolutePosition.Y < options.Size.Y.Offset + 8 and bar.AbsoluteSize.Y + 8 or -options.Size.Y.Offset-8)
 		end
 	end
 	updateButtons = function()
 		for key, b in pairs(buttons) do
-			local selected = (Tools.Tool == key and (key ~= "Select" or Tools.WorldSelection or guiActive()))
+			local selected = (key == "Pivot" and Tools.EditingPivot) or (Tools.Tool == key and (key ~= "Select" or Tools.WorldSelection or guiActive()))
 				or (
 					key == "Snap"
 					and (guiActive() and Apps.GuiTransformTools.Snapping or not guiActive() and Tools.Snapping)
 				)
 			b.BackgroundTransparency = (selected or buttonHovers[b]) and 0 or 1
+		end
+		for _, key in {"Pivot","ResetPivot","Align"} do
+			local b = buttons[key]
+			if b then
+				local available = not guiActive() and (if key == "Align" then #roots >= 2 else #roots == 1)
+				b.Interactable = available
+				b.TextTransparency = if available then 0 else 0.6
+			end
 		end
 		if buttons.Space then
 			buttons.Space.Text = guiActive() and "UI" or Tools.Tool == "Scale" and "Local" or Tools.Space
@@ -753,6 +807,69 @@ local function CreateModule()
 				end
 			end
 		end
+	end
+	function Tools.OpenAlign()
+		local d = Apps.StudioPopup.Open("Align Tool", 284)
+		local config = { Mode = "Center", Space = "World", Relative = "Selection Bounds" }
+		local axesOn = { X=true, Y=false, Z=false }
+		local colors, planes = {}, {}
+		local activeBox = node("SelectionBox",{ Parent=d.gui, Color3=Color3.fromRGB(255,165,38), LineThickness=0.035 })
+		local update
+		local function choices(key, caption, y, values)
+			d.label(d.panel,caption,20,y,120,28,14,true)
+			local x = 152
+			for _, value in values do
+				local width = if key == "Relative" then 150 else 88
+				local _, paint = d.button(d.panel,value,x,y,width,28,Settings.Theme.Main2,function()
+					if key == "Axes" then axesOn[value] = not axesOn[value] else config[key] = value end
+					update()
+				end)
+				colors[#colors+1] = function()
+					paint(if config[key] == value or (key == "Axes" and axesOn[value]) then Color3.fromRGB(52,90,202) else Settings.Theme.Main2)
+				end
+				x += width + 4
+			end
+		end
+		choices("Mode","Mode",48,{"Min","Center","Max"})
+		choices("Space","Align In",89,{"World","Local"})
+		choices("Axes","Axes",130,{"X","Y","Z"})
+		choices("Relative","Relative To",171,{"Selection Bounds","Active Object"})
+		for _, axis in {"X","Y","Z"} do
+			planes[axis] = node("BoxHandleAdornment",{Parent=d.gui, Adornee=workspace.Terrain,
+				Color3=Color3.fromRGB(255,153,48),Transparency=0.68,AlwaysOnTop=true,ZIndex=1,Visible=false})
+		end
+		local function preview()
+			local _, basis, dest, low, high = Apps.TransformSession.AlignPlan(roots,config.Mode,config.Space,config.Relative,axesOn)
+			activeBox.Adornee = if basis and config.Relative == "Active Object" then roots[#roots] else nil
+			for axis, plane in planes do
+				plane.Visible = basis ~= nil and axesOn[axis]
+				if not plane.Visible then continue end
+				local mid,size = (low+high)*0.5,high-low
+				local center = Vector3.new(if axis=="X" then dest.X else mid.X,if axis=="Y" then dest.Y else mid.Y,if axis=="Z" then dest.Z else mid.Z)
+				plane.Size = Vector3.new(if axis=="X" then 0.035 else math.max(0.1,size.X),if axis=="Y" then 0.035 else math.max(0.1,size.Y),if axis=="Z" then 0.035 else math.max(0.1,size.Z))
+				plane.CFrame = workspace.Terrain.CFrame:ToObjectSpace(basis*CFrame.new(center))
+			end
+		end
+		update = function()
+			for _, paint in colors do paint() end
+			preview()
+			d.setPrimary("Align",if #roots >= 2 and (axesOn.X or axesOn.Y or axesOn.Z) then function()
+				Apps.TransformSession.ApplyAlign(roots,config.Mode,config.Space,config.Relative,axesOn)
+				boundsDirty = true
+				preview()
+			end else nil)
+		end
+		update()
+		local selected = Apps.Explorer.Selection.Changed:Connect(function() task.defer(function() if d.isOpen() then update() end end) end)
+		local clock = 0
+		local connection = service.RunService.Heartbeat:Connect(function(dt)
+			clock += dt
+			if clock >= 0.12 then
+				clock = 0
+				preview()
+			end
+		end)
+		d.onClose = function() connection:Disconnect() selected:Disconnect() end
 	end
 	function Tools.Init()
 		if gui then
@@ -879,7 +996,7 @@ local function CreateModule()
 			Name = "Snapping",
 			Parent = bar,
 			Position = UDim2.fromOffset(132, -120),
-			Size = UDim2.fromOffset(192, 112),
+			Size = UDim2.fromOffset(224, 148),
 			BackgroundColor3 = Settings.Theme.Main2,
 			BorderSizePixel = 0,
 			Active = true,
@@ -939,6 +1056,29 @@ local function CreateModule()
 				TextXAlignment = Enum.TextXAlignment.Left,
 			})
 		end
+		local function optionButton(name, text, x, width, callback)
+			local b = makeButton(options, name, text, x, width, callback)
+			b.Position = UDim2.fromOffset(x,112)
+			buttons[name] = b
+		end
+		optionButton("Pivot","Edit Pivot",4,76,function()
+			if gestureActive() or #roots ~= 1 or guiActive() then return end
+			Tools.EditingPivot = not Tools.EditingPivot
+			Tools.SetTool(if Tools.Tool == "Rotate" then "Rotate" else "Move")
+			options.Visible = false
+		end)
+		optionButton("ResetPivot","Reset Pivot",82,80,function()
+			if not gestureActive() and #roots == 1 and not guiActive() then
+				Apps.TransformSession.ResetPivot(roots[1])
+				boundsDirty = true
+			end
+		end)
+		optionButton("Align","Align",164,56,function()
+			if not gestureActive() and #roots >= 2 and not guiActive() then
+				options.Visible = false
+				Tools.OpenAlign()
+			end
+		end)
 		readout = node("TextLabel", {
 			Name = "Delta",
 			Parent = gui,

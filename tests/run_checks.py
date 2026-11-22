@@ -145,12 +145,16 @@ BrickColor={new=function(name) return {Name=name} end}
 NumberSequence={new=function(value) return {Value=value} end}
 ColorSequence={new=function(value) return {Value=value} end}
 NumberRange={new=function(value) return {Min=value,Max=value} end}
+local CFrame = {new=function() return {} end}
+local Font = {fromEnum=function() return {} end}
 local propertyControl=(function()
 ''', properties, '''
 end)()
 propertyControl.InitDeps(deps)
 local propertyApi=propertyControl.Main()
 assert(type(propertyApi)=="table", "Properties main returns an API")
+assert(table.find(propertyApi.AllowedAttributeTypes,"CFrame") and propertyApi.DefaultPropValue.CFrame)
+assert(table.find(propertyApi.AllowedAttributeTypes,"Font") and propertyApi.DefaultPropValue.Font)
 assert(type(propertyApi.DisplayProp)=="function", "Properties wires the value-cell factory")
 assert(type(propertyApi.DisplayEnumDropdown)=="function", "Properties wires owned editors")
 assert(type(propertyApi.NewPropEntry)=="function", "Properties wires row creation")

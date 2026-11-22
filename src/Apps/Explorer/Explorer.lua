@@ -3108,6 +3108,7 @@ local function CreateModule()
 				context:AddRegistered("TOGGLE_SCRIPTS")
 			end
 		end
+		if Apps.ExplorerQuickActions then Apps.ExplorerQuickActions.AddOrientation(context, sList) end
 		context:QueueDivider()
 		if #sList == 1 and sList[1].Obj:IsA("LocalizationTable") then
 			context:AddRegistered("SAVE_CSV", not env.writefile)
@@ -3119,6 +3120,15 @@ local function CreateModule()
 		end
 		table.insert(exportItems, action("EXPORT_GLTF", not env.writefile))
 		context:Add({ Name = "Save / Export", Submenu = exportItems })
+		if #sList == 1 and hasNonService and Apps.ReflectionService.CanCreate(sList[1].Obj.ClassName) then
+			local object = sList[1].Obj
+			local class = object.ClassName
+			context:QueueDivider()
+			context:Add({ Name = "Save as Default " .. class, OnClick = function() Apps.InsertionService.SaveDefault(object) end })
+			if Apps.InsertionService.HasDefault(class) then
+				context:Add({ Name = "Reset Default " .. class, OnClick = function() Apps.InsertionService.ResetDefault(class) end })
+			end
+		end
 		if hasService then
 			context:QueueDivider()
 			context:Add({
@@ -3243,6 +3253,7 @@ local function CreateModule()
 		local edits = {
 			CUT = true,
 			PASTE = true,
+			PASTE_WORKSPACE = true,
 			PASTE_ORIGINAL = true,
 			DUPLICATE = true,
 			DELETE = true,
@@ -3344,12 +3355,12 @@ local function CreateModule()
 			end,
 		})
 
-		local function pasteJson(rows, sList)
+		local function pasteJson(rows, sList, insert)
 			local pasted = {}
 			for _, node in ipairs(sList) do
 				for _, row in ipairs(rows) do
 					local target = node.Obj
-					local create = #rows > 1 or (row.ClassName ~= nil and row.ClassName ~= target.ClassName)
+					local create = insert or #rows > 1 or (row.ClassName ~= nil and row.ClassName ~= target.ClassName)
 					if create then
 						assert(Apps.ReflectionService.CanCreate(row.ClassName), "Cannot create " .. row.ClassName)
 						target = Instance.new(row.ClassName)
@@ -3417,6 +3428,22 @@ local function CreateModule()
 			end,
 		})
 
+		context:Register("PASTE_WORKSPACE", {
+			Name = "Paste",
+			Shortcut = "Ctrl+V",
+			OnClick = function()
+				local targets = { nodes[workspace] }
+				local rows = pastePayload()
+				if rows then
+					for _, row in ipairs(rows) do
+						if not row.ClassName then return end
+					end
+					pasteJson(rows, targets, true)
+				elseif #clipboard > 0 then
+					pasteInstances(targets, false)
+				end
+			end,
+		})
 		context:Register("PASTE_ORIGINAL", {
 			Name = "Paste into at Original Location",
 			OnClick = function()
@@ -6045,7 +6072,7 @@ return search]==]
 				elseif key == Enum.KeyCode.X then
 					command = "CUT"
 				elseif key == Enum.KeyCode.V then
-					command = "PASTE"
+					command = if shift then "PASTE" else "PASTE_WORKSPACE"
 				elseif key == Enum.KeyCode.D then
 					command = "DUPLICATE"
 				elseif key == Enum.KeyCode.G then
@@ -6061,7 +6088,7 @@ return search]==]
 				command = shift and "DELETE_CHILDREN" or "DELETE"
 			end
 			if command and not objectPicker then
-				if #selection.List > 0 then
+				if command == "PASTE_WORKSPACE" or #selection.List > 0 then
 					local action = Explorer.RightClickContext.Registered[command]
 					local ok, err = pcall(action.OnClick)
 					if not ok then

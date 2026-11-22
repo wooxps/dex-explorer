@@ -265,6 +265,14 @@ do
 		"copy selected ancestor and descendant clones subtree only once"
 	)
 
+	local workspaceCount = #workspace:GetChildren()
+	Explorer.Selection:SetTable({})
+	Explorer.RightClickContext.Registered.PASTE_WORKSPACE.OnClick()
+	assert(#workspace:GetChildren() == workspaceCount + 1, "Paste with no selection adds to Workspace")
+	assert(#pasteTarget:GetChildren() == 1, "Paste leaves the previous target alone")
+	Apps.History.Undo()
+	assert(#workspace:GetChildren() == workspaceCount, "Undo removes the Workspace paste")
+
 	local oldMouseX, oldMouseY = Main.Mouse.X, Main.Mouse.Y
 
 	local oldRunService = service.RunService

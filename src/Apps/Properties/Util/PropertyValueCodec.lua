@@ -57,6 +57,22 @@ local function Main()
 		if typeName == "string" or typeName == "Content" then
 			return text
 		end
+		if typeName == "Font" then
+			local ok, font = pcall(function()
+				local fields = string.split(text, ",")
+				assert(#fields <= 3)
+				local function field(i, fallback)
+					return if fields[i] then string.match(fields[i], "^%s*(.-)%s*$") else fallback
+				end
+				local family = field(1, "")
+				if #fields == 1 and not string.find(family, "://", 1, true) then
+					return Font.fromEnum(Enum.Font[family])
+				end
+				assert(family ~= "")
+				return Font.new(family, Enum.FontWeight[field(2, "Regular")], Enum.FontStyle[field(3, "Normal")])
+			end)
+			return if ok then font else nil
+		end
 		if numberTypes[typeName] then
 			local value = tonumber(text)
 			return if value and value == value and math.abs(value) ~= math.huge then value else nil
@@ -81,7 +97,9 @@ local function Main()
 	end
 
 	function ValueCodec.Format(typeName: string, value): string
-		if typeName == "Color3" then
+		if typeName == "Font" then
+			return table.concat({ value.Family, value.Weight.Name, value.Style.Name }, ", ")
+		elseif typeName == "Color3" then
 			return Lib.ColorToBytes(value)
 		elseif typeName == "NumberRange" then
 			return value.Min .. ", " .. value.Max

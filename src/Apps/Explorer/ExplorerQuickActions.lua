@@ -1,11 +1,11 @@
 --!strict
 
-local Main, Apps, env, service, plr
+local Main, Apps, env, service, plr, Lib
 
 ------------------------------ Initialization ------------------------------
 
 local function InitDeps(d)
-	Main, Apps, env, service, plr = d.Main, d.Apps, d.env, d.service, d.plr
+	Main, Apps, env, service, plr, Lib = d.Main, d.Apps, d.env, d.service, d.plr, d.Lib
 end
 ------------------------------ Module ------------------------------
 
@@ -235,6 +235,78 @@ local function CreateModule()
 		elseif object:IsA("Model") then
 			return object:GetPivot().Position
 		end
+	end
+	local indicators = {}
+	local indicatorGui
+	local function clearIndicator(part)
+		local item = indicators[part]
+		if not item then return end
+		indicators[part] = nil
+		for _, conn in item.Connections do conn:Disconnect() end
+		item.Root:Destroy()
+		if not next(indicators) then indicatorGui:Destroy() indicatorGui = nil end
+	end
+	local function showIndicator(part)
+		if not indicatorGui then
+			indicatorGui = Instance.new("ScreenGui")
+			indicatorGui.Name = "DexOrientationIndicators"
+			Lib.ShowGui(indicatorGui)
+		end
+		local root = Instance.new("Folder", indicatorGui)
+		local function adorn(class, color)
+			local item = Instance.new(class)
+			item.Adornee, item.Color3, item.AlwaysOnTop, item.ZIndex = part, color, true, 1
+			item.Parent = root
+			return item
+		end
+		local blue, green = Color3.fromRGB(50,145,255), Color3.fromRGB(76,205,99)
+		local front = adorn("LineHandleAdornment", blue)
+		local up = adorn("LineHandleAdornment", green)
+		local tip = adorn("ConeHandleAdornment", green)
+		local badge = Instance.new("BillboardGui", root)
+		badge.Adornee, badge.AlwaysOnTop, badge.Size = part, true, UDim2.fromOffset(20,20)
+		local label = Instance.new("TextLabel", badge)
+		label.Size, label.BackgroundColor3 = UDim2.fromScale(1,1), blue
+		label.Text, label.TextColor3, label.Font, label.TextSize = "F", Color3.new(1,1,1), Enum.Font.SourceSansBold, 15
+		Instance.new("UICorner",label).CornerRadius = UDim.new(1,0)
+		local function update()
+			local size = part.Size
+			local length = math.clamp(size.Magnitude * 0.2, 0.4, 4)
+			local base = CFrame.new(0,size.Y/2,0) * CFrame.Angles(math.pi/2,0,0)
+			front.CFrame, front.Length, front.Thickness = CFrame.new(0,0,-size.Z/2), length, 2
+			up.CFrame, up.Length, up.Thickness = base, length, 2
+			tip.CFrame, tip.Radius, tip.Height = base * CFrame.new(0,0,-length), length*0.12, length*0.3
+			badge.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(Vector3.new(0,0,-size.Z/2-length))
+		end
+		update()
+		indicators[part] = { Root = root, Connections = {
+			service.RunService.RenderStepped:Connect(function()
+				local offset = part.CFrame.LookVector * (part.Size.Z/2 + front.Length)
+				if badge.StudsOffsetWorldSpace ~= offset then badge.StudsOffsetWorldSpace = offset end
+			end),
+			part:GetPropertyChangedSignal("Size"):Connect(update),
+			part.AncestryChanged:Connect(function()
+				if not part:IsDescendantOf(service.Workspace) then clearIndicator(part) end
+			end),
+			part.Destroying:Connect(function() clearIndicator(part) end),
+		} }
+	end
+	function Actions.AddOrientation(context, list)
+		local parts, all = {}, true
+		for _, node in list do
+			local part = node.Obj
+			if part:IsA("BasePart") and not part:IsA("Terrain") and part:IsDescendantOf(service.Workspace) then
+				parts[#parts+1] = part
+				if not indicators[part] then all = false end
+			end
+		end
+		if #parts == 0 then return end
+		context:Add({ Name = if all then "Hide Orientation Indicator" else "Show Orientation Indicator", OnClick = function()
+			for _, part in parts do
+				if all then clearIndicator(part)
+				elseif not indicators[part] and part:IsDescendantOf(service.Workspace) then showIndicator(part) end
+			end
+		end })
 	end
 	function Actions.Register(context, selection)
 		local function register(id, name, callback)
@@ -548,6 +620,7 @@ local function CreateModule()
 		end
 	end
 	Main.AddCleanup(function()
+		while next(indicators) do clearIndicator(next(indicators)) end
 		while next(highlights) do
 			removeHighlight(next(highlights))
 		end

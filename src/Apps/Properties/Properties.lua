@@ -200,6 +200,8 @@ local function CreateModule()
 		ColorSequence = ColorSequence.new(Color3.new(1, 1, 1)),
 		NumberRange = NumberRange.new(0),
 		Rect = Rect.new(0, 0, 0, 0),
+		CFrame = CFrame.new(),
+		Font = Font.fromEnum(Enum.Font.SourceSans),
 	}
 
 	Properties.AllowedAttributeTypes = {
@@ -212,10 +214,12 @@ local function CreateModule()
 		"Color3",
 		"Vector2",
 		"Vector3",
+		"CFrame",
 		"NumberSequence",
 		"ColorSequence",
 		"NumberRange",
 		"Rect",
+		"Font",
 	}
 
 	Properties.StringToValue = function(prop, text)
