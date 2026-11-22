@@ -146,7 +146,16 @@ local function dialog(title, height)
 		btn.Activated:Connect(callback)
 		return btn
 	end
+	local atlas = Main.GetStudioAsset("export/dialog-controls-v1")
+	local function sprite(parent, name, x, y, width, height, sourceX)
+		return make("ImageLabel",parent,{Name=name,BackgroundTransparency=1,Position=UDim2.fromOffset(x,y),
+			Size=UDim2.fromOffset(width,height),Image=atlas,ImageRectOffset=Vector2.new(sourceX,2),
+			ImageRectSize=Vector2.new(width,height)})
+	end
 	local titlebar = frame(panel,0,0,520,30,rgb(243,243,243))
+	round(titlebar,8)
+	-- The title bar paints its own top corners. The lower strip squares its seam with the body.
+	frame(titlebar,0,20,520,10,titlebar.BackgroundColor3)
 	-- Drag the title bar without moving the checkboxes or other controls.
 	local dragStart, panelStart, pointer
 	titlebar.Active = true
@@ -166,12 +175,50 @@ local function dialog(title, height)
 	gui.Destroying:Connect(function() moving:Disconnect(); released:Disconnect() end)
 	local logo = frame(titlebar,8,7,16,16,rgb(21,22,26))
 	round(logo,3)
-	local mark = frame(logo,4,4,8,8,white)
-	mark.Rotation = 17
-	frame(mark,3,3,2,2,logo.BackgroundColor3)
+	local brand = Main.GetStudioAsset("branding/dex/toolbar-white-v1")
+	if brand then
+		make("ImageLabel",logo,{Name="DexIcon",BackgroundTransparency=1,Position=UDim2.fromOffset(1,1),
+			Size=UDim2.fromOffset(14,14),Image=brand,ScaleType=Enum.ScaleType.Fit})
+	else
+		label(logo,"D",3,-1,14,17,14,true,white)
+	end
 	label(titlebar,title,29,0,430,30,12,false,rgb(20,20,20))
-	local x = button(titlebar,"×",486,0,28,30,titlebar.BackgroundColor3,close)
-	x.TextColor3, x.TextSize, x.BackgroundTransparency = rgb(20,20,20),21,1
+	local x = make("TextButton",titlebar,{Name="Close",Text="",AutoButtonColor=false,
+		BorderSizePixel=0,Position=UDim2.fromOffset(490,0),Size=UDim2.fromOffset(30,30),BackgroundTransparency=1})
+	local hover = frame(x,0,0,30,30,rgb(196,43,28))
+	round(hover,8)
+	local left = frame(hover,0,0,10,30,hover.BackgroundColor3)
+	local bottom = frame(hover,0,20,30,10,hover.BackgroundColor3)
+	local glyphs = {}
+	if atlas then
+		glyphs[1] = sprite(x,"CloseIcon",9,8,12,12,88)
+	else
+		for _, angle in ipairs({45,-45}) do
+			local line = frame(x,8,14,14,1,rgb(23,24,24))
+			line.Rotation = angle
+			table.insert(glyphs,line)
+		end
+	end
+	local over, down = false, false
+	local function paintClose()
+		hover.Visible = over
+		local color = if down then rgb(171,38,26) else rgb(196,43,28)
+		hover.BackgroundColor3, left.BackgroundColor3, bottom.BackgroundColor3 = color,color,color
+		for _, glyph in ipairs(glyphs) do
+			local ink = if over then Color3.new(1,1,1) else rgb(23,24,24)
+			if atlas then glyph.ImageColor3 = ink else glyph.BackgroundColor3 = ink end
+		end
+	end
+	x.MouseEnter:Connect(function() over=true; paintClose() end)
+	x.MouseLeave:Connect(function() over,down=false,false; paintClose() end)
+	x.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=true; paintClose() end
+	end)
+	x.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=false; paintClose() end
+	end)
+	x.Activated:Connect(close)
+	paintClose()
 	local status = label(panel,"",20,height-57,312,46,13,false,rgb(255,180,172))
 	status.TextWrapped = true
 	local cancel = button(panel,"Cancel",0,height-52,57,32,rgb(59,62,72),close)
@@ -187,6 +234,12 @@ local function dialog(title, height)
 		primary.BackgroundColor3 = if busy then rgb(45,68,152) else rgb(51,95,255)
 		primary.TextColor3 = if busy then rgb(157,168,200) else white
 	end
+	function d.setPrimary(text, width, callback, message)
+		submit = callback
+		status.Text = message or ""
+		buttons(text,width,callback == nil)
+	end
+	d.sprite = if atlas then sprite else nil
 	function d.action(text, width, callback)
 		buttons(text,width,false)
 		submit = function()
@@ -220,41 +273,81 @@ end
 
 local function configuration(targets, onReady)
 	local d = dialog("Export Configuration",320)
-	local icon = d.frame(d.panel,22,52,32,32,rgb(119,168,255))
-	d.round(icon,16)
-	local glyph = d.label(icon,"!",0,-1,32,34,24,true,rgb(39,41,48))
-	glyph.TextXAlignment = Enum.TextXAlignment.Center
+	if d.sprite then
+		d.sprite(d.panel,"Information",22,52,32,32,50)
+	else
+		local icon = d.frame(d.panel,22,52,32,32,rgb(120,169,255))
+		d.round(icon,16)
+		local glyph = d.label(icon,"!",0,-1,32,34,24,true,rgb(39,41,48))
+		glyph.TextXAlignment = Enum.TextXAlignment.Center
+	end
 	d.label(d.panel,"Customize your export",64,48,410,24,15,true)
 	d.label(d.panel,"Pick the components to include in your file",64,74,430,24,15)
 	d.label(d.panel,"Include",64,106,380,24,15,true)
 	local options = {Skinning=true,Textures=true,Attachments=true,Cages=false}
+	-- One worker owns mesh/image allocations. Changes invalidate the in-flight result
+	-- and coalesce while Roblox yields to read an asset.
+	local revision, running = 0, false
+	local function prepare()
+		revision += 1
+		d.setPrimary("Processing...",89,nil)
+		if running then return end
+		running = true
+		task.defer(function()
+			task.wait()
+			while current == d do
+				local generation, snapshot = revision, table.clone(options)
+				local function cancelled() return current ~= d or generation ~= revision end
+				local ok, data, details = pcall(function()
+					checkTargets(targets)
+					return Apps.GltfExporter.Export(targets,snapshot,cancelled)
+				end)
+				if not cancelled() then
+					running = false
+					if ok then
+						d.setPrimary("Export",53,function() onReady(data,details) end)
+					else
+						d.setPrimary("Retry",53,prepare,tostring(data):gsub("^.-:%d+: ", ""))
+					end
+					return
+				end
+			end
+			running = false
+		end)
+	end
 	for i, name in ipairs({"Skinning","Textures","Attachments","Cages"}) do
 		local row = d.make("TextButton",d.panel,{Name=name,Text="",BackgroundTransparency=1,AutoButtonColor=false,
 			Position=UDim2.fromOffset(64,130+(i-1)*29),Size=UDim2.fromOffset(300,29)})
-		local box = d.frame(row,1,6,17,17,rgb(39,41,48))
-		d.round(box,3)
-		d.make("UIStroke",box,{Color=rgb(215,217,222),Thickness=1})
-		local fill = d.frame(box,0,0,17,17,rgb(247,247,248))
-		d.round(fill,3)
-		local tick = d.label(fill,"✓",0,-1,17,19,16,true,rgb(32,34,40))
-		tick.TextXAlignment = Enum.TextXAlignment.Center
-		fill.BackgroundTransparency = if options[name] then 0 else 1
-		tick.TextTransparency = fill.BackgroundTransparency
+		local fill, opacity
+		if d.sprite then
+			d.sprite(row,"Unchecked",1,5,19,19,26)
+			fill = d.sprite(row,"Checked",1,5,19,19,2)
+			opacity = "ImageTransparency"
+		else
+			local border = d.frame(row,1,5,19,19,rgb(215,217,222))
+			d.round(border,3)
+			d.round(d.frame(border,1,1,17,17,rgb(39,41,48)),2)
+			fill = d.make("CanvasGroup",row,{Position=border.Position,Size=border.Size,
+				BorderSizePixel=0,BackgroundColor3=rgb(247,247,248)})
+			d.round(fill,3)
+			local short = d.frame(fill,4,10,6,2,rgb(32,34,40))
+			short.Rotation = 45
+			local long = d.frame(fill,7,9,9,2,rgb(32,34,40))
+			long.Rotation = -45
+			opacity = "GroupTransparency"
+		end
+		fill[opacity] = if options[name] then 0 else 1
 		d.label(row,name,32,0,240,29,13,false,rgb(240,240,241))
 		row.Activated:Connect(function()
 			if d.busy then return end
 			options[name] = not options[name]
 			local fade = if options[name] then 0 else 1
 			local timing = TweenInfo.new(.12,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
-			service.TweenService:Create(fill,timing,{BackgroundTransparency=fade}):Play()
-			service.TweenService:Create(tick,timing,{TextTransparency=fade}):Play()
+			service.TweenService:Create(fill,timing,{[opacity]=fade}):Play()
+			prepare()
 		end)
 	end
-	d.action("Export",53,function(cancelled)
-		checkTargets(targets)
-		local data, details = Apps.GltfExporter.Export(targets, options, cancelled)
-		if not cancelled() then onReady(data, details) end
-	end)
+	prepare()
 end
 
 local function browse(d, extensions, choose)

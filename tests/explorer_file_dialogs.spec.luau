@@ -22,29 +22,54 @@ do
 	end
 	local function click(key) find(key).Activated:Fire() end
 	local generated = 0
-	Apps.GltfExporter.Export = function(_, options)
-		assert(options.Skinning and not options.Textures and options.Attachments and options.Cages)
-		generated += 1
-		return "glTF fixture"
-	end
-	local function config()
-		Apps.ExplorerFileActions.Open("EXPORT_GLTF",{node})
-		click("Textures")
-		click("Cages")
-		click("Export")
-		assert(find("Processing...").Interactable == false)
-	end
+	local config = function() Apps.ExplorerFileActions.Open("EXPORT_GLTF",{node}) end
 	config()
+	assert(find("DexIcon").Image == Main.GetStudioAsset("branding/dex/toolbar-white-v1"))
+	local checked = find("Checked")
+	assert(checked.Size.X.Offset == 19 and checked.ImageRectSize.X == 19)
+	local closeButton, closeIcon = find("Close"), find("CloseIcon")
+	local hover = closeButton:GetChildren()[1]
+	assert(not hover.Visible and not closeButton.AutoButtonColor)
+	closeButton.MouseEnter:Fire()
+	assert(hover.Visible and closeIcon.ImageColor3.R == 1)
+	closeButton.MouseLeave:Fire()
+	assert(not hover.Visible and closeIcon.ImageColor3.R < .2)
+	assert(find("Processing...").Interactable == false)
 	click("Cancel")
 	deferred()
 	assert(generated == 0 and not written)
+	local fail = false
+	Apps.GltfExporter.Export = function(_, options, cancelled)
+		generated += 1
+		if fail then error("Asset unavailable",0) end
+		if generated == 1 then
+			assert(options.Textures and not options.Cages)
+			click("Textures")
+			click("Cages")
+			assert(cancelled() and options.Textures and not options.Cages)
+			return "stale"
+		end
+		assert(not cancelled())
+		return "glTF fixture " .. generated
+	end
 	config()
 	deferred()
-	assert(generated == 1 and find("FileInput").Text == "Preview.gltf" and not written)
+	assert(generated == 2 and find("Export").Interactable and not written)
+	click("Skinning")
+	assert(find("Processing...").Interactable == false)
+	fail = true
+	deferred()
+	assert(find("Asset unavailable") and find("Retry").Interactable)
+	fail = false
+	click("Retry")
+	deferred()
+	local prepared = generated
+	click("Export")
+	assert(generated == prepared and find("FileInput").Text == "Preview.gltf" and not written)
 	find("FileInput").Text = "Renamed.gltf"
 	click("Save")
 	deferred()
-	assert(written[1]=="Renamed.gltf" and written[2]=="glTF fixture")
+	assert(written[1]=="Renamed.gltf" and written[2]=="glTF fixture " .. prepared)
 	Apps.ExplorerFileActions.Open("LOAD_CSV",{node})
 	local input = find("FileInput")
 	input.Text = "locales/test.csv"
