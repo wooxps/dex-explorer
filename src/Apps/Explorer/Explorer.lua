@@ -274,6 +274,12 @@ local function CreateModule()
 	local nilNode = { Obj = Instance.new("Folder") }
 	local idCounter = 0
 	local scrollV, scrollH, clipboard
+	local copyFrames = setmetatable({}, { __mode = "k" })
+	local function rememberFrame(source, clone)
+		if source:IsA("Attachment") then
+			copyFrames[clone] = source.WorldCFrame
+		end
+	end
 	local instanceCopyText, copiedJson
 	local function clipboardJsonText()
 		if type(env.getclipboard) == "function" then
@@ -2811,6 +2817,12 @@ local function CreateModule()
 		end)
 		return result
 	end
+	local function canPasteOriginal()
+		if #clipboard == 0 then return false end
+		local json = clipboardJsonText()
+		return json == nil or json == instanceCopyText
+	end
+
 	Explorer.HideSelectedServices = function()
 		local roots = {}
 		for _, node in ipairs(selection.List) do
@@ -2987,6 +2999,7 @@ local function CreateModule()
 			context:QueueDivider()
 		end
 		context:AddRegistered("PASTE")
+		context:AddRegistered("PASTE_ORIGINAL", not canPasteOriginal())
 		if hasNonService then
 			context:AddRegistered("DUPLICATE")
 			context:AddRegistered("DELETE")
@@ -3011,6 +3024,7 @@ local function CreateModule()
 			Submenu = {
 				action("INSERT_PART", not Apps.ReflectionService.CanCreate("Part")),
 				action("INSERT_OBJECT", #sList ~= 1),
+				action("INSERT_FILE", not (env.getcustomasset or env.readfile)),
 			},
 		})
 		local hierarchy = {}
@@ -3044,7 +3058,11 @@ local function CreateModule()
 			end
 		end
 		context:QueueDivider()
-		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST") } })
+		if #sList == 1 and sList[1].Obj:IsA("LocalizationTable") then
+			context:AddRegistered("SAVE_CSV", not env.writefile)
+			context:AddRegistered("LOAD_CSV")
+		end
+		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST"), action("EXPORT_GLTF", not env.writefile) } })
 		if hasService then
 			context:QueueDivider()
 			context:Add({
@@ -3169,6 +3187,7 @@ local function CreateModule()
 		local edits = {
 			CUT = true,
 			PASTE = true,
+			PASTE_ORIGINAL = true,
 			DUPLICATE = true,
 			DELETE = true,
 			DELETE_CHILDREN = true,
@@ -3230,6 +3249,7 @@ local function CreateModule()
 					local inst = sList[i].Obj
 					local s, cloned = pcall(clone, inst)
 					if s and cloned then
+						rememberFrame(inst, cloned)
 						newClipboard[count] = cloned
 						count = count + 1
 					end
@@ -3258,6 +3278,7 @@ local function CreateModule()
 					local inst = sList[i].Obj
 					local s, cloned = pcall(clone, inst)
 					if s and cloned then
+						rememberFrame(inst, cloned)
 						newClipboard[count] = cloned
 						count = count + 1
 					end
@@ -3330,6 +3351,40 @@ local function CreateModule()
 			pasteBox.TextBox:CaptureFocus()
 		end
 
+		local function pasteInstances(sList, original)
+			local newSelection = {}
+			local count = 1
+			for i = 1, #sList do
+				local node = sList[i]
+				local inst = node.Obj
+				if Settings.Explorer.ExpandHierarchy ~= false then
+					Explorer.MakeNodeVisible(node, true)
+				end
+				for c = 1, #clipboard do
+					local cloned = clipboard[c]:Clone()
+					if cloned then
+						cloned.Name = Explorer.GetInsertName(inst, cloned.Name)
+						local frame = original and copyFrames[clipboard[c]]
+						Apps.History.Set(cloned, "Parent", inst)
+						if frame then
+							local parentFrame = cloned.WorldCFrame * cloned.CFrame:Inverse()
+							Apps.History.Set(cloned, "CFrame", parentFrame:ToObjectSpace(frame))
+						end
+						local clonedNode = nodes[cloned]
+						if clonedNode then
+							newSelection[count] = clonedNode
+							count = count + 1
+						end
+					end
+				end
+			end
+			selection:SetTable(newSelection)
+
+			if #newSelection > 0 then
+				Explorer.ViewNode(newSelection[1])
+			end
+		end
+
 		context:Register("PASTE", {
 			Name = "Paste Into",
 			IconMap = Explorer.MiscIcons,
@@ -3348,34 +3403,31 @@ local function CreateModule()
 					promptPaste(sList)
 					return
 				end
-				local newSelection = {}
-				local count = 1
-				for i = 1, #sList do
-					local node = sList[i]
-					local inst = node.Obj
-					if Settings.Explorer.ExpandHierarchy ~= false then
-						Explorer.MakeNodeVisible(node, true)
-					end
-					for c = 1, #clipboard do
-						local cloned = clipboard[c]:Clone()
-						if cloned then
-							cloned.Name = Explorer.GetInsertName(inst, cloned.Name)
-							Apps.History.Set(cloned, "Parent", inst)
-							local clonedNode = nodes[cloned]
-							if clonedNode then
-								newSelection[count] = clonedNode
-								count = count + 1
-							end
-						end
-					end
-				end
-				selection:SetTable(newSelection)
-
-				if #newSelection > 0 then
-					Explorer.ViewNode(newSelection[1])
-				end
+				pasteInstances(sList, false)
 			end,
 		})
+
+		context:Register("PASTE_ORIGINAL", {
+			Name = "Paste into at Original Location",
+			OnClick = function()
+				if canPasteOriginal() then pasteInstances(table.clone(selection.List), true) end
+			end,
+		})
+		for key, label in pairs({
+			INSERT_FILE = "Insert from File...",
+			SAVE_CSV = "Save as CSV...",
+			LOAD_CSV = "Load from CSV...",
+			EXPORT_GLTF = "Export as glTF...",
+		}) do
+			context:Register(key, {
+				Name = label,
+				OnClick = function()
+					if not Explorer.HasInferredSelection() then
+						Apps.ExplorerFileActions.Open(key, table.clone(selection.List))
+					end
+				end,
+			})
+		end
 
 		context:Register("DUPLICATE", {
 			Name = "Duplicate",

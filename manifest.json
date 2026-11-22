@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "c81a9f53a4cd0a526a80",
+  "release": "412a5efe2a856b7814ad",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -67,9 +67,14 @@
     "SelectionGeometryMask": "src/Apps/Explorer/Rendering/SelectionGeometryMask.lua",
     "SelectionRenderer": "src/Apps/Explorer/Rendering/SelectionRenderer.lua",
     "EditingService": "src/Apps/Explorer/Services/EditingService.lua",
+    "ExplorerFileActions": "src/Apps/Explorer/Services/ExplorerFileActions.lua",
     "ExplorerProjection": "src/Apps/Explorer/Services/ExplorerProjection.lua",
     "ExplorerSearch": "src/Apps/Explorer/Services/ExplorerSearch.lua",
+    "GltfExporter": "src/Apps/Explorer/Services/GltfExporter.lua",
+    "GltfGeometry": "src/Apps/Explorer/Services/GltfGeometry.lua",
+    "GltfTextures": "src/Apps/Explorer/Services/GltfTextures.lua",
     "InsertionService": "src/Apps/Explorer/Services/InsertionService.lua",
+    "LocalizationCsv": "src/Apps/Explorer/Services/LocalizationCsv.lua",
     "ReflectionService": "src/Apps/Explorer/Services/ReflectionService.lua",
     "SearchBits": "src/Apps/Explorer/Services/SearchBits.lua",
     "SearchNameIndex": "src/Apps/Explorer/Services/SearchNameIndex.lua",
@@ -445,9 +450,9 @@
       "sha256": "4b4451cfdf32edf710eccc6079fd34fdb7194bc6b46455c62abad0b1ee4cd609"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 199480,
-      "checksum": 3504506463,
-      "sha256": "49aaf6883d9ed40e9a577e347c110f4978e20c9a5025d2b86d3c80794a31608f"
+      "bytes": 201176,
+      "checksum": 2502139089,
+      "sha256": "670fa9f8092693239d3b890aa1b9f54654599cd284c45d5ed71b860b12066ec7"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7173,
@@ -479,6 +484,11 @@
       "checksum": 2832286749,
       "sha256": "151b661b0e81268d6add19627be22385f6ef0416cf2e3de8d12fd2011fda52ce"
     },
+    "src/Apps/Explorer/Services/ExplorerFileActions.lua": {
+      "bytes": 5908,
+      "checksum": 3491655997,
+      "sha256": "5f6d9b14836cfd9d118728ddaca8856ca71474f1c427c9149f59f021a56a0e9e"
+    },
     "src/Apps/Explorer/Services/ExplorerProjection.lua": {
       "bytes": 6135,
       "checksum": 3124298607,
@@ -489,10 +499,30 @@
       "checksum": 548239561,
       "sha256": "cd6d04ace7489cfda9b2212a83d86dd24ce87f3137bd1b8b2147fa38a7bcb9f6"
     },
+    "src/Apps/Explorer/Services/GltfExporter.lua": {
+      "bytes": 14658,
+      "checksum": 1512152971,
+      "sha256": "9ba4c9201e6c008923e5bbbdedb3b5e20a9b696cb284bbd804c0b849fa72f454"
+    },
+    "src/Apps/Explorer/Services/GltfGeometry.lua": {
+      "bytes": 5263,
+      "checksum": 1372868097,
+      "sha256": "307f36afa72df0c4cce75212eb7afdfeb22710ef68138c95c550033eab9178b5"
+    },
+    "src/Apps/Explorer/Services/GltfTextures.lua": {
+      "bytes": 4728,
+      "checksum": 1533396910,
+      "sha256": "632d96f2964887bbce51f0d29780a934b18478cc6b86f9946f1c9e5195394162"
+    },
     "src/Apps/Explorer/Services/InsertionService.lua": {
       "bytes": 1461,
       "checksum": 4228626670,
       "sha256": "a474ad3481ce9b2554ed14da457e5bfff76b7ac7ab1d34b96df6d7517aee4e80"
+    },
+    "src/Apps/Explorer/Services/LocalizationCsv.lua": {
+      "bytes": 3904,
+      "checksum": 2600518980,
+      "sha256": "2902a05f23e7cb630cdb79bd11b70c436fd8d835e5e04ee493cecfbb89e26185"
     },
     "src/Apps/Explorer/Services/ReflectionService.lua": {
       "bytes": 6929,
@@ -1070,9 +1100,9 @@
       "sha256": "403ef993a4be8ed8c91cb5e06c8ede1aa38fceb9f6532a3c830abf086b0961a0"
     },
     "main.lua": {
-      "bytes": 100533,
-      "checksum": 3028690101,
-      "sha256": "3971a140a4f7ce7b88f937845aa778a365a181348180a550280067e03bf94ccf"
+      "bytes": 100633,
+      "checksum": 3409265624,
+      "sha256": "9686cf9b74af899eab22a6ead3a7b326cf428784b2e58dbdec492102a092e85f"
     },
     "studio_assets.lua": {
       "bytes": 1121833,
