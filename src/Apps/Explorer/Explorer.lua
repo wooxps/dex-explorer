@@ -2932,9 +2932,12 @@ local function CreateModule()
 			and Explorer.IsViewing(selectedObject)
 		context.Registered.VIEW_PLAYER.Name = stopPlayer and "Stop Viewing Player" or "View Player"
 		context.Registered.VIEW_OBJECT.Name = stopObject and "Stop Viewing Object" or "View Object"
+		context.Registered.VIEW_PLAYER.Checked = stopPlayer == true
+		context.Registered.VIEW_OBJECT.Checked = stopObject == true
 		local function addStopViewing()
 			if Explorer.IsViewing() and not stopPlayer and not stopObject then
 				context.Registered.STOP_VIEWING.Name = viewing.IsPlayer and "Stop Viewing Player" or "Stop Viewing Object"
+				context.Registered.STOP_VIEWING.Checked = true
 				context:AddRegistered("STOP_VIEWING")
 				context:QueueDivider()
 			end
@@ -3091,7 +3094,7 @@ local function CreateModule()
 		context:Add({ Name = "Hierarchy", Submenu = hierarchy })
 		context:QueueDivider()
 		if presentClasses["BaseScript"] then
-			local readable, anyEnabled = false, false
+			local readable, anyEnabled, allEnabled = false, false, true
 			for _, node in ipairs(sList) do
 				if node.Obj:IsA("BaseScript") then
 					local ok, disabled = pcall(function()
@@ -3100,11 +3103,13 @@ local function CreateModule()
 					if ok and type(disabled) == "boolean" then
 						readable = true
 						anyEnabled = anyEnabled or not disabled
+						allEnabled = allEnabled and not disabled
 					end
 				end
 			end
 			if readable then
 				context.Registered.TOGGLE_SCRIPTS.Name = anyEnabled and "Disable Scripts" or "Enable Scripts"
+				context.Registered.TOGGLE_SCRIPTS.Checked = allEnabled
 				context:AddRegistered("TOGGLE_SCRIPTS")
 			end
 		end
@@ -3190,6 +3195,7 @@ local function CreateModule()
 		if hasRemote then
 			context.Registered.BLOCK_REMOTE.Name = allBlocked and "Unblock From Firing" or "Block From Firing"
 			context.Registered.BLOCK_REMOTE.Icon = allBlocked and "Play" or "Delete"
+			context.Registered.BLOCK_REMOTE.Checked = allBlocked
 			context:AddRegistered("BLOCK_REMOTE", env.hookmetamethod == nil or type(getnamecallmethod) ~= "function")
 		end
 

@@ -307,7 +307,7 @@ local function CreateModule()
 								math.floor(((heights[index] or 28) - 16) / 2)
 							),
 							Size = UDim2.fromOffset(16, 16),
-							Visible = not item.Divider and not self.Iconless,
+							Visible = not item.Divider and not self.Iconless and not item.Checked,
 							Image = type(item.Icon) == "string" and item.Icon or "",
 							ref = function(icon)
 								if not icon or not item.IconMap or item.Divider then
@@ -320,6 +320,16 @@ local function CreateModule()
 									pcall(paint, item.IconMap, icon, image)
 								end
 							end,
+						}),
+						Checkmark = not item.Divider and item.Checked and e("TextLabel", {
+							BackgroundTransparency = 1,
+							Position = UDim2.fromOffset(self.Theme.IconInset or 4, 0),
+							Size = UDim2.new(0, 16, 1, 0),
+							Font = Enum.Font.BuilderSans,
+							TextSize = 12,
+							Text = "✓",
+							TextColor3 = item.Disabled and Settings.Theme.PlaceholderText
+								or (self.Theme.TextColor or Settings.Theme.Text),
 						}),
 						EntryName = e("TextLabel", {
 							BackgroundTransparency = 1,

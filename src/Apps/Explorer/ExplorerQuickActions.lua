@@ -301,12 +301,16 @@ local function CreateModule()
 			end
 		end
 		if #parts == 0 then return end
-		context:Add({ Name = if all then "Hide Orientation Indicator" else "Show Orientation Indicator", OnClick = function()
-			for _, part in parts do
-				if all then clearIndicator(part)
-				elseif not indicators[part] and part:IsDescendantOf(service.Workspace) then showIndicator(part) end
-			end
-		end })
+		context:Add({
+			Name = if all then "Hide Orientation Indicator" else "Show Orientation Indicator",
+			Checked = all,
+			OnClick = function()
+				for _, part in parts do
+					if all then clearIndicator(part)
+					elseif not indicators[part] and part:IsDescendantOf(service.Workspace) then showIndicator(part) end
+				end
+			end,
+		})
 	end
 	function Actions.Register(context, selection)
 		local function register(id, name, callback)
@@ -541,6 +545,7 @@ local function CreateModule()
 		local highlightTargets, allHighlighted = highlightSelection(selection)
 		if #highlightTargets > 0 then
 			context.Registered.TOGGLE_HIGHLIGHT.Name = allHighlighted and "Remove Highlight" or "Highlight"
+			context.Registered.TOGGLE_HIGHLIGHT.Checked = allHighlighted
 			context:AddRegistered("TOGGLE_HIGHLIGHT")
 		end
 		if has("Seat") or has("VehicleSeat") then
@@ -604,6 +609,7 @@ local function CreateModule()
 			end
 			if any then
 				context.Registered[id].Name = allOn and offName or onName
+				context.Registered[id].Checked = allOn
 				context:AddRegistered(id)
 			end
 		end
