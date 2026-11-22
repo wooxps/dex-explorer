@@ -921,8 +921,6 @@ local function CreateModule()
 
 		if ordered and not fallback then return end
 		if fallback or firstRepeat then
-			-- Repeated names often arrive in ID order within each name. Sort just
-			-- the distinct names when that order already resolves every tie.
 			if not fallback and firstRepeat <= #children // 4 and children[1].Id then
 				local groups, keys = {}, {}
 				local orderedTies = true
@@ -2330,7 +2328,6 @@ local function CreateModule()
 			local siblingVisibility = {}
 			for _, selectedNode in ipairs(selection.List) do
 				local parent = selectedNode.Parent
-				-- Outside search, siblings below a service share the same visible ancestor.
 				local shared = not searchView and parent and parent.Obj ~= game
 				local ancestor = if shared then siblingVisibility[parent] else nil
 				if ancestor == nil then

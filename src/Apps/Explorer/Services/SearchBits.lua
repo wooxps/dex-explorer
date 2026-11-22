@@ -186,7 +186,6 @@ local function Main()
 			local prefix = assert(self.Prefix)
 			local word = lastWord
 			if rank <= (prefix[word - 1] or 0) or rank > prefix[word] then
-				-- The rank can be displaced by at most the total number of missing rows.
 				local low = (rank - 1) // 32 + 1
 				local high = (rank - 1 + self.Size - self.Count) // 32 + 1
 				while low < high do

@@ -187,7 +187,6 @@ local function CreateModule()
 			membership[part], modelOf[part] = nil, nil
 		end
 		for _, root in ipairs(roots) do
-			-- The renderer tracks each group as a single bounding box.
 			if groups and groups[root] then continue end
 			if root:IsA("Model") then
 				for part in pairs(records[root].Parts) do tracker:AddPart(root, part) end
@@ -245,7 +244,6 @@ local function CreateModule()
 			else
 				measure(top, toLocal, orientation ~= previousOrientation or rebuildTree)
 			end
-			-- A full scan bypasses the child bounds. Refresh them on the next sparse update.
 			rebuildTree = moved >= #roots / 4
 			pivot = CFrame.new((top.X + top.MaxX) * 0.5, (top.Y + top.MaxY) * 0.5, (top.Z + top.MaxZ) * 0.5)
 			if orientation then pivot = orientation * pivot end

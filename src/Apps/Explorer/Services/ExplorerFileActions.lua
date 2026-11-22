@@ -142,8 +142,6 @@ local function configuration(targets, onReady)
 	local options = {Skinning=true,Textures=true,Attachments=true,Cages=false}
 	local lowerBox, upperBox
 	if hasTerrain then lowerBox, upperBox = terrainFields(d,253) end
-	-- One worker owns mesh/image allocations. Changes invalidate the in-flight result
-	-- and coalesce while Roblox yields to read an asset.
 	local revision, running = 0, false
 	local function prepare()
 		revision += 1

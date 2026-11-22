@@ -1,4 +1,3 @@
--- Run from the repository root with Lune 0.8.9. Writes glTF validation fixtures to .build.
 local fs = require("@lune/fs")
 local r = require("@lune/roblox")
 local serde = require("@lune/serde")
@@ -135,9 +134,7 @@ assert(#marker.nodes==1 and marker.nodes[1].name=="Mount" and not marker.buffers
 print("Export options include and omit skins, images, attachments and both cage meshes.")
 
 
--- Voxel data crosses the 24-cell chunk seam. Include water and partial density.
 globals.Region3 = {new=function(min,max) return {Min=min,Max=max} end}
--- The module loader copies its environment when creating a chunk.
 loadModule("GltfTerrain")
 local terrain = {Name="Terrain",ClassName="Terrain",WaterColor=r.Color3.fromRGB(30,80,255),WaterTransparency=.25}
 function terrain:IsA(class) return class == "Terrain" or class == "BasePart" end
@@ -231,7 +228,6 @@ function mesh:GetFacsPoses() return {jaw} end
 function mesh:GetFacsPose() return {43},{r.CFrame.new(0,2,0)} end
 function mesh:GetFacsCorrectivePoses() return {{smile,jaw}} end
 function mesh:GetFacsCorrectivePose() return {43},{r.CFrame.Angles(0,math.pi/4,0)} end
--- Only some vertices are affected. The two untouched vertices stay implicit.
 function mesh:GetVertexBones(id) return if id==4 or id==8 then {21,43} else {21} end
 function mesh:GetVertexBoneWeights(id) return if id==4 or id==8 then {.6,.4} else {1} end
 local facs, facsWarnings = apps.GltfExporter.Export({{Obj=part}},{Textures=false})
@@ -247,8 +243,6 @@ local neutral = serde.decode("json",apps.GltfExporter.Export({{Obj=part}},{Skinn
 assert(not neutral.meshes[1].extras and not neutral.skins)
 print("Terrain chunk seams and water, tiled face overlays, permissions, and weighted FACS targets exported.")
 
--- The same scene is exported as static OBJ, using Roblox studs and
--- independent vertex, UV and normal indices across mixed primitives.
 local objTargets = {root,{Obj=objects[1],Parent=root},{Obj=cube},{Obj=part}}
 local files, warnings = apps.ObjExporter.Export(objTargets,".build/fixture export.obj")
 assert(not warnings and #files==4)

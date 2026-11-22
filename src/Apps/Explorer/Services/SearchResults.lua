@@ -329,7 +329,6 @@ local function Main()
 					local fallback, limit = evaluate, #nodes // 8
 					evaluate = function(node, index)
 						local hit = matchNode(node)
-						-- Inferred types can change between searches.
 						if hit or node.Inferred then
 							classRows[#classRows + 1] = index
 							if #classRows > limit then
@@ -419,12 +418,9 @@ local function Main()
 		return createView(layout, context, checkpoint, layout.Positions, result.Top, result.Match, result.Context, result.Width, result.Depth)
 	end
 
-	-- Keep immutable membership on the hierarchy snapshot. Each visit gets its own
-	-- expansion, removals and visibility, even when a user backspaces to an earlier query.
 	local function literalView(layout, terms, context, checkpoint, positions, top, matches, included, width, depth, widthRevision)
 		if #layout.Nodes >= 1024 and #terms == 1 and #terms[1] <= 256 then
 			local count = #layout.Nodes
-			-- A nearly complete row map can serve every following query on this layout.
 			if not layout.Positions and included.Count >= count - count // 8 then
 				if included.Count < count then
 					for word = 0, buffer.len(included.Data) // 4 - 1 do
@@ -461,8 +457,6 @@ local function Main()
 
 	local function scanNameBlocks(layout, terms, checkpoint, matchesName)
 		local names, nodes = layout.Names, layout.Nodes
-		-- Common queries are cheaper to scan directly. Sample across the tree so a
-		-- single folder full of matches doesn't determine the path for every folder.
 		local sampledHits = 0
 		local stride = #nodes // 16
 		for i = stride, stride * 16, stride do
@@ -504,7 +498,6 @@ local function Main()
 							if #candidates > limit then return nil end
 						end
 					end
-					-- A hit on the separator can be followed by a valid hit in this row.
 					at = string.find(text, needle, if at < start then start else finish + 2, true)
 				end
 			end
@@ -539,8 +532,6 @@ local function Main()
 				end
 			end
 		end
-		-- Every literal match must also contain each of its ASCII letters and digits.
-		-- A rare character can narrow a new query before any prefix has been searched.
 		if layout.Characters then
 			for _, term in ipairs(terms) do
 				for i = 1, math.min(#term, 128) do

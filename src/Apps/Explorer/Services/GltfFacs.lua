@@ -6,8 +6,6 @@ local function packedVector(value)
 	return string.pack("<fff",value.X,value.Y,value.Z)
 end
 
--- Roblox exposes each pose's bind-to-posed transforms in mesh space. Apply
--- those transforms with the same skin weights that drive the neutral mesh.
 function Facs.Bake(mesh, basePoses, vertices, normals, influences, bones, units, sparseAccessor, checkCancelled)
 	local poses = {}
 	for _, action in ipairs(basePoses) do

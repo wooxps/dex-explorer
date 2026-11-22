@@ -4,8 +4,6 @@ local service
 local Textures = {}
 local crcTables
 
--- PNG stores RGBA scanlines in a zlib stream. Stored DEFLATE blocks need no
--- compression library and are readable by standard glTF image decoders.
 function Textures.Png(width, height, rgba, checkpoint)
 	assert(width > 0 and height > 0 and buffer.len(rgba) == width * height * 4, "Invalid RGBA image")
 	if not crcTables then
@@ -83,7 +81,6 @@ local function read(content)
 end
 
 function Textures.AssetKey(content)
-	-- Separate Roblox Content values can point to the same asset.
 	if typeof(content) == "Content" then
 		return content.Uri or content.Object or content
 	end

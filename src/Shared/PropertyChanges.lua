@@ -11,7 +11,6 @@ local function Main()
 				if #listeners == 1 then
 					listener.Callback(object, property)
 				else
-					-- Each consumer can yield, disconnect, or fail independently.
 					task.spawn(listener.Callback, object, property)
 				end
 			end
@@ -24,7 +23,6 @@ local function Main()
 			if not source then source = game.ItemChanged:Connect(dispatch) end
 			local listener = { Connected = true, Callback = callback, Members = members }
 			for property in pairs(properties) do
-				-- Publish a new list so a callback can change subscriptions during dispatch.
 				local list = observers[property] and table.clone(observers[property]) or {}
 				list[#list + 1] = listener
 				observers[property] = list

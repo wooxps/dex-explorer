@@ -32,7 +32,6 @@ local function CreateModule()
 		local folder = object:IsA("Folder")
 		local count = 0
 		for _, child in ipairs(descendants) do
-			-- Folder expansion also installs watches on nested folders and models.
 			if child:IsA("BasePart") or (folder and (child:IsA("Folder") or child:IsA("Model"))) then
 				count += 1
 				if count >= 512 then return true end
@@ -44,8 +43,6 @@ local function CreateModule()
 		local group = { Parts = {}, Dynamic = {}, Connections = {}, Dirty = true, Count = 0 }
 		local entries, moving, levels = {}, {}, { {} }
 		local fanout = 8
-		-- Each leaf covers eight consecutive parts. A changed leaf invalidates
-		-- just its ancestors, including the root when the tree grows or shrinks.
 		local function dirtySlot(slot, resized)
 			group.Dirty = true
 			local index = (slot - 1) // fanout + 1

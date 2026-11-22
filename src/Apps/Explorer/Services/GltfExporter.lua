@@ -420,7 +420,6 @@ function Exporter.Build(targets, options, cancelled)
 		if cages and (class == "WrapTarget" or class == "WrapLayer") then
 			local owner = obj.Parent
 			assert(owner and owner:IsA("MeshPart"), "Cages require a parent MeshPart")
-			-- Cage vertices and origins live in the original, unscaled mesh space.
 			local world = owner.CFrame
 			if world ~= parentFrame then node.matrix = matrix(parentFrame:ToObjectSpace(world)) end
 			local scale = renderScale(owner)

@@ -45,8 +45,6 @@ do
 	Explorer.SyncHistoryObject(first)
 	Explorer.SyncHistoryObject(second)
 	local destinations = {Explorer.GetNodes()[first], Explorer.GetNodes()[second]}
-	-- Exercise the actual menu callbacks. The mock supplies one-dimensional
-	-- frames and recomputes WorldCFrame when a cloned attachment is parented.
 	local frames = {}
 	frames.__index = frames
 	local function frame(x) return setmetatable({x=x}, frames) end

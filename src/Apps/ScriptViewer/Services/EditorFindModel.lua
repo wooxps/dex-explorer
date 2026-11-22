@@ -119,7 +119,6 @@ local function Main()
 		local base = 0
 		local haystack = source
 		local length = last - first
-		-- string.find has no end position. Bound the scan and case fold for small selections.
 		if length < #source / 4 and (#source + 1 - last > length or (not options.MatchCase and cachedSource ~= source)) then
 			base = first - 1
 			haystack = source:sub(first, last - 1)

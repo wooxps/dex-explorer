@@ -7,7 +7,6 @@ local corners = {
 	{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
 	{0,0,1}, {1,0,1}, {1,1,1}, {0,1,1},
 }
--- Every cube uses the same diagonal, including at chunk boundaries.
 local tetrahedra = {{1,2,3,7},{1,3,4,7},{1,4,8,7},{1,8,5,7},{1,5,6,7},{1,6,2,7}}
 
 function Terrain.Bounds(minimum, maximum)

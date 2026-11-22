@@ -3,7 +3,6 @@
 local Geometry = {}
 local service
 
--- Bound the time spent on export work between rendered frames.
 function Geometry.ExportCheckpoint(cancelled)
 	local deadline = os.clock() + .006
 	return function()
@@ -15,8 +14,6 @@ function Geometry.ExportCheckpoint(cancelled)
 	end
 end
 
--- Keep authored vertex IDs separate from face-corner IDs. Hard edges and UV
--- seams share positions in Roblox, but require separate vertices in glTF.
 function Geometry.ReadMesh(content, emit, tangents, skinning, checkCancelled)
 	local mesh = service.AssetService:CreateEditableMeshAsync(content)
 	assert(mesh, "Editable mesh memory budget exceeded")
@@ -163,7 +160,6 @@ function Geometry.Primitive(shape, emit)
 			faces = {{1,2,3,4},{1,2,7,8},{4,3,7,8},{1,4,8},{2,3,7}}
 			interior = new(0,-.25,.25)
 		elseif shape == "CornerWedge" then
-			-- The tall corner of a Roblox CornerWedgePart is on +X, -Z.
 			faces = {{1,2,3,4},{1,2,6},{2,3,6},{3,4,6},{4,1,6}}
 			interior = new(.1,-.3,-.1)
 		else
@@ -178,7 +174,6 @@ function Geometry.Primitive(shape, emit)
 	return emit.Finish(geometry)
 end
 
--- Face axes as seen looking toward each face, with V pointing down.
 function Geometry.ProjectFace(source, size, offset, decal, emit, layer, checkCancelled)
 	local x,y,z = Vector3.xAxis,Vector3.yAxis,Vector3.zAxis
 	local axes = ({

@@ -692,8 +692,6 @@ local function Main()
 			if tokens[pos] then
 				error("Unexpected " .. tokens[pos].value, 0)
 			end
-			-- A mandatory name can reject a row before expensive class or property reads.
-			-- Leave evaluation inside OR branches in its original order.
 			local terms = conjunctions[predicate]
 			if terms and not indexedLiteral then
 				local best, length = 1, 0

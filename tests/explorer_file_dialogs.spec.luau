@@ -154,7 +154,6 @@ do
 	assert(find("OBJ exported") and storage["Rig.obj"]=="geometry" and storage["Rig.mtl"]=="material" and builds==1)
 	click("Done")
 	Apps.ObjExporter.Export, deps.env.isfile, deps.env.delfile = previousObj, previousIsfile, previousDelete
-	-- A terrain selection exposes an editable, camera-centered region.
 	obj.ClassName = "Terrain"
 	local mockWorkspace, mockVector3 = service.Workspace, Vector3
 	Vector3 = {new=function(x,y,z)

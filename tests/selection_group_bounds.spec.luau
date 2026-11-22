@@ -136,7 +136,6 @@ do
 	for i = 2, #selected do selected[i]:Destroy() end
 	workspace.CurrentCamera = camera
 end
--- Shrink across several tree levels between frames, then regrow the same selection.
 for _, part in ipairs(host:GetChildren()) do part.Parent = workspace end
 record.Group:Step()
 assert(record.Group.Count == 0 and not wire.Visible)

@@ -397,7 +397,6 @@ do
 	local TweenInfo = { new = function() return {} end }
 	local tick = function() return 1 end
 	local updateWindows = function() layouts += 1 end
-	-- WINDOW_CLOSE
 	local sample = {
 		Gui = { Parent = game },
 		GuiElems = { Main = {}, Title = {}, Minimize = { ImageLabel = {} }, Close = { ImageLabel = {} }, TopBar = {}, Outlines = {} },

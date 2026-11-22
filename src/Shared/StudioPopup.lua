@@ -73,7 +73,6 @@ function Popup.Open(title, height, compact)
 			if tween then tween:Cancel(); tween = nil end
 			local target = color
 			if hovered and btn.Interactable ~= false then
-				-- Studio's neutral button brightens from (59,62,72) to (71,74,86).
 				target = rgb(math.min(255,math.round(color.R*255)+12),
 					math.min(255,math.round(color.G*255)+12),math.min(255,math.round(color.B*255)+14))
 			end
@@ -100,9 +99,7 @@ function Popup.Open(title, height, compact)
 	end
 	local titlebar = frame(panel,0,0,panelWidth,30,rgb(243,243,243))
 	round(titlebar,8)
-	-- The title bar paints its own top corners. The lower strip squares its seam with the body.
 	frame(titlebar,0,20,panelWidth,10,titlebar.BackgroundColor3)
-	-- Drag the title bar without moving the checkboxes or other controls.
 	local dragStart, panelStart, pointer
 	titlebar.Active = true
 	titlebar.InputBegan:Connect(function(input)
@@ -194,7 +191,6 @@ function Popup.Open(title, height, compact)
 	function d.setPrimary(text, callback, message)
 		submit = callback
 		status.Text = message or ""
-		-- Reserve the processing label width across every export state.
 		buttons(text,89,callback == nil)
 	end
 	d.sprite = if atlas then sprite else nil
