@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "a5d0dc131f6e6c061289",
+  "release": "2fff0f5f4c254fd6276b",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -451,9 +451,9 @@
       "sha256": "4b4451cfdf32edf710eccc6079fd34fdb7194bc6b46455c62abad0b1ee4cd609"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 199317,
-      "checksum": 1956424075,
-      "sha256": "8e460a81be4accd967f394205de906ee2a3ecc485a96f41e21d95244a98d995c"
+      "bytes": 199314,
+      "checksum": 2750130433,
+      "sha256": "d6ce29265f4e7efe9abac49e63d3acf779c5959c51065bd2a8aa2c7888904797"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7173,

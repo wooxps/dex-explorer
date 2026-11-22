@@ -232,7 +232,7 @@ do
 	assert(groups:find(if deps.env.setclipboard then "|,Paste Into," else "Copy,Paste Into,", 1, true), groups)
 	assert(names.Insert.Submenu[2].Name == "Insert Object...")
 	assert(names.Insert.Submenu[3].Name == "Insert from File...")
-	assert(names["Save / Export"].Submenu[2].Name == "Export as glTF...")
+	assert(names["Save / Export"].Submenu[2].Name == "Export as glTF")
 	assert(not names["Load from CSV..."] and not names["Save as CSV..."])
 	local l10n = Instance.new("LocalizationTable", workspace)
 	Explorer.SyncHistoryObject(l10n)

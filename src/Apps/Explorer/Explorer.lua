@@ -3389,7 +3389,7 @@ local function CreateModule()
 			INSERT_FILE = "Insert from File...",
 			SAVE_CSV = "Save as CSV...",
 			LOAD_CSV = "Load from CSV...",
-			EXPORT_GLTF = "Export as glTF...",
+			EXPORT_GLTF = "Export as glTF",
 		}) do
 			context:Register(key, {
 				Name = label,
