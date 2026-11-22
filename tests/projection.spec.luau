@@ -89,6 +89,38 @@ gone.Del = true
 p:Mark(group)
 assert(p:Try(context) and indices[gone] == nil)
 check()
+do
+	local at = 320
+	local left = { Parent = service, NameWidth = 203 }
+	local right = { Parent = service, NameWidth = 204 }
+	table.insert(service, at, right)
+	p:MarkChild(right, at)
+	table.insert(service, at, left)
+	p:MarkChild(left, at)
+	local before = p.Stats.Projected
+	assert(p:Try(context) and p.Stats.Projected == before + 2)
+	check()
+	left.Del = true
+	p:MarkChild(left)
+	right.Del = true
+	p:MarkChild(right)
+	assert(p:Try(context) and not indices[left] and not indices[right])
+	check()
+	table.remove(service, at)
+	table.remove(service, at)
+
+	local last = { Parent = service, NameWidth = 200 }
+	table.insert(service, last)
+	p:MarkChild(last, #service)
+	expanded[firstGroup] = false
+	p:Mark(firstGroup)
+	assert(not p:Try(context), "an expansion change invalidates the leaf-only patch")
+	full()
+	check()
+	table.remove(service)
+	expanded[firstGroup] = true
+	full()
+end
 -- Large changes bypass the splice before touching published rows or measuring.
 local snapshot = table.clone(rows)
 p:Mark(service)

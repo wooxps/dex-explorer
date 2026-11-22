@@ -462,6 +462,25 @@ do
 	end, context, check, roots, isFolder, "Folder", true)
 	assert(#denseLive.MatchList == 1 and denseLive.MatchList[1] == nested[129])
 	Apps.SearchResults.PrepareCharacters(layout, check)
+	for _, terms in { { "pa" }, { "art" }, { "a", "t" }, { "p", "2" } } do
+		local indexed = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
+		local fresh = Apps.SearchResults.CreateCold(roots, terms, context, check)
+		assert(#indexed.MatchList == #fresh.MatchList and #indexed.Rows == #fresh.Rows)
+		assert(indexed.Width == fresh.Width and indexed.Depth == fresh.Depth)
+		for i = 1, #fresh.Rows do assert(indexed.Rows[i] == fresh.Rows[i]) end
+		for i = 1, #fresh.MatchList do assert(indexed.MatchList[i] == fresh.MatchList[i]) end
+	end
+	local evaluated = 0
+	local function sparseCondition(obj)
+		evaluated += 1
+		return string.find(obj.Name, "keep", 1, true) and obj.Enabled
+	end
+	for _, value in { true, false } do
+		nested[2048].Obj.Enabled = value
+		local filtered = Apps.SearchResults.CreatePredicate(layout, sparseCondition, context, check, roots, nil, nil, true, "keep")
+		assert(#filtered.MatchList == (if value then 1 else 0))
+	end
+	assert(evaluated < #layout.Nodes)
 	local rare = Apps.SearchResults.CreateCold(roots, { "upper_", "日本" }, context, check, layout)
 	assert(#rare.Rows == 3 and rare.MatchList[1] == nested[129] and #rare.MatchList == 1)
 	assert(#Apps.SearchResults.CreateCold(roots, { "xylophone" }, context, check, layout).MatchList == 0)

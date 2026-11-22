@@ -100,6 +100,17 @@ local function Main()
 		end
 	end
 
+	local function sharedPrefix(first: string, last: string): string
+		local count = math.min(#first, #last, 64)
+		for index = 1, count do
+			if string.byte(first, index) ~= string.byte(last, index) then
+				count = index - 1
+				break
+			end
+		end
+		return string.lower(string.sub(first, 1, count))
+	end
+
 	function Results.PrepareCharacters(layout, checkpoint)
 		local nodes, names = layout.Nodes, layout.Names
 		local parents, depths = layout.Parents, layout.Depths
@@ -110,6 +121,9 @@ local function Main()
 			columns[lane] = { Match = Bits.Dense(#nodes), Context = Bits.Dense(#nodes), Width = 0, Depth = 1 }
 		end
 		local pendingLow, pendingHigh, nameMasks = {}, {}, {}
+		local leafBlocks = {}
+		local minName, maxName = nil, nil
+		local leaves = true
 		local cacheCount = 0
 		local bor, band, bnot, lshift = bit32.bor, bit32.band, bit32.bnot, bit32.lshift
 		local highUnit = 4294967296
@@ -156,6 +170,14 @@ local function Main()
 				childHigh = band(childHigh, bnot(ownHigh))
 			end
 			local parent = parents[position]
+			if leaves then
+				if parent == 0 or layout.Ends[position] ~= position then
+					leaves = false
+				else
+					if not minName or name < minName then minName = name end
+					if not maxName or name > maxName then maxName = name end
+				end
+			end
 			if parent > 0 then
 				if lo ~= 0 then
 					pendingLow[parent] = bor(pendingLow[parent] or 0, lo)
@@ -220,7 +242,16 @@ local function Main()
 				childHigh = band(childHigh, childHigh - 1)
 			end
 			if index == 0 then
-				local offset = (position - 1) // 32 * 4
+				local word = (position - 1) // 32
+				if leaves and minName and maxName then
+					local uniform = minName == maxName
+					local prefix = if uniform then string.lower(minName) else sharedPrefix(minName, maxName)
+					if #prefix > 0 or uniform then
+						leafBlocks[word + 1] = { Prefix = prefix, Uniform = uniform }
+					end
+				end
+				leaves, minName, maxName = true, nil, nil
+				local offset = word * 4
 				for lane, column in ipairs(columns) do
 					local matchWord = matchWords[lane]
 					local ancestorWord = ancestorWords[lane]
@@ -236,6 +267,7 @@ local function Main()
 		end
 		layout.Positions = layout.Positions or positions
 		layout.Top = layout.Top or top
+		layout.LeafBlocks = leafBlocks
 		layout.Characters = columns
 	end
 
@@ -273,6 +305,57 @@ local function Main()
 		)
 	end
 
+	local function scanNameBlocks(layout, terms, checkpoint, matchesName)
+		local names, nodes = layout.Names, layout.Nodes
+		local sampledHits = 0
+		local stride = #nodes // 16
+		for i = stride, stride * 16, stride do
+			if matchesName(names[i]) then
+				sampledHits += 1
+				if sampledHits == 4 then return nil end
+			end
+		end
+		local needle = terms[1]
+		for i = 2, #terms do
+			if #terms[i] > #needle then needle = terms[i] end
+		end
+		local blocks = layout.NameBlocks or {}
+		layout.NameBlocks = blocks
+		if #needle == 0 then return nil end
+		local candidates = {}
+		local limit = math.max(32, #nodes // 32)
+		for first = 1, #nodes, 128 do
+			local last = math.min(first + 127, #nodes)
+			local block = (first - 1) // 128 + 1
+			local text = blocks[block]
+			if not text then
+				text = string.lower(table.concat(names, "\0", first, last))
+				blocks[block] = text
+			end
+			local at = string.find(text, needle, 1, true)
+			if at then
+				local row, start = first, 1
+				while at do
+					local finish = start + #names[row] - 1
+					while at > finish and row < last do
+						start = finish + 2
+						row += 1
+						finish = start + #names[row] - 1
+					end
+					if at >= start and at + #needle - 1 <= finish then
+						if nodes[row] ~= layout.NilRoot and (#terms == 1 or matchesName(names[row])) then
+							candidates[#candidates + 1] = row
+							if #candidates > limit then return nil end
+						end
+					end
+					at = string.find(text, needle, if at < start then start else finish + 2, true)
+				end
+			end
+			if block % 4 == 0 then checkpoint() end
+		end
+		return candidates
+	end
+
 	function Results.CreatePredicate(layout, predicate, context, checkpoint, roots, matchNode, className, hasOtherTerms, requiredName)
 		layout = layout or Results.CreateLayout(roots, context, checkpoint)
 		if not layout.Positions then
@@ -300,13 +383,27 @@ local function Main()
 			local knownClass = className ~= nil and layout.FilterClass == className
 			local candidates = hasOtherTerms and knownClass and layout.FilterRows
 			local nameMatches
-			if requiredName and layout.LiteralResults then
+			if requiredName then
 				local limit = if candidates then #candidates else #nodes // 8
-				for _, entry in ipairs(layout.LiteralResults) do
+				for _, entry in layout.LiteralResults or {} do
 					if entry.Match.Count < limit and string.find(requiredName, entry.Term, 1, true) then
 						nameMatches, limit = entry.Match, entry.Match.Count
 					end
 				end
+				if layout.Characters then
+					for i = 1, math.min(#requiredName, 128) do
+						local column = layout.Characters[charLanes[string.byte(requiredName, i)]]
+						if column and column.Match.Count < limit then
+							nameMatches, limit = column.Match, column.Match.Count
+						end
+					end
+				end
+			end
+			local nameRows
+			if requiredName and not nameMatches and not candidates and #nodes >= 1024 then
+				nameRows = scanNameBlocks(layout, { requiredName }, checkpoint, function(name)
+					return string.find(string.lower(name), requiredName, 1, true) ~= nil
+				end)
 			end
 			if nameMatches then
 				local visited = 0
@@ -315,8 +412,8 @@ local function Main()
 					visited += 1
 					if visited % 128 == 0 then checkpoint() end
 				end, checkpoint)
-			elseif candidates then
-				for index, at in ipairs(candidates) do
+			elseif nameRows or candidates then
+				for index, at in nameRows or candidates do
 					if liveMatch(nodes[at]) then allMatches:Set(at) end
 					if index % 128 == 0 then checkpoint() end
 				end
@@ -453,57 +550,6 @@ local function Main()
 			layout.LiteralResults = recent
 		end
 		return createView(layout, context, checkpoint, positions, top, matches, included, width, depth)
-	end
-
-	local function scanNameBlocks(layout, terms, checkpoint, matchesName)
-		local names, nodes = layout.Names, layout.Nodes
-		local sampledHits = 0
-		local stride = #nodes // 16
-		for i = stride, stride * 16, stride do
-			if matchesName(names[i]) then
-				sampledHits += 1
-				if sampledHits == 4 then return nil end
-			end
-		end
-		local needle = terms[1]
-		for i = 2, #terms do
-			if #terms[i] > #needle then needle = terms[i] end
-		end
-		local blocks = layout.NameBlocks or {}
-		layout.NameBlocks = blocks
-		if #needle == 0 then return nil end
-		local candidates = {}
-		local limit = math.max(32, #nodes // 32)
-		for first = 1, #nodes, 128 do
-			local last = math.min(first + 127, #nodes)
-			local block = (first - 1) // 128 + 1
-			local text = blocks[block]
-			if not text then
-				text = string.lower(table.concat(names, "\0", first, last))
-				blocks[block] = text
-			end
-			local at = string.find(text, needle, 1, true)
-			if at then
-				local row, start = first, 1
-				while at do
-					local finish = start + #names[row] - 1
-					while at > finish and row < last do
-						start = finish + 2
-						row += 1
-						finish = start + #names[row] - 1
-					end
-					if at >= start and at + #needle - 1 <= finish then
-						if nodes[row] ~= layout.NilRoot and (#terms == 1 or matchesName(names[row])) then
-							candidates[#candidates + 1] = row
-							if #candidates > limit then return nil end
-						end
-					end
-					at = string.find(text, needle, if at < start then start else finish + 2, true)
-				end
-			end
-			if block % 4 == 0 then checkpoint() end
-		end
-		return candidates
 	end
 
 	local function sparseNameView(layout, terms, context, checkpoint, matchesName, widthRevision)
@@ -665,37 +711,55 @@ local function Main()
 			local nextMatch = math.huge
 			local matchWord, contextWord = 0, 0
 			local matchedBits, contextBits = Bits.Dense(#nodes), Bits.Dense(#nodes)
-			for position = #nodes, 1, -1 do
-				local node, name = nodes[position], names[position]
-				local hit = node ~= roots[2] and matchesName(name)
-				local rowBit = bit32.lshift(1, (position - 1) % 32)
-				if hit then
-					matchWord = bit32.bor(matchWord, rowBit)
-					nextMatch = position
-				end
-				if nextMatch <= ends[position] then
-					local parent = parents[position]
-					if not fullPositions then
-						positions[node] = position
+			local blocks = fullPositions and layout.LeafBlocks
+			for word = (#nodes - 1) // 32, 0, -1 do
+				local first = word * 32 + 1
+				local last = math.min(first + 31, #nodes)
+				local block = blocks and blocks[word + 1]
+				local allHit = block and matchesName(block.Prefix)
+				if allHit then
+					matchWord = bit32.rshift(0xffffffff, 31 - (last - first))
+					contextWord = matchWord
+					nextMatch = first
+					if not widthRevision or block.WidthSource ~= context.WidthRevision or block.WidthRevision ~= widthRevision then
+						local blockWidth, blockDepth = 0, 1
+						for at = first, last do
+							blockWidth = math.max(blockWidth, nodes[at].NameWidth or math.min(100, #names[at]) * 14)
+							blockDepth = math.max(blockDepth, depths[at])
+						end
+						block.Width, block.Depth = blockWidth, blockDepth
+						block.WidthSource, block.WidthRevision = context.WidthRevision, widthRevision
 					end
-					contextWord = bit32.bor(contextWord, rowBit)
-					if parent == 0 then
-						top[#top + 1] = position
+					width, maxDepth = math.max(width, block.Width), math.max(maxDepth, block.Depth)
+				elseif not block or not block.Uniform then
+					for position = last, first, -1 do
+						local node, name = nodes[position], names[position]
+						local hit = node ~= roots[2] and matchesName(name)
+						local rowBit = bit32.lshift(1, (position - 1) % 32)
+						if hit then
+							matchWord = bit32.bor(matchWord, rowBit)
+							nextMatch = position
+						end
+						if nextMatch <= ends[position] then
+							local parent = parents[position]
+							if not fullPositions then
+								positions[node] = position
+							end
+							contextWord = bit32.bor(contextWord, rowBit)
+							if parent == 0 then
+								top[#top + 1] = position
+							end
+							local depth = depths[position]
+							if depth > maxDepth then maxDepth = depth end
+							local nameWidth = node.NameWidth or math.min(100, #name) * 14
+							if nameWidth > width then width = nameWidth end
+						end
 					end
-					local depth = depths[position]
-					if depth > maxDepth then maxDepth = depth end
-					local nameWidth = node.NameWidth or math.min(100, #name) * 14
-					if nameWidth > width then width = nameWidth end
 				end
-				if (position - 1) % 32 == 0 then
-					local offset = (position - 1) // 32 * 4
-					buffer.writeu32(matchedBits.Data, offset, matchWord)
-					buffer.writeu32(contextBits.Data, offset, contextWord)
-					matchWord, contextWord = 0, 0
-				end
-				if position % 128 == 0 then
-					checkpoint()
-				end
+				buffer.writeu32(matchedBits.Data, word * 4, matchWord)
+				buffer.writeu32(contextBits.Data, word * 4, contextWord)
+				matchWord, contextWord = 0, 0
+				if word % 4 == 0 then checkpoint() end
 			end
 			return literalView(layout, terms, context, checkpoint, positions, top, matchedBits:Prepare(checkpoint), contextBits:Prepare(checkpoint), width, maxDepth, widthRevision)
 		else

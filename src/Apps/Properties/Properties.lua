@@ -277,7 +277,7 @@ local function CreateModule()
 				local subPropCount = #subProps
 				local toCheck = subPropCount + 1
 				local conflictsFound = 0
-				local indexNames = {}
+				local indexNames, firstComponents = {}, {}
 				local ignored = conflictIgnore[propClass] and conflictIgnore[propClass][propName]
 				local truthyCheck = (typeName == "PhysicalProperties")
 				local isAttribute = prop.IsAttribute
@@ -329,28 +329,28 @@ local function CreateModule()
 									end
 								end
 
-								if subPropCount > 0 then
+								if subPropCount > 0 and firstVal ~= propVal then
 									for sPropInd = 1, subPropCount do
+										local mapInd = sPropInd + 1
+										if conflictMap[mapInd] then continue end
 										local indexes = indexNames[sPropInd]
 										if not indexes then
 											indexes = stringSplit(subProps[sPropInd], ".")
 											indexNames[sPropInd] = indexes
-										end
-
-										local firstValSub = firstVal
-										local propValSub = propVal
-
-										for j = 1, #indexes do
-											if not firstValSub or not propValSub then
-												break
+											local component = firstVal
+											for _, name in indexes do
+												if not component then break end
+												component = component[name]
 											end
-											local indexName = indexes[j]
-											firstValSub = firstValSub[indexName]
-											propValSub = propValSub[indexName]
+											firstComponents[sPropInd] = component
 										end
 
-										local mapInd = sPropInd + 1
-										if not conflictMap[mapInd] and firstValSub ~= propValSub then
+										local component = propVal
+										for _, name in indexes do
+											if not component then break end
+											component = component[name]
+										end
+										if firstComponents[sPropInd] ~= component then
 											conflictMap[mapInd] = true
 											conflictsFound = conflictsFound + 1
 										end
@@ -438,7 +438,6 @@ local function CreateModule()
 		if Properties.CancelAttributeRename then
 			Properties.CancelAttributeRename()
 		end
-		local maxConflictCheck = Settings.Properties.MaxConflictCheck
 		local sList = Explorer.Selection.List
 		if inputProp and inputSelection ~= sList then
 			inputProp = nil
@@ -481,9 +480,10 @@ local function CreateModule()
 			local obj = #sList == 1 and sList[1].Obj
 			window:SetTitle(obj and ("Properties - " .. obj.ClassName .. ' "' .. obj.Name .. '"') or "Properties")
 		end
-		local listsByClass = {}
+		local classesByType = {}
+		local typeCounts, totals = {}, {}
+		local objects = table.create(#sList)
 		local propCount = 1
-		local elevated = Main.Elevated
 		local showDeprecated, showHidden = Settings.Properties.ShowDeprecated, Settings.Properties.ShowHidden
 		local Classes = API.Classes
 		local classLists = {}
@@ -493,24 +493,23 @@ local function CreateModule()
 		local maxAttrs = Settings.Properties.MaxAttributes
 		local showingAttrs = Settings.Properties.ShowAttributes
 		local foundAttrs = {}
+		local collection = service.CollectionService
+		local getTags = collection.GetTags
+		local foundTags, tagNames = {}, {}
 		local attrCount = 0
 		local typeof = typeof
 		local typeNameConvert = Properties.TypeNameConvert
 
 		table.clear(props)
 
-		local function listsForClass(class, obj)
-			local lists = listsByClass[class]
-			if lists then return lists end
-			lists = {}
-			listsByClass[class] = lists
+		local function collectClass(class, obj)
+			local ancestors = {}
+			classesByType[class] = ancestors
 			local apiClass = Classes[class]
 			while apiClass do
 				local APIClassName = apiClass.Name
-				local classList = classLists[APIClassName]
-				if not classList then
-					classList = {}
-					classLists[APIClassName] = classList
+				if not totals[APIClassName] then
+					totals[APIClassName] = 0
 					local apiProps = indexableProps[APIClassName]
 					if not apiProps then
 						apiProps = Properties.GetIndexableProps(obj, apiClass)
@@ -530,30 +529,11 @@ local function CreateModule()
 						end
 					end
 				end
-				lists[#lists + 1] = classList
+				ancestors[#ancestors + 1] = APIClassName
 				apiClass = apiClass.Superclass
 			end
-			return lists
 		end
 
-		local runLists, runClass, runStart
-		local function appendToAncestors()
-			if not runStart then return end
-			local concrete = runLists[1]
-			local last = #concrete
-			if runStart == last then
-				local obj = concrete[last]
-				for i = 2, #runLists do
-					local list = runLists[i]
-					list[#list + 1] = obj
-				end
-			else
-				for i = 2, #runLists do
-					local list = runLists[i]
-					table.move(concrete, runStart, last, #list + 1, list)
-				end
-			end
-		end
 		for i = 1, #sList do
 			local node = sList[i]
 			local obj = node.Obj
@@ -563,15 +543,19 @@ local function CreateModule()
 				node.Class = class
 			end
 
-			if class ~= runClass then
-				appendToAncestors()
-				runLists = listsForClass(class, obj)
-				runClass = class
-				runStart = runLists[1] and #runLists[1] + 1
+			objects[i] = obj
+			if not typeCounts[class] then
+				collectClass(class, obj)
+				typeCounts[class] = 1
+			else
+				typeCounts[class] += 1
 			end
-			if runStart then
-				local concrete = runLists[1]
-				concrete[#concrete + 1] = obj
+
+			for _, tag in getTags(collection, obj) do
+				if not foundTags[tag] then
+					foundTags[tag] = true
+					tagNames[#tagNames + 1] = tag
+				end
 			end
 
 			if showingAttrs and attrCount < maxAttrs then
@@ -607,7 +591,42 @@ local function CreateModule()
 			end
 		end
 
-		appendToAncestors()
+		for class, count in typeCounts do
+			for _, name in classesByType[class] do
+				totals[name] += count
+			end
+		end
+
+		local listsByType = {}
+		local needsLists = false
+		for class, ancestors in classesByType do
+			local lists = {}
+			local parentList, parentCount
+			for i = #ancestors, 1, -1 do
+				local name = ancestors[i]
+				local count = totals[name]
+				if count == #objects then
+					parentList = objects
+				elseif count ~= parentCount then
+					local list = classLists[name]
+					if not list then list = table.create(count) end
+					parentList = list
+					lists[#lists + 1] = list
+					needsLists = true
+				end
+				classLists[name] = parentList
+				parentCount = count
+			end
+			listsByType[class] = lists
+		end
+		if needsLists then
+			for i = 1, #objects do
+				local obj = objects[i]
+				for _, list in listsByType[sList[i].Class] do
+					list[#list + 1] = obj
+				end
+			end
+		end
 
 		table.sort(props, function(a, b)
 			if a.Category ~= b.Category then
@@ -631,15 +650,6 @@ local function CreateModule()
 		end
 
 		if #sList > 0 then
-			local foundTags, tagNames = {}, {}
-			for _, node in ipairs(sList) do
-				for _, tag in ipairs(service.CollectionService:GetTags(node.Obj)) do
-					if not foundTags[tag] then
-						foundTags[tag] = true
-						tagNames[#tagNames + 1] = tag
-					end
-				end
-			end
 			table.sort(tagNames)
 			local insertAt = #props + 1
 			for i, prop in ipairs(props) do

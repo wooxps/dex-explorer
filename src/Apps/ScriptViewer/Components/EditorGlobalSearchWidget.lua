@@ -28,7 +28,8 @@ local function CreateModule()
 		local ticket = 0
 		local replacing = false
 		local collapsed = {}
-		local flat = {}
+		local groupStarts = {}
+		local rowCount = 0
 		local pool = {}
 		local selected
 		local filtering = false
@@ -328,20 +329,37 @@ local function CreateModule()
 		local function canReplaceAll()
 			return canReplace() and not (state.Truncated or state.Cancelled or state.Error)
 		end
+		local function rowAt(index: number)
+			if index < 1 or index > rowCount then
+				return nil
+			end
+			local low, high = 1, #groupStarts
+			while low < high do
+				local mid = (low + high + 1) // 2
+				if groupStarts[mid] <= index then
+					low = mid
+				else
+					high = mid - 1
+				end
+			end
+			local group = view.VisibleGroups[low]
+			local offset = index - groupStarts[low]
+			return { Group = group, Match = group.Matches[offset], Index = index, Offset = offset }
+		end
 		local function navigate(direction)
 			if not resultsCurrent() then
 				return
 			end
-			local at = selected and selected.Index or (direction > 0 and 0 or #flat + 1)
-			for step = 1, #flat do
-				local index = (at - 1 + direction * step) % #flat + 1
-				local row = flat[index]
+			local at = selected and selected.Index or (direction > 0 and 0 or rowCount + 1)
+			for step = 1, rowCount do
+				local index = (at - 1 + direction * step) % rowCount + 1
+				local row = rowAt(index)
 				if not row.Match and collapsed[row.Group] and #row.Group.Matches > 0 then
 					collapsed[row.Group] = nil
 					topologyVersion += 1
 					view:Update(state)
 					index += direction > 0 and 1 or #row.Group.Matches
-					row = flat[index]
+					row = rowAt(index)
 				end
 				if row.Match then
 					selected = row
@@ -434,7 +452,7 @@ local function CreateModule()
 			local first = math.floor(list.CanvasPosition.Y / 24) + 1
 			local count = math.ceil(list.AbsoluteSize.Y / 24) + 2
 			for slot = 1, count do
-				local row = flat[first + slot - 1]
+				local row = rowAt(first + slot - 1)
 				local entry = pool[slot]
 				if not entry then
 					local b = button(list, "", nil, nil, function()
@@ -619,7 +637,7 @@ local function CreateModule()
 					resultsCurrent()
 					and state.Options
 					and (state.Options.IncludeRuntime or not state.Options.CachedCompiledOnly)
-					and #flat > 0
+					and rowCount > 0
 				then
 					navigate(1)
 				else
@@ -702,36 +720,39 @@ local function CreateModule()
 				.. tostring(value.ResultRevision or 0)
 			if flatSignature ~= signature then
 				flatSignature = signature
-				flat = {}
+				table.clear(groupStarts)
+				rowCount = 0
 				view.VisibleGroups = {}
 				view.VisibleMatchCount = 0
 				view.RenderStats.FlatRebuilds += 1
 				local hasSelected = false
-				for _, group in ipairs(value.Groups or {}) do
-					if
-						filter.Text ~= ""
-						and not tostring(group.Path or group.Name):lower():find(filter.Text:lower(), 1, true)
-					then
+				local pathFilter = string.lower(filter.Text)
+				for _, group in value.Groups or {} do
+					if pathFilter ~= "" and not string.find(string.lower(tostring(group.Path or group.Name)), pathFilter, 1, true) then
 						continue
 					end
-					view.VisibleGroups[#view.VisibleGroups + 1] = group
-					view.VisibleMatchCount += #group.Matches
-					flat[#flat + 1] = { Group = group }
-					if not collapsed[group] then
-						for _, match in ipairs(group.Matches) do
-							local row = { Group = group, Match = match, Index = #flat + 1 }
-							flat[#flat + 1] = row
-							if selected and selected.Group == group and selected.Match == match then
-								selected = row
-								hasSelected = true
-							end
+					local header = rowCount + 1
+					local count = #group.Matches
+					table.insert(view.VisibleGroups, group)
+					table.insert(groupStarts, header)
+					view.VisibleMatchCount += count
+					rowCount = if collapsed[group] then header else header + count
+					if selected and selected.Group == group and not collapsed[group] then
+						local offset = selected.Offset
+						if group.Matches[offset] ~= selected.Match then
+							offset = table.find(group.Matches, selected.Match)
+						end
+						if offset then
+							selected.Offset = offset
+							selected.Index = header + offset
+							hasSelected = true
 						end
 					end
 				end
 				if not hasSelected then
 					selected = nil
 				end
-				list.CanvasSize = UDim2.fromOffset(0, #flat * 24)
+				list.CanvasSize = UDim2.fromOffset(0, rowCount * 24)
 			end
 			if value.Error then
 				summary.Text = value.Error

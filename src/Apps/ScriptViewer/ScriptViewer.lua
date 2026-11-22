@@ -1012,9 +1012,12 @@ local function CreateModule()
 			end
 		end
 		globalSearchSession = Apps.EditorGlobalSearch.Create({
-			NormalizeSource = function(source)
-				if source:find("[\t\r]") then
-					return codeFrame:ConvertText(source, true):gsub("\r\n", "\n"):gsub("\r", "\n")
+			NormalizeSource = function(source: string): string
+				if string.find(source, "\t", 1, true) then
+					source = codeFrame:ConvertText(source, true)
+				end
+				if string.find(source, "\r", 1, true) then
+					source = string.gsub(source, "\r\n?", "\n")
 				end
 				return source
 			end,

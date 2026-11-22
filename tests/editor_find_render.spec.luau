@@ -116,6 +116,30 @@ do
 	assert(not lastWord.Visible, "Find highlights take precedence over caret occurrences")
 	cf.HighlightOccurrences = false
 	cf.SearchVisible = false
+	cf.Lines = {string.rep("ab ", 2000), "end"}
+	cf.Text = table.concat(cf.Lines, "\n")
+	cf.MaxTextCols = #cf.Lines[1]
+	cf.SearchVisible = true
+	cf.SearchActiveIndex = 0
+	cf.SearchMatches = Apps.EditorFindModel.Search(cf.Text, "ab").Matches
+	cf:ResetFolds()
+	cf.ViewX = 1200
+	cf:UpdateView()
+	funcs.Refresh(cf, syntax)
+	local host = cf.LineFrames[1].SearchMatches
+	local width = cf.Frame.Lines.AbsoluteSize.X
+	local scroll = cf:ScrollPixelX()
+	local visible = 0
+	for _, match in cf.SearchMatches do
+		local left = math.clamp(math.round(cf:GetColumnPixelX(match.Start - 1, 0) - scroll), 0, width)
+		local right = math.clamp(math.round(cf:GetColumnPixelX(match.Finish - 1, 0) - scroll), 0, width)
+		if right > left then
+			visible += 1
+			local span = host[tostring(visible)]
+			assert(span.Position.X.Offset == left and span.Size.X.Offset == right - left)
+		end
+	end
+	assert(visible > 0 and #host:GetChildren() == visible)
 end
 print(
 	"PASS: visible search spans, measured byte ranges, active selection layering, retained widgets and scrollbar marker cleanup"

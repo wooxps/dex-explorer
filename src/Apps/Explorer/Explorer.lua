@@ -176,8 +176,8 @@ local function CreateModule()
 	end
 	local branchViews = {}
 	local sortedSearchChildren = setmetatable({}, { __mode = "k" })
-	local function invalidateBranch(node)
-		if projection then
+	local function invalidateBranch(node, marked)
+		if projection and not marked then
 			projection:Mark(node)
 		end
 		while node do
@@ -186,7 +186,7 @@ local function CreateModule()
 			node = node.Parent
 		end
 	end
-	local function markSearchDirty(node, subtree, reason)
+	local function markSearchDirty(node, subtree, reason, insertion)
 		if node then
 			node.SearchRawName = nil
 		end
@@ -204,8 +204,12 @@ local function CreateModule()
 				end
 			end
 		end
-		invalidateBranch(node)
-		if projection then
+		local childEdit = node and (node.Del or insertion ~= nil)
+		if projection and childEdit then
+			projection:MarkChild(node, insertion)
+		end
+		invalidateBranch(node, childEdit)
+		if projection and not childEdit then
 			projection:Mark(node and node.Parent)
 		end
 		local index = Apps.SearchQuery.NameIndex
@@ -393,6 +397,7 @@ local function CreateModule()
 		nodes[root] = newNode
 		indexEvidenceCandidate(root, newNode)
 
+		local insertion
 		if sortingEnabled and expanded[par] and par.Sorted then
 			local left, right = 1, #par
 			local floor = math.floor
@@ -419,9 +424,11 @@ local function CreateModule()
 				end
 			end
 
+			insertion = pos
 			table.insert(par, pos, newNode)
 		else
-			par[#par + 1] = newNode
+			insertion = #par + 1
+			par[insertion] = newNode
 			par.Sorted = nil
 		end
 
@@ -447,7 +454,7 @@ local function CreateModule()
 			end
 		end
 
-		markSearchDirty(newNode, true)
+		markSearchDirty(newNode, true, nil, insertion)
 		if searchFunc and autoUpdateSearch then
 			searchFunc({ newNode })
 		end
@@ -1265,6 +1272,9 @@ local function CreateModule()
 			and projection:Try({
 				Root = nodes[game],
 				Expanded = expanded,
+				NeedsSort = function(parent)
+					return sortingEnabled and not parent.Sorted
+				end,
 				Sort = function(parent)
 					if sortingEnabled and not parent.Sorted then
 						sortingNames = {}

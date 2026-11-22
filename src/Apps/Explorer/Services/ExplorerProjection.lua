@@ -16,17 +16,85 @@ local function Main()
 			Stats = { Patches = 0, Fallbacks = 0, Projected = 0, Reindexed = 0 },
 		}
 		local widths, depths = {}, {}
+		local childEdit
 		local function adjust(map, key, delta)
 			local count = (map[key] or 0) + delta
 			map[key] = count > 0 and count or nil
 		end
 		function p:Mark(node)
 			if self.Valid and node and (indices[node] or node == self.Root) then
+				childEdit = nil
 				self.Dirty[node] = true
 			end
 		end
+		function p:MarkChild(node, insertion)
+			local parent = node.Parent
+			local previous = childEdit
+			local alreadyMarked = self.Dirty[node]
+			local clean = not next(self.Dirty)
+			self:Mark(node)
+			self:Mark(parent)
+			if alreadyMarked or not self.Valid or not parent or not indices[parent] or parent == self.Root then return end
+			if not clean and (not previous or previous.Parent ~= parent or previous.Insert ~= (insertion ~= nil)) then
+				return
+			end
+			if insertion then
+				if previous and (insertion < previous.First or insertion > previous.First + previous.Count) then return end
+				childEdit = previous or { Parent = parent, Insert = true, First = insertion, Count = 0 }
+				childEdit.Count += 1
+			elseif indices[node] and self.Parents[node] == parent then
+				local first = indices[node]
+				local last = first
+				if rows[last + 1] and self.Depths[rows[last + 1]] > self.Depths[node] then return end
+				childEdit = previous or { Parent = parent, Insert = false, First = first, Last = last, Count = 0 }
+				childEdit.First = math.min(childEdit.First, first)
+				childEdit.Last = math.max(childEdit.Last, last)
+				childEdit.Count += last - first + 1
+			end
+		end
+		local function childPlan(self, context)
+			local edit = childEdit
+			if not edit or not context.Expanded[edit.Parent] or (context.NeedsSort and context.NeedsSort(edit.Parent)) then
+				return nil
+			end
+			local depth = self.Depths[edit.Parent] + 1
+			if not edit.Insert then
+				if edit.Count == edit.Last - edit.First + 1 then
+					return { First = edit.First, Last = edit.Last, Rows = {}, Depths = {} }
+				end
+				return nil
+			end
+			local parent, first, last = edit.Parent, edit.First, edit.First + edit.Count - 1
+			local following = parent[last + 1]
+			local previous = parent[first - 1]
+			local at
+			if following and indices[following] then
+				at = indices[following]
+			elseif not previous and not following then
+				at = indices[parent] + 1
+			elseif indices[previous] then
+				at = indices[previous] + 1
+				while rows[at] and self.Depths[rows[at]] > depth do
+					at += 1
+				end
+			else
+				return nil
+			end
+			local plan = { First = at, Last = at - 1, Rows = table.create(edit.Count), Depths = {} }
+			for i = first, last do
+				local node = parent[i]
+				if not node or node.Del or indices[node] or (context.Expanded[node] and #node > 0) then return nil end
+				plan.Rows[i - first + 1] = node
+				plan.Depths[node] = depth
+			end
+			for _, node in plan.Rows do
+				context.Measure(node)
+			end
+			return plan
+		end
 		function p:Rebuild(root)
 			self.Root = root
+			childEdit = nil
 			table.clear(self.Dirty)
 			table.clear(self.Depths)
 			table.clear(self.Parents)
@@ -45,10 +113,7 @@ local function Main()
 			end
 			self.Valid = true
 		end
-		function p:Try(context)
-			if not self.Valid then
-				return false
-			end
+		local function branchPlans(self, context)
 			local limit = context.Limit or 512
 			local roots = {}
 			for node in pairs(self.Dirty) do
@@ -149,6 +214,13 @@ local function Main()
 					visit(plan.Root, plan.Depth + 1)
 				end
 			end
+			return plans
+		end
+		function p:Try(context)
+			if not self.Valid then return false end
+			local edit = childPlan(self, context)
+			local plans = if edit then { edit } else branchPlans(self, context)
+			if not plans then return false end
 			for _, plan in ipairs(plans) do
 				for index = plan.First, plan.Last do
 					local node = rows[index]
@@ -217,6 +289,7 @@ local function Main()
 				reindex(nextRow, #rows)
 			end
 			table.clear(self.Dirty)
+			childEdit = nil
 			self.Stats.Patches += 1
 			return true
 		end

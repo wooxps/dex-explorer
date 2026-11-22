@@ -899,12 +899,15 @@ local function CreateModule()
 			local searchCount = 0
 			if searchStarts and sourceLine then
 				local start = searchStarts[sourceLine]
-				local finish = start + #lineText
+				local pixels, bytes = geometry.Pixels, geometry.Bytes
+				local firstVisible = start + bytes[floorIndex(pixels, math.max(0, scrollPixel - 1))]
+				local lastGlyph = math.min(#bytes, floorIndex(pixels, scrollPixel + hSize) + 1)
+				local lastVisible = start + bytes[lastGlyph]
 				local low, high = 1, #searchMatches + 1
 				while low < high do
 					local middle = math.floor((low + high) / 2)
 					local match = searchMatches[middle]
-					if match and (match.Finish > start or match.Finish == match.Start and match.Start >= start) then
+					if match and (match.Finish > firstVisible or match.Finish == match.Start and match.Start >= firstVisible) then
 						high = middle
 					else
 						low = middle + 1
@@ -912,7 +915,7 @@ local function CreateModule()
 				end
 				for index = low, #searchMatches do
 					local match = searchMatches[index]
-					if match.Start > finish then
+					if match.Start > lastVisible then
 						break
 					end
 					if index ~= self.SearchActiveIndex or not selectedSearch then
