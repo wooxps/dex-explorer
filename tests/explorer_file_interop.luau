@@ -12,7 +12,7 @@ local function loadModule(name)
 	control.InitDeps({service=service,Apps=apps,env=env})
 	apps[name] = control.Main()
 end
-for _, name in {"GltfGeometry","GltfTextures","GltfExporter","ExplorerFileActions","LocalizationCsv"} do loadModule(name) end
+for _, name in {"GltfGeometry","GltfTerrain","GltfFacs","GltfTextures","GltfExporter","ExplorerFileActions","LocalizationCsv"} do loadModule(name) end
 local function base64(s)
 	local characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	local chars = {}
@@ -133,3 +133,95 @@ fs.writeFile(".build/fixture-cages.gltf",data)
 local marker = serde.decode("json", apps.GltfExporter.Export({{Obj=attachment}}))
 assert(#marker.nodes==1 and marker.nodes[1].name=="Mount" and not marker.buffers)
 print("Export options include and omit skins, images, attachments and both cage meshes.")
+
+
+-- Voxel data crosses the 24-cell chunk seam. Include water and partial density.
+globals.Region3 = {new=function(min,max) return {Min=min,Max=max} end}
+-- The module loader copies its environment when creating a chunk.
+loadModule("GltfTerrain")
+local terrain = {Name="Terrain",ClassName="Terrain",WaterColor=r.Color3.fromRGB(30,80,255),WaterTransparency=.25}
+function terrain:IsA(class) return class == "Terrain" or class == "BasePart" end
+function terrain:GetMaterialColor() return r.Color3.fromRGB(100,150,55) end
+local reads = 0
+function terrain:ReadVoxels(region,resolution)
+	assert(resolution==4 and region.Min.X >= 0 and region.Max.X <= 108)
+	reads += 1
+	local materials, occupancies = {}, {}
+	for x=region.Min.X/4,region.Max.X/4-1 do
+		local xi = #materials+1
+		materials[xi],occupancies[xi] = {},{}
+		for y=region.Min.Y/4,region.Max.Y/4-1 do
+			local yi = #materials[xi]+1
+			materials[xi][yi],occupancies[xi][yi] = {},{}
+			for z=region.Min.Z/4,region.Max.Z/4-1 do
+				local water = y==1 and z==2 and x==25
+				local solid = y==0 and z<2 and x>=20 and x<=25
+				local m = if water then r.Enum.Material.Water elseif solid then r.Enum.Material.Grass else r.Enum.Material.Air
+				table.insert(materials[xi][yi],m)
+				table.insert(occupancies[xi][yi],if solid then (if x%2==0 then .8 else 1) elseif water then 1 else 0)
+			end
+		end
+	end
+	return materials,occupancies
+end
+local terrainExport, warning = apps.GltfExporter.Export({{Obj=terrain}},{
+	TerrainBounds={Min=v3(0,0,0),Max=v3(108,8,12)},
+})
+assert(reads==2 and not warning)
+local terrainDoc = serde.decode("json",terrainExport)
+assert(#terrainDoc.meshes==3 and #terrainDoc.materials==2)
+for _, item in ipairs(terrainDoc.meshes) do
+	assert(item.primitives[1].attributes.COLOR_0)
+end
+fs.writeFile(".build/fixture-terrain.gltf",terrainExport)
+assert(not pcall(apps.GltfTerrain.Bounds,v3(0,0,0),v3(5000,5000,5000)))
+
+local function overlay(name,class,face)
+	return {Name=name,ClassName=class,Face=face,Transparency=.15,Color3=r.Color3.fromRGB(100,200,240),
+		ColorMapContent="image",ZIndex=0,StudsPerTileU=2,StudsPerTileV=3,OffsetStudsU=.5,OffsetStudsV=1,
+		IsA=function() return false end,GetChildren=function() return {} end}
+end
+local decal = overlay("Front sticker","Decal",r.Enum.NormalId.Front)
+local tile = overlay("Right tiles","Texture",r.Enum.NormalId.Right)
+local cube = {
+	Name="Printed box",ClassName="Part",CFrame=r.CFrame.identity,Size=v3(8,6,4),Color=r.Color3.new(1,1,1),
+	Shape=r.Enum.PartType.Block,Transparency=0,Material=r.Enum.Material.Plastic,
+	IsA=function(_,class) return class=="Part" or class=="BasePart" end,
+	FindFirstChildOfClass=function() end,FindFirstChildWhichIsA=function() end,GetFullName=function() return "Printed box" end,
+	GetChildren=function() return {decal,tile} end,
+}
+local projected, skipped = apps.GltfExporter.Export({{Obj=cube}})
+assert(not skipped)
+local projectedDoc = serde.decode("json",projected)
+assert(#projectedDoc.meshes==3 and #projectedDoc.images==1)
+assert(projectedDoc.meshes[2].name=="Front sticker" and projectedDoc.meshes[3].name=="Right tiles")
+assert(projectedDoc.accessors[projectedDoc.meshes[3].primitives[1].attributes.TEXCOORD_0+1].count==6)
+fs.writeFile(".build/fixture-overlays.gltf",projected)
+local solidOnly = serde.decode("json",apps.GltfExporter.Export({{Obj=cube}},{Textures=false}))
+assert(#solidOnly.meshes==1 and not solidOnly.images)
+local imageReader = service.AssetService.CreateEditableImageAsync
+service.AssetService.CreateEditableImageAsync = function() error("Permission denied") end
+local unreadable, omissions = apps.GltfExporter.Export({{Obj=cube}})
+assert(#serde.decode("json",unreadable).meshes==1 and omissions:find("Decal image unavailable",1,true))
+service.AssetService.CreateEditableImageAsync = imageReader
+
+local jaw, smile = {Name="JawDrop"}, {Name="LeftLipCornerPuller"}
+function mesh:GetFacsPoses() return {jaw} end
+function mesh:GetFacsPose() return {43},{r.CFrame.new(0,2,0)} end
+function mesh:GetFacsCorrectivePoses() return {{smile,jaw}} end
+function mesh:GetFacsCorrectivePose() return {43},{r.CFrame.Angles(0,math.pi/4,0)} end
+-- Only some vertices are affected. The two untouched vertices stay implicit.
+function mesh:GetVertexBones(id) return if id==4 or id==8 then {21,43} else {21} end
+function mesh:GetVertexBoneWeights(id) return if id==4 or id==8 then {.6,.4} else {1} end
+local facs, facsWarnings = apps.GltfExporter.Export({{Obj=part}},{Textures=false})
+assert(not facsWarnings)
+local face = serde.decode("json",facs)
+local faceMesh = face.meshes[1]
+assert(faceMesh.extras.targetNames[1]=="Corrective_JawDrop_LeftLipCornerPuller" and faceMesh.extras.targetNames[2]=="JawDrop")
+local direct = face.accessors[faceMesh.primitives[1].targets[2].POSITION+1]
+assert(direct.sparse.count==2 and math.abs(direct.max[2]-.224)<1e-5 and direct.min[2]==0)
+assert(#face.skins[1].joints==2)
+fs.writeFile(".build/fixture-facs.gltf",facs)
+local neutral = serde.decode("json",apps.GltfExporter.Export({{Obj=part}},{Skinning=false,Textures=false}))
+assert(not neutral.meshes[1].extras and not neutral.skins)
+print("Terrain chunk seams and water, tiled face overlays, permissions, and weighted FACS targets exported.")

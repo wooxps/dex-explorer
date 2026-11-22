@@ -94,7 +94,15 @@ end
 local rgb = Color3.fromRGB
 
 local function configuration(targets, onReady)
-	local d = Apps.StudioPopup.Open("Export Configuration",320)
+	local hasTerrain = false
+	for _, target in ipairs(targets) do
+		local class = target.Obj.ClassName
+		if class == "Terrain" or class == "Workspace" or class == "DataModel" then
+			hasTerrain = true
+			break
+		end
+	end
+	local d = Apps.StudioPopup.Open("Export Configuration",if hasTerrain then 462 else 320)
 	if d.sprite then
 		d.sprite(d.panel,"Information",22,52,32,32,50)
 	else
@@ -107,6 +115,23 @@ local function configuration(targets, onReady)
 	d.label(d.panel,"Pick the components to include in your file",64,74,430,24,15)
 	d.label(d.panel,"Include",64,106,380,24,15,true)
 	local options = {Skinning=true,Textures=true,Attachments=true,Cages=false}
+	local lowerBox, upperBox
+	if hasTerrain then
+		local camera = service.Workspace.CurrentCamera
+		local center = if camera then camera.Focus.Position else Vector3.zero
+		local function coordinates(point)
+			return string.format("%d, %d, %d",math.round(point.X),math.round(point.Y),math.round(point.Z))
+		end
+		local halfSize = Vector3.new(128,64,128)
+		lowerBox = d.input("Terrain minimum (X, Y, Z in studs)",coordinates(center-halfSize),253)
+		upperBox = d.input("Terrain maximum (X, Y, Z in studs)",coordinates(center+halfSize),321)
+		lowerBox.Name, upperBox.Name = "TerrainMinimum", "TerrainMaximum"
+	end
+	local function readPoint(input)
+		local x,y,z = input:match("^%s*([^,%s]+)[,%s]+([^,%s]+)[,%s]+([^,%s]+)%s*$")
+		x,y,z = tonumber(x),tonumber(y),tonumber(z)
+		if x and y and z then return Vector3.new(x,y,z) end
+	end
 	-- One worker owns mesh/image allocations. Changes invalidate the in-flight result
 	-- and coalesce while Roblox yields to read an asset.
 	local revision, running = 0, false
@@ -118,10 +143,21 @@ local function configuration(targets, onReady)
 		task.defer(function()
 			task.wait()
 			while d.isOpen() do
+				if lowerBox then
+					local beforeWait = revision
+					task.wait(.35)
+					if not d.isOpen() then break end
+					if beforeWait ~= revision then continue end
+				end
 				local generation, snapshot = revision, table.clone(options)
 				local function cancelled() return not d.isOpen() or generation ~= revision end
 				local ok, data, details = pcall(function()
 					checkTargets(targets)
+					if lowerBox then
+						local min,max = readPoint(lowerBox.Text),readPoint(upperBox.Text)
+						Apps.GltfTerrain.Bounds(min,max)
+						snapshot.TerrainBounds = {Min=min,Max=max}
+					end
 					return Apps.GltfExporter.Export(targets,snapshot,cancelled)
 				end)
 				if not cancelled() then
@@ -168,6 +204,11 @@ local function configuration(targets, onReady)
 			service.TweenService:Create(fill,timing,{[opacity]=fade}):Play()
 			prepare()
 		end)
+	end
+	if lowerBox then
+		for _, box in ipairs({lowerBox,upperBox}) do
+			box:GetPropertyChangedSignal("Text"):Connect(prepare)
+		end
 	end
 	prepare()
 end

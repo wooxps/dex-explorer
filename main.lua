@@ -238,6 +238,8 @@ Main = (function()
 		"SelectionService",
 		"LocalizationCsv",
 		"GltfGeometry",
+		"GltfTerrain",
+		"GltfFacs",
 		"GltfTextures",
 		"GltfExporter",
 		"StudioPopup",

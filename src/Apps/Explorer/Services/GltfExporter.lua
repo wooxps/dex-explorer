@@ -30,6 +30,10 @@ function Exporter.Export(targets, options, cancelled)
 	local doc = { asset = { version = "2.0", generator = "Dex Explorer" }, scene = 0, scenes = { scene },
 		nodes = {}, meshes = {}, materials = {}, bufferViews = {}, accessors = {} }
 	local chunks, length = {}, 0
+	local omitted = {}
+	local function omit(kind)
+		omitted[kind] = (omitted[kind] or 0) + 1
+	end
 	local function view(bytes, target)
 		local padding = -length % 4
 		if padding > 0 then table.insert(chunks, string.rep("\0", padding)); length += padding end
@@ -41,6 +45,19 @@ function Exporter.Export(targets, options, cancelled)
 	local function accessor(bytes, kind, component, count, target, min, max)
 		return add(doc.accessors, { bufferView = view(bytes, target), componentType = component, count = count,
 			type = kind, min = min, max = max })
+	end
+	local function sparseAccessors(count,indices,positions,normals,minimum,maximum)
+		local componentType, format = 5123,"<I2"
+		if count > 65536 then componentType,format = 5125,"<I4" end
+		for i,index in ipairs(indices) do indices[i] = string.pack(format,index) end
+		local indexView = view(table.concat(indices))
+		local function sparse(values, min, max)
+			return add(doc.accessors,{componentType=5126,count=count,type="VEC3",min=min,max=max,
+				sparse={count=#indices,indices={bufferView=indexView,componentType=componentType},
+					values={bufferView=view(table.concat(values))}}})
+		end
+		if #indices < count then minimum,maximum = minimum:Min(Vector3.zero), maximum:Max(Vector3.zero) end
+		return sparse(positions,{minimum.X,minimum.Y,minimum.Z},{maximum.X,maximum.Y,maximum.Z}),sparse(normals)
 	end
 	local function appendNode(parent, data)
 		parent.children = parent.children or {}
@@ -61,12 +78,10 @@ function Exporter.Export(targets, options, cancelled)
 		g.normals[i] = string.pack("<fff", n.X, n.Y, n.Z)
 		g.min = g.min:Min(p)
 		g.max = g.max:Max(p)
-		if g.indices then
-			g.uv[i] = if uv then string.pack("<ff", uv.X, uv.Y) else string.rep("\0",8)
-			g.hasUV = g.hasUV or uv ~= nil
-			g.colors[i] = if color then string.pack("<ffff",linear(color.R),linear(color.G),linear(color.B),alpha or 1)
-				else string.pack("<ffff",1,1,1,1)
-			g.hasColor = g.hasColor or color ~= nil
+		if uv then g.uv[i] = string.pack("<ff",uv.X,uv.Y); g.hasUV = true end
+		if color then
+			g.colors[i] = string.pack("<ffff",linear(color.R),linear(color.G),linear(color.B),alpha or 1)
+			g.hasColor = true
 			g.blend = g.blend or (alpha ~= nil and alpha < 1)
 		end
 		if g.vertices then g.vertices[i] = sourceId end
@@ -82,8 +97,9 @@ function Exporter.Export(targets, options, cancelled)
 	function emit.Finish(g, mesh, bones)
 		local n = #g.pos
 		assert(n > 0, "Geometry contains no vertices")
+		local positions = table.concat(g.pos)
 		local attrs = {
-			POSITION = accessor(table.concat(g.pos),"VEC3",5126,n,34962,{g.min.X,g.min.Y,g.min.Z},{g.max.X,g.max.Y,g.max.Z}),
+			POSITION = accessor(positions,"VEC3",5126,n,34962,{g.min.X,g.min.Y,g.min.Z},{g.max.X,g.max.Y,g.max.Z}),
 			NORMAL = accessor(table.concat(g.normals),"VEC3",5126,n,34962),
 		}
 		if g.tangents then
@@ -101,14 +117,24 @@ function Exporter.Export(targets, options, cancelled)
 			end
 			attrs.TANGENT = accessor(table.concat(packed),"VEC4",5126,n,34962)
 		end
-		if g.hasUV then attrs.TEXCOORD_0 = accessor(table.concat(g.uv),"VEC2",5126,n,34962) end
-		if g.hasColor then attrs.COLOR_0 = accessor(table.concat(g.colors),"VEC4",5126,n,34962) end
-		local geometry = { attrs = attrs, blend = g.blend }
+		if g.hasUV then
+			local zero = string.rep("\0",8)
+			for i = 1,n do g.uv[i] = g.uv[i] or zero end
+			attrs.TEXCOORD_0 = accessor(table.concat(g.uv),"VEC2",5126,n,34962)
+		end
+		if g.hasColor then
+			local white = string.pack("<ffff",1,1,1,1)
+			for i = 1,n do g.colors[i] = g.colors[i] or white end
+			attrs.COLOR_0 = accessor(table.concat(g.colors),"VEC4",5126,n,34962)
+		end
+		local geometry = { attrs = attrs, blend = g.blend, positions = positions, cornerCount = n, min = g.min, max = g.max }
 		if g.indices then
 			local small = n <= 65535
 			local fmt = if small then "<I2" else "<I4"
 			for i, index in ipairs(g.indices) do g.indices[i] = string.pack(fmt, index) end
-			geometry.indices = accessor(table.concat(g.indices),"SCALAR",if small then 5123 else 5125,#g.indices,34963)
+			geometry.indexBytes = table.concat(g.indices)
+			geometry.indexFormat, geometry.indexStride, geometry.cornerCount = fmt, if small then 2 else 4, #g.indices
+			geometry.indices = accessor(geometry.indexBytes,"SCALAR",if small then 5123 else 5125,#g.indices,34963)
 		end
 		if g.vertices then
 			local slots, joints, inverses = {}, {}, {}
@@ -151,6 +177,11 @@ function Exporter.Export(targets, options, cancelled)
 				end
 				attrs["JOINTS_" .. set] = accessor(table.concat(ids),"VEC4",5123,n,34962)
 				attrs["WEIGHTS_" .. set] = accessor(table.concat(weights),"VEC4",5126,n,34962)
+			end
+			local ok, poses = pcall(function() return mesh:GetFacsPoses() end)
+			if ok then
+				geometry.targets, geometry.targetNames = Apps.GltfFacs.Bake(mesh,poses,g.vertices,g.normals,weightsByVertex,bones,meters,sparseAccessors,checkCancelled)
+				if #geometry.targets == 0 then geometry.targets,geometry.targetNames = nil,nil end
 			end
 			geometry.joints = joints
 			geometry.inverse = accessor(table.concat(inverses),"MAT4",5126,#joints)
@@ -213,8 +244,8 @@ function Exporter.Export(targets, options, cancelled)
 		primitives[geometry] = bucket
 		if not bucket[mat] then
 			bucket[mat] = add(doc.meshes, { name = part.Name, primitives = {{
-				attributes = geometry.attrs, indices = geometry.indices, material = mat,
-			}} })
+				attributes = geometry.attrs, indices = geometry.indices, material = mat, targets = geometry.targets,
+			}}, extras = if geometry.targets then {targetNames=geometry.targetNames} else nil })
 		end
 		local visual = appendNode(node, { name = part.Name .. " geometry",
 			scale = {scale.X,scale.Y,scale.Z}, translation = {offset.X*meters,offset.Y*meters,offset.Z*meters} })
@@ -242,12 +273,39 @@ function Exporter.Export(targets, options, cancelled)
 		if not bucket[content] then bucket[content] = Apps.GltfGeometry.ReadMesh(content, emit, tangents, skinning, checkCancelled) end
 		return bucket[content]
 	end
+	local function exportOverlays(node, part, source, size, offset, only)
+		if not textures then return end
+		local overlays = {}
+		for _, child in ipairs(if only then {only} else part:GetChildren()) do
+			if child.ClassName == "Decal" or child.ClassName == "Texture" then
+				if child.Transparency < 1 then table.insert(overlays,child) end
+			end
+		end
+		table.sort(overlays,function(a,b) return (a.ZIndex or 0) < (b.ZIndex or 0) end)
+		for layer, decal in ipairs(overlays) do
+			local content = decal.ColorMapContent
+			if not content or content == Content.none then content = decal.TextureContent end
+			if not content or content == Content.none then continue end
+			local ok, image = pcall(texture,content)
+			checkCancelled()
+			if not ok then omit(decal.ClassName .. " image unavailable"); continue end
+			local geometry = Apps.GltfGeometry.ProjectFace(source,size/meters,offset,decal,emit,layer,checkCancelled)
+			if not geometry then omit(decal.ClassName .. " face unavailable"); continue end
+			local color = decal.Color3
+			local mat = add(doc.materials,{name=decal.Name,alphaMode="BLEND",
+				pbrMetallicRoughness={baseColorTexture=image,baseColorFactor={linear(color.R),linear(color.G),linear(color.B),1-decal.Transparency},
+					metallicFactor=0,roughnessFactor=1}})
+			local mesh = add(doc.meshes,{name=decal.Name,primitives={{attributes=geometry.attrs,material=mat}}})
+			appendNode(node,{name=decal.Name,mesh=mesh})
+		end
+	end
+
 	local function renderScale(part)
 		local size, original = part.Size, part.MeshSize
 		return Vector3.new(if original.X == 0 then 1 else size.X/original.X,
 			if original.Y == 0 then 1 else size.Y/original.Y, if original.Z == 0 then 1 else size.Z/original.Z)
 	end
-	local function exportPart(node, part)
+	local function exportPart(node, part, onlyDecal)
 		local size, offset, shape, meshContent, tex = part.Size, Vector3.zero, nil, nil, nil
 		local surface = part:FindFirstChildOfClass("SurfaceAppearance")
 		if part:IsA("MeshPart") then
@@ -259,7 +317,9 @@ function Exporter.Export(targets, options, cancelled)
 			local ok, err = pcall(function()
 				local frame = part.CFrame:ToObjectSpace(baked.CFrame)
 				local anchor = if frame == CFrame.identity then node else appendNode(node, {name=part.Name, matrix=matrix(frame)})
-				attachMesh(anchor, part, readGeometry(baked.MeshContent, surface), renderScale(baked), Vector3.zero, surface, baked.TextureContent)
+				local geometry, scale = readGeometry(baked.MeshContent,if onlyDecal then nil else surface),renderScale(baked)
+				if not onlyDecal then attachMesh(anchor,part,geometry,scale,Vector3.zero,surface,baked.TextureContent) end
+				exportOverlays(anchor,part,geometry,scale,Vector3.zero,onlyDecal)
 			end)
 			baked:Destroy()
 			if not ok then error(err, 0) end
@@ -285,30 +345,48 @@ function Exporter.Export(targets, options, cancelled)
 		end
 		local geometry
 		if meshContent then
-			geometry = readGeometry(meshContent, surface)
+			geometry = readGeometry(meshContent, if onlyDecal then nil else surface)
 		else
 			if not shapes[shape] then shapes[shape] = Apps.GltfGeometry.Primitive(shape, emit) end
 			geometry = shapes[shape]
 		end
-		attachMesh(node, part, geometry, size, offset, surface, tex)
+		if not onlyDecal then
+			attachMesh(node, part, geometry, size, offset, surface, tex)
+			if skinning and not geometry.targets and part:FindFirstChildOfClass("FaceControls") then
+				omit("FaceControls pose data unavailable")
+			end
+		end
+		exportOverlays(node,part,geometry,size,offset,onlyDecal)
 	end
 
 	local selected = {}
 	for _, target in ipairs(targets) do selected[target] = true end
-	local visited, omitted = 0, {}
-	local function omit(kind)
-		omitted[kind] = (omitted[kind] or 0) + 1
-	end
+	local visited = 0
 	local function visit(obj, parent, parentFrame)
 		visited += 1
 		if visited % 256 == 0 then task.wait() end
 		checkCancelled()
-		local part = obj:IsA("BasePart")
-		if obj:IsA("Terrain") then omit("Terrain"); return end
-		local class = obj.ClassName
-		if class == "FaceControls" or (textures and (class == "Decal" or class == "Texture")) then
-			omit(class)
+		if obj:IsA("Terrain") then
+			if not options.TerrainBounds then omit("Terrain bounds required"); return end
+			local terrainNode = {name=obj.Name}
+			if parentFrame ~= CFrame.identity then terrainNode.matrix = matrix(parentFrame:Inverse()) end
+			local materials = {}
+			Apps.GltfTerrain.Read(obj,options.TerrainBounds,emit,function(geometry,water,alpha)
+				local mat = materials[water]
+				if mat == nil then
+					mat = add(doc.materials,{name=if water then "Terrain Water" else "Terrain",
+						alphaMode=if water and alpha < 1 then "BLEND" else nil,
+						pbrMetallicRoughness={baseColorFactor={1,1,1,alpha},metallicFactor=0,roughnessFactor=1}})
+					materials[water] = mat
+				end
+				local mesh = add(doc.meshes,{name=obj.Name,primitives={{attributes=geometry.attrs,material=mat}}})
+				appendNode(terrainNode,{name=if water then "Water" else "Terrain surface",mesh=mesh})
+			end,checkCancelled)
+			if terrainNode.children then appendNode(parent,terrainNode) end
+			return
 		end
+		local class = obj.ClassName
+		local part = obj:IsA("BasePart")
 		local attachment = attachments and class == "Attachment"
 		local frame = if attachment then obj.WorldCFrame elseif part then obj.CFrame elseif obj:IsA("Model") then obj:GetPivot() else parentFrame
 		local node = {name = obj.Name}
@@ -341,18 +419,31 @@ function Exporter.Export(targets, options, cancelled)
 	for _, target in ipairs(targets) do
 		local ancestor = target.Parent
 		while ancestor and not selected[ancestor] do ancestor = ancestor.Parent end
-		if not ancestor then visit(target.Obj, root, CFrame.identity) end
+		if not ancestor then
+			local obj = target.Obj
+			if (obj.ClassName == "Decal" or obj.ClassName == "Texture") and textures and obj.Parent and obj.Parent:IsA("BasePart") then
+				local node = {name=obj.Name,matrix=matrix(obj.Parent.CFrame)}
+				exportPart(node,obj.Parent,obj)
+				if node.children then appendNode(root,node) end
+			elseif obj.ClassName == "FaceControls" and skinning and obj.Parent and obj.Parent:IsA("MeshPart") then
+				local node = {name=obj.Parent.Name,matrix=matrix(obj.Parent.CFrame)}
+				exportPart(node,obj.Parent)
+				if node.children then appendNode(root,node) end
+			else
+				visit(obj, root, CFrame.identity)
+			end
+		end
 	end
 	checkCancelled()
 	assert(#scene.nodes > 0, "The selection contains none of the included components")
 	if length == 0 then
 		doc.meshes, doc.materials, doc.bufferViews, doc.accessors = nil, nil, nil, nil
-		return service.HttpService:JSONEncode(doc)
+	else
+		if #doc.materials == 0 then doc.materials = nil end
+		local bytes = buffer.fromstring(table.concat(chunks))
+		doc.buffers = {{ byteLength = length, uri = "data:application/octet-stream;base64,"
+			.. buffer.tostring(service.EncodingService:Base64Encode(bytes)) }}
 	end
-	if #doc.materials == 0 then doc.materials = nil end
-	local bytes = buffer.fromstring(table.concat(chunks))
-	doc.buffers = {{ byteLength = length, uri = "data:application/octet-stream;base64,"
-		.. buffer.tostring(service.EncodingService:Base64Encode(bytes)) }}
 	local skipped = {}
 	for kind, count in pairs(omitted) do table.insert(skipped, kind .. " (" .. count .. ")") end
 	table.sort(skipped)

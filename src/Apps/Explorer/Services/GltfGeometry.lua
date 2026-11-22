@@ -128,6 +128,62 @@ function Geometry.Primitive(shape, emit)
 	return emit.Finish(geometry)
 end
 
+-- Face axes as seen looking toward each face, with V pointing down.
+function Geometry.ProjectFace(source, size, offset, decal, emit, layer, checkCancelled)
+	local x,y,z = Vector3.xAxis,Vector3.yAxis,Vector3.zAxis
+	local axes = ({
+		Front={-z,x,-y}, Back={z,-x,-y}, Right={x,z,-y}, Left={-x,-z,-y},
+		Top={y,x,-z}, Bottom={-y,x,z},
+	})[decal.Face.Name]
+	if not axes then return nil end
+	local face, uAxis, vAxis = table.unpack(axes)
+	local extents = (source.max-source.min)*size
+	local center = (source.min+source.max)*size/2+offset
+	local uSize,vSize = math.abs(uAxis:Dot(extents)),math.abs(vAxis:Dot(extents))
+	if uSize <= 0 or vSize <= 0 then return nil end
+	local tiled = decal.ClassName == "Texture"
+	local uTile = if tiled then math.max(.001,decal.StudsPerTileU) else uSize
+	local vTile = if tiled then math.max(.001,decal.StudsPerTileV) else vSize
+	local uOffset = if tiled then decal.OffsetStudsU else 0
+	local vOffset = if tiled then decal.OffsetStudsV else 0
+	local uvScale, uvOffset = decal.UVScale or Vector2.one, decal.UVOffset or Vector2.zero
+	local angle = math.rad(decal.Rotation or 0)
+	local cosine, sine = math.cos(angle),math.sin(angle)
+	local function uv(point)
+		local u = ((point-center):Dot(uAxis)+uSize/2-uOffset)/uTile
+		local v = ((point-center):Dot(vAxis)+vSize/2-vOffset)/vTile
+		u,v = u*uvScale.X-.5,v*uvScale.Y-.5
+		return Vector2.new(u*cosine+v*sine+.5+uvOffset.X,-u*sine+v*cosine+.5+uvOffset.Y)
+	end
+	local function point(index)
+		local px,py,pz = string.unpack("<fff",source.positions,index*12+1)
+		return Vector3.new(px,py,pz)*size+offset
+	end
+	local function vertexIndex(index)
+		if not source.indexBytes then return index end
+		return (string.unpack(source.indexFormat,source.indexBytes,index*source.indexStride+1))
+	end
+	local geometry
+	local depth = .002+.0005*layer
+	for start = 0,source.cornerCount-1,3 do
+		if start % 12288 == 0 and start > 0 then task.wait(); checkCancelled() end
+		local a,b,c = point(vertexIndex(start)),point(vertexIndex(start+1)),point(vertexIndex(start+2))
+		local normal = (b-a):Cross(c-a)
+		if normal.Magnitude > 1e-8 then
+			normal = normal.Unit
+			local facing = face:Dot(normal)
+			if facing > 0 and facing >= math.max(math.abs(normal.X),math.abs(normal.Y),math.abs(normal.Z))-.0001 then
+				geometry = geometry or emit.Begin(0,false,false)
+				local lift = normal*depth
+				emit.Vertex(geometry,a+lift,normal,uv(a))
+				emit.Vertex(geometry,b+lift,normal,uv(b))
+				emit.Vertex(geometry,c+lift,normal,uv(c))
+			end
+		end
+	end
+	return geometry and emit.Finish(geometry)
+end
+
 return {
 	InitDeps = function(d) service = d.service end, InitAfterMain = function() end,
 	Main = function() return Geometry end,

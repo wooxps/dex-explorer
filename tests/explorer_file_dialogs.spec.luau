@@ -122,6 +122,37 @@ do
 	fileName:GetPropertyChangedSignal("Text"):Fire()
 	click("Save")
 	assert(called=="My model.rbxm")
+	-- A terrain selection exposes an editable, camera-centered region.
+	obj.ClassName = "Terrain"
+	local mockWorkspace, mockVector3 = service.Workspace, Vector3
+	Vector3 = {new=function(x,y,z)
+		return setmetatable({X=x,Y=y,Z=z},{
+			__add=function(a,b) return Vector3.new(a.X+b.X,a.Y+b.Y,a.Z+b.Z) end,
+			__sub=function(a,b) return Vector3.new(a.X-b.X,a.Y-b.Y,a.Z-b.Z) end,
+		})
+	end}
+	Vector3.zero = Vector3.new(0,0,0)
+	service.Workspace = {CurrentCamera={Focus={Position=Vector3.new(12,10,24)}}}
+	local previousBounds = Apps.GltfTerrain.Bounds
+	Apps.GltfTerrain.Bounds = function(min,max) assert(min and max,"Enter terrain coordinates") end
+	Apps.GltfExporter.Export = function(_,options)
+		assert(options.TerrainBounds.Min.X == 0 and options.TerrainBounds.Max.Z == 152)
+		return "terrain fixture"
+	end
+	config()
+	assert(find("TerrainMinimum").Text=="-116, -54, -104")
+	local minimum = find("TerrainMinimum")
+	minimum.Text = "invalid"
+	minimum:GetPropertyChangedSignal("Text"):Fire()
+	deferred()
+	assert(find("Enter terrain coordinates"))
+	minimum.Text = "0, 0, 0"
+	minimum:GetPropertyChangedSignal("Text"):Fire()
+	deferred()
+	assert(find("Export").Interactable)
+	click("Cancel")
+	Apps.GltfTerrain.Bounds = previousBounds
+	service.Workspace, Vector3 = mockWorkspace, mockVector3
 	Apps.Explorer.GetNodes, Apps.GltfExporter.Export = getNodes, export
 	Lib.ShowGui, task.defer, task.wait = show, defer, wait
 	deps.env.readfile, deps.env.writefile, deps.env.listfiles, deps.env.isfolder = read, write, list, folder
