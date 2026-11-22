@@ -3080,7 +3080,12 @@ local function CreateModule()
 			context:AddRegistered("SAVE_CSV", not env.writefile)
 			context:AddRegistered("LOAD_CSV")
 		end
-		context:Add({ Name = "Save / Export", Submenu = { action("SAVE_INST", not env.writefile), action("EXPORT_OBJ", not env.writefile), action("EXPORT_GLTF", not env.writefile) } })
+		local exportItems = { action("SAVE_INST", not env.writefile) }
+		if not hasService then
+			table.insert(exportItems, action("EXPORT_OBJ", not env.writefile))
+		end
+		table.insert(exportItems, action("EXPORT_GLTF", not env.writefile))
+		context:Add({ Name = "Save / Export", Submenu = exportItems })
 		if hasService then
 			context:QueueDivider()
 			context:Add({

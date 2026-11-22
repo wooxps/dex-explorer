@@ -203,6 +203,7 @@ do
 		"Group as Folder",
 		"Ungroup",
 		"Select Parent(s)",
+		"Export as Obj",
 	}) do
 		assert(not names[name], "pure service selection omits non-service action " .. name)
 	end
@@ -250,6 +251,7 @@ do
 		names.Copy and names.Cut and names["Show Services..."] and names["Hide Service in Explorer"],
 		"mixed selection follows any-service/any-nonservice action expectations"
 	)
+	assert(not names["Export as Obj"] and names["Export as glTF"], "mixed selection with a service omits only OBJ export")
 	local roots = Explorer.EditableRoots()
 	assert(
 		#roots == 2 and table.find(roots, nodes[child]) and table.find(roots, nodes[outside]),
