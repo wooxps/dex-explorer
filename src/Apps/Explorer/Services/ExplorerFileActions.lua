@@ -141,12 +141,34 @@ local function dialog(title, height)
 			BackgroundTransparency=1,Font=if bold then Enum.Font.BuilderSansBold else Enum.Font.BuilderSans,
 			TextColor3=color or pale,TextSize=size,TextXAlignment=Enum.TextXAlignment.Left})
 	end
+	local hoverTiming = TweenInfo.new(.12,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
 	local function button(parent, text, x,y,w,h,color,callback)
 		local btn = make("TextButton",parent,{Text=text,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
-			BorderSizePixel=0,BackgroundColor3=color,TextColor3=white,Font=Enum.Font.BuilderSans,TextSize=13})
+			AutoButtonColor=false,BorderSizePixel=0,BackgroundColor3=color,TextColor3=white,Font=Enum.Font.BuilderSans,TextSize=13})
 		round(btn,8)
+		local hovered, tween = false, nil
+		local function paint(animate)
+			if tween then tween:Cancel(); tween = nil end
+			local target = color
+			if hovered and btn.Interactable ~= false then
+				-- Studio's neutral button brightens from (59,62,72) to (71,74,86).
+				target = rgb(math.min(255,math.round(color.R*255)+12),
+					math.min(255,math.round(color.G*255)+12),math.min(255,math.round(color.B*255)+14))
+			end
+			if animate then
+				tween = service.TweenService:Create(btn,hoverTiming,{BackgroundColor3=target})
+				tween:Play()
+			else
+				btn.BackgroundColor3 = target
+			end
+		end
+		btn.MouseEnter:Connect(function() hovered=true; paint(true) end)
+		btn.MouseLeave:Connect(function() hovered=false; paint(true) end)
 		btn.Activated:Connect(callback)
-		return btn
+		return btn, function(base)
+			color = base
+			paint(false)
+		end
 	end
 	local atlas = Main.GetStudioAsset("export/dialog-controls-v1")
 	local function sprite(parent, name, x, y, width, height, sourceX)
@@ -187,10 +209,10 @@ local function dialog(title, height)
 	label(titlebar,title,29,0,430,30,12,false,rgb(20,20,20))
 	local x = make("TextButton",titlebar,{Name="Close",Text="",AutoButtonColor=false,
 		BorderSizePixel=0,Position=UDim2.fromOffset(490,0),Size=UDim2.fromOffset(30,30),BackgroundTransparency=1})
-	local hover = frame(x,0,0,30,30,rgb(196,43,28))
+	local hover = frame(x,0,0,30,29,rgb(196,43,28))
 	round(hover,8)
-	local left = frame(hover,0,0,10,30,hover.BackgroundColor3)
-	local bottom = frame(hover,0,20,30,10,hover.BackgroundColor3)
+	local left = frame(hover,0,0,10,29,hover.BackgroundColor3)
+	local bottom = frame(hover,0,20,30,9,hover.BackgroundColor3)
 	local glyphs = {}
 	if atlas then
 		glyphs[1] = sprite(x,"CloseIcon",9,8,12,12,88)
@@ -211,10 +233,32 @@ local function dialog(title, height)
 			if atlas then glyph.ImageColor3 = ink else glyph.BackgroundColor3 = ink end
 		end
 	end
-	x.MouseEnter:Connect(function() over=true; paintClose() end)
-	x.MouseLeave:Connect(function() over,down=false,false; paintClose() end)
+	local tip = make("TextLabel",backdrop,{Name="CloseTooltip",Text="Close",Visible=false,ZIndex=10,
+		Size=UDim2.fromOffset(35,19),BackgroundColor3=rgb(255,255,225),BorderSizePixel=1,
+		BorderMode=Enum.BorderMode.Inset,BorderColor3=rgb(100,100,100),TextColor3=rgb(0,0,0),
+		Font=Enum.Font.Arial,TextSize=12})
+	local hoverRevision = 0
+	local function hideTip()
+		hoverRevision += 1
+		tip.Visible = false
+	end
+	x.MouseEnter:Connect(function()
+		over=true
+		paintClose()
+		hideTip()
+		local revision = hoverRevision
+		task.delay(.5,function()
+			if current ~= d or revision ~= hoverRevision or not over or down then return end
+			local origin, bounds = x.AbsolutePosition, backdrop.AbsoluteSize
+			tip.Position = UDim2.fromOffset(
+				math.clamp(origin.X-backdrop.AbsolutePosition.X+25*scale.Scale,0,math.max(0,bounds.X-35)),
+				math.clamp(origin.Y-backdrop.AbsolutePosition.Y+36*scale.Scale,0,math.max(0,bounds.Y-19)))
+			tip.Visible = true
+		end)
+	end)
+	x.MouseLeave:Connect(function() over,down=false,false; hideTip(); paintClose() end)
 	x.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=true; paintClose() end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=true; hideTip(); paintClose() end
 	end)
 	x.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=false; paintClose() end
@@ -225,7 +269,7 @@ local function dialog(title, height)
 	status.TextWrapped = true
 	local cancel = button(panel,"Cancel",0,height-52,57,32,rgb(59,62,72),close)
 	local submit
-	local primary = button(panel,"",0,height-52,53,32,rgb(51,95,255),function()
+	local primary, setPrimaryColor = button(panel,"",0,height-52,53,32,rgb(51,95,255),function()
 		if not d.busy and submit then submit() end
 	end)
 	local function buttons(text, width, busy)
@@ -233,7 +277,7 @@ local function dialog(title, height)
 		primary.Size = UDim2.fromOffset(width,32)
 		cancel.Position = UDim2.fromOffset(435-width,height-52)
 		primary.Text, primary.Interactable = text, not busy
-		primary.BackgroundColor3 = if busy then rgb(45,68,152) else rgb(51,95,255)
+		setPrimaryColor(if busy then rgb(45,68,152) else rgb(51,95,255))
 		primary.TextColor3 = if busy then rgb(157,168,200) else white
 	end
 	function d.setPrimary(text, callback, message)
@@ -446,7 +490,7 @@ local function filePrompt(title, verb, subject, initial, loadCsv, callback)
 	end
 	local paste = false
 	if loadCsv then
-		local fileTab, pasteTab
+		local setFileColor, setPasteColor
 		local saved = { [false]=initial, [true]="" }
 		local function mode(value)
 			if d.busy then return end
@@ -457,11 +501,12 @@ local function filePrompt(title, verb, subject, initial, loadCsv, callback)
 			box.Size = UDim2.fromOffset(if not value and browseButton then 387 else 472,if value then 100 else 34)
 			caption.Text = if value then "CSV text" else "Workspace path"
 			box.PlaceholderText = if value then "Key,Context,Example,Source,fr" else "locales/translations.csv"
-			fileTab.BackgroundColor3 = if value then rgb(59,62,72) else rgb(52,83,162)
-			pasteTab.BackgroundColor3 = if value then rgb(52,83,162) else rgb(59,62,72)
+			setFileColor(if value then rgb(59,62,72) else rgb(52,83,162))
+			setPasteColor(if value then rgb(52,83,162) else rgb(59,62,72))
 		end
-		fileTab = d.button(d.panel,"From file",24,74,80,27,rgb(59,62,72),function() mode(false) end)
-		pasteTab = d.button(d.panel,"Paste CSV",112,74,85,27,rgb(59,62,72),function() mode(true) end)
+		local unused
+		unused, setFileColor = d.button(d.panel,"From file",24,74,80,27,rgb(59,62,72),function() mode(false) end)
+		unused, setPasteColor = d.button(d.panel,"Paste CSV",112,74,85,27,rgb(59,62,72),function() mode(true) end)
 		fieldY = 138
 		caption.Position, box.Position = UDim2.fromOffset(24,111), UDim2.fromOffset(24,fieldY)
 		mode(not env.readfile)

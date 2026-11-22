@@ -31,9 +31,23 @@ do
 	local closeButton, closeIcon = find("Close"), find("CloseIcon")
 	local hover = closeButton:GetChildren()[1]
 	assert(not hover.Visible and not closeButton.AutoButtonColor)
+	assert(hover.Size.Y.Offset == closeButton.Size.Y.Offset-1)
+	local cancel = find("Cancel")
+	cancel.MouseEnter:Fire()
+	assert(math.round(cancel.BackgroundColor3.R*255)==71 and math.round(cancel.BackgroundColor3.G*255)==74 and math.round(cancel.BackgroundColor3.B*255)==86)
+	cancel.MouseLeave:Fire()
+	assert(math.round(cancel.BackgroundColor3.R*255)==59)
+	local delay, showTip = task.delay, nil
+	task.delay = function(_, callback) showTip=callback end
 	closeButton.MouseEnter:Fire()
+	assert(not find("CloseTooltip").Visible)
+	showTip()
+	assert(find("CloseTooltip").Visible)
 	assert(hover.Visible and closeIcon.ImageColor3.R == 1)
 	closeButton.MouseLeave:Fire()
+	showTip()
+	assert(not find("CloseTooltip").Visible)
+	task.delay = delay
 	assert(not hover.Visible and closeIcon.ImageColor3.R < .2)
 	assert(find("Processing...").Interactable == false)
 	click("Cancel")
