@@ -108,3 +108,28 @@ local surface = {Color=r.Color3.fromRGB(128,255,255), AlphaMode=r.Enum.AlphaMode
 part.FindFirstChildOfClass=function() return surface end
 local pbr = apps.GltfExporter.Export({{Obj=part}})
 fs.writeFile(".build/fixture-pbr.gltf",pbr)
+
+local attachment = {Name="Mount",ClassName="Attachment",WorldCFrame=r.CFrame.new(1,4,3),
+	IsA=function() return false end, GetChildren=function() return {} end}
+local wrap = {Name="Wrap",ClassName="WrapLayer",Parent=part,CageOrigin=r.CFrame.new(0,1,0),
+	ReferenceOrigin=r.CFrame.new(0,-1,0),CageMeshContent="outer",ReferenceMeshContent="inner",
+	IsA=function() return false end,GetChildren=function() return {} end}
+part.GetChildren=function() return {attachment,wrap} end
+local function output(opts)
+	local bytes = apps.GltfExporter.Export({{Obj=part}},opts)
+	return serde.decode("json",bytes),bytes
+end
+local function named(doc,name)
+	for _,n in ipairs(doc.nodes) do if n.name==name then return n end end
+end
+local default = output()
+assert(default.skins and default.images and named(default,"Mount") and not named(default,"Skinned_OuterCage"))
+local lean = output({Skinning=false,Textures=false,Attachments=false})
+assert(not lean.skins and not lean.images and not named(lean,"Mount") and not named(lean,"Skinned_OuterCage"))
+assert(not lean.meshes[1].primitives[1].attributes.JOINTS_0 and not lean.meshes[1].primitives[1].attributes.TANGENT)
+local caged, data = output({Cages=true})
+assert(named(caged,"Skinned_OuterCage").mesh and named(caged,"Skinned_InnerCage").mesh)
+fs.writeFile(".build/fixture-cages.gltf",data)
+local marker = serde.decode("json", apps.GltfExporter.Export({{Obj=attachment}}))
+assert(#marker.nodes==1 and marker.nodes[1].name=="Mount" and not marker.buffers)
+print("Export options include and omit skins, images, attachments and both cage meshes.")

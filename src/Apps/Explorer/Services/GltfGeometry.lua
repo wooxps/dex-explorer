@@ -5,11 +5,11 @@ local service
 
 -- Keep authored vertex IDs separate from face-corner IDs. Hard edges and UV
 -- seams share positions in Roblox, but require separate vertices in glTF.
-function Geometry.ReadMesh(content, emit, tangents)
+function Geometry.ReadMesh(content, emit, tangents, skinning, checkCancelled)
 	local mesh = service.AssetService:CreateEditableMeshAsync(content)
 	assert(mesh, "Editable mesh memory budget exceeded")
 	local ok, result = pcall(function()
-		local faces, bones = mesh:GetFaces(), mesh:GetBones()
+		local faces, bones = mesh:GetFaces(), if skinning ~= false then mesh:GetBones() else {}
 		assert(#faces > 0, "Mesh contains no faces")
 		local geometry = emit.Begin(#faces, true, #bones > 0)
 		local cache = {}
@@ -52,7 +52,10 @@ function Geometry.ReadMesh(content, emit, tangents)
 				corner(i, orientation, tangent, bitangent)
 				corner(i+1, orientation, tangent, bitangent)
 			end
-			if n % 2048 == 0 then task.wait() end
+			if n % 2048 == 0 then
+				task.wait()
+				if checkCancelled then checkCancelled() end
+			end
 		end
 		return emit.Finish(geometry, mesh, bones)
 	end)

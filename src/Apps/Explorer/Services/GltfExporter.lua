@@ -19,7 +19,13 @@ local function add(array, value)
 	return index
 end
 
-function Exporter.Export(targets)
+function Exporter.Export(targets, options, cancelled)
+	options = options or {}
+	local skinning, textures = options.Skinning ~= false, options.Textures ~= false
+	local attachments, cages = options.Attachments ~= false, options.Cages == true
+	local function checkCancelled()
+		if cancelled and cancelled() then error("Export cancelled", 0) end
+	end
 	local scene = { nodes = {} }
 	local doc = { asset = { version = "2.0", generator = "Dex Explorer" }, scene = 0, scenes = { scene },
 		nodes = {}, meshes = {}, materials = {}, bufferViews = {}, accessors = {} }
@@ -170,7 +176,7 @@ function Exporter.Export(targets)
 		if bucket[key] then return bucket[key] end
 		local pbr = { baseColorFactor = {linear(color.R),linear(color.G),linear(color.B),alpha}, metallicFactor = 0, roughnessFactor = 1 }
 		local data = { name = part.Material.Name, pbrMetallicRoughness = pbr, doubleSided = twoSided }
-		if surface then
+		if textures and surface then
 			if surface.AlphaMode == Enum.AlphaMode.Overlay and surface.ColorMapContent ~= Content.none then
 				pbr.baseColorTexture = texture(surface.ColorMapContent, part.Color, color)
 				pbr.baseColorFactor = {1,1,1,alpha}
@@ -191,7 +197,7 @@ function Exporter.Export(targets)
 					doc.extensionsUsed = {"KHR_materials_emissive_strength"}
 				end
 			end
-		elseif tex then
+		elseif textures and tex then
 			local texAlpha
 			pbr.baseColorTexture, texAlpha = texture(tex)
 			blend = blend or texAlpha
@@ -230,10 +236,10 @@ function Exporter.Export(targets)
 	end
 
 	local function readGeometry(content, surface)
-		local tangents = surface ~= nil and surface.NormalMapContent ~= Content.none
+		local tangents = textures and surface ~= nil and surface.NormalMapContent ~= Content.none
 		local bucket = meshes[tangents] or {}
 		meshes[tangents] = bucket
-		if not bucket[content] then bucket[content] = Apps.GltfGeometry.ReadMesh(content, emit, tangents) end
+		if not bucket[content] then bucket[content] = Apps.GltfGeometry.ReadMesh(content, emit, tangents, skinning, checkCancelled) end
 		return bucket[content]
 	end
 	local function renderScale(part)
@@ -296,21 +302,40 @@ function Exporter.Export(targets)
 	local function visit(obj, parent, parentFrame)
 		visited += 1
 		if visited % 256 == 0 then task.wait() end
+		checkCancelled()
 		local part = obj:IsA("BasePart")
 		if obj:IsA("Terrain") then omit("Terrain"); return end
 		local class = obj.ClassName
-		if class == "WrapLayer" or class == "WrapTarget" or class == "FaceControls" or class == "Decal" or class == "Texture" then
+		if class == "FaceControls" or (textures and (class == "Decal" or class == "Texture")) then
 			omit(class)
 		end
-		local frame = if part then obj.CFrame elseif obj:IsA("Model") then obj:GetPivot() else parentFrame
+		local attachment = attachments and class == "Attachment"
+		local frame = if attachment then obj.WorldCFrame elseif part then obj.CFrame elseif obj:IsA("Model") then obj:GetPivot() else parentFrame
 		local node = {name = obj.Name}
 		if frame ~= parentFrame then node.matrix = matrix(parentFrame:ToObjectSpace(frame)) end
 		if part then
 			local ok, err = pcall(exportPart, node, obj)
 			if not ok then error(obj:GetFullName() .. ": " .. tostring(err), 0) end
 		end
+		if cages and (class == "WrapTarget" or class == "WrapLayer") then
+			local owner = obj.Parent
+			assert(owner and owner:IsA("MeshPart"), "Cages require a parent MeshPart")
+			-- Cage vertices and origins live in the original, unscaled mesh space.
+			local world = owner.CFrame
+			if world ~= parentFrame then node.matrix = matrix(parentFrame:ToObjectSpace(world)) end
+			local scale = renderScale(owner)
+			local anchor = appendNode(node, {name=obj.Name .. " cages", scale={scale.X,scale.Y,scale.Z}})
+			local function cage(content, origin, suffix)
+				if content == Content.none then return end
+				local geometry = Apps.GltfGeometry.ReadMesh(content, emit, false, false, checkCancelled)
+				local mesh = add(doc.meshes, {name=owner.Name .. suffix, primitives={{attributes=geometry.attrs, indices=geometry.indices}}})
+				appendNode(anchor, {name=owner.Name .. suffix, matrix=matrix(origin), mesh=mesh})
+			end
+			cage(obj.CageMeshContent, obj.CageOrigin, "_OuterCage")
+			if class == "WrapLayer" then cage(obj.ReferenceMeshContent, obj.ReferenceOrigin, "_InnerCage") end
+		end
 		for _, child in ipairs(obj:GetChildren()) do visit(child, node, frame) end
-		if node.children then appendNode(parent, node) end
+		if node.children or attachment then appendNode(parent, node) end
 	end
 	local root = { children = scene.nodes }
 	for _, target in ipairs(targets) do
@@ -318,7 +343,13 @@ function Exporter.Export(targets)
 		while ancestor and not selected[ancestor] do ancestor = ancestor.Parent end
 		if not ancestor then visit(target.Obj, root, CFrame.identity) end
 	end
-	assert(#doc.meshes > 0, "Select an object containing 3D geometry")
+	checkCancelled()
+	assert(#scene.nodes > 0, "The selection contains none of the included components")
+	if length == 0 then
+		doc.meshes, doc.materials, doc.bufferViews, doc.accessors = nil, nil, nil, nil
+		return service.HttpService:JSONEncode(doc)
+	end
+	if #doc.materials == 0 then doc.materials = nil end
 	local bytes = buffer.fromstring(table.concat(chunks))
 	doc.buffers = {{ byteLength = length, uri = "data:application/octet-stream;base64,"
 		.. buffer.tostring(service.EncodingService:Base64Encode(bytes)) }}

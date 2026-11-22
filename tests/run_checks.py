@@ -122,6 +122,7 @@ parts += [(root / 'tests/row_status.spec.luau').read_text()]
 parts += [(root / 'tests/service_visibility.spec.luau').read_text(encoding='utf-8')]
 parts += [(root / 'tests/context_menu.spec.luau').read_text(encoding='utf-8')]
 parts += [(root / 'tests/explorer_file_actions.spec.luau').read_text(encoding='utf-8')]
+parts += [(root / 'tests/explorer_file_dialogs.spec.luau').read_text(encoding='utf-8')]
 parts += [(root / 'tests/explorer_presentation.spec.luau').read_text(encoding='utf-8')]
 contracts=json.loads((root/'tests/fixtures/studio-ui-contracts.json').read_text(encoding='utf-8'))['values']
 parts += ['local sourceUIContracts={'+','.join('['+json.dumps(k)+']='+str(v) for k,v in contracts.items())+'}\n',
