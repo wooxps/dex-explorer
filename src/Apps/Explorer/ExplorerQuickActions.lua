@@ -260,7 +260,6 @@ local function CreateModule()
 			return item
 		end
 		local blue, green = Color3.fromRGB(50,145,255), Color3.fromRGB(76,205,99)
-		local front = adorn("LineHandleAdornment", blue)
 		local tip = adorn("ConeHandleAdornment", green)
 		local badge = Instance.new("BillboardGui", root)
 		badge.Adornee, badge.AlwaysOnTop, badge.Size = part, true, UDim2.fromOffset(20,20)
@@ -268,19 +267,20 @@ local function CreateModule()
 		label.Size, label.BackgroundColor3 = UDim2.fromScale(1,1), blue
 		label.Text, label.TextColor3, label.Font, label.TextSize = "F", Color3.new(1,1,1), Enum.Font.SourceSansBold, 15
 		Instance.new("UICorner",label).CornerRadius = UDim.new(1,0)
+		local frontDistance
 		local function update()
 			local size = part.Size
 			local length = math.clamp(size.Magnitude * 0.2, 0.4, 4)
-			local frontMarker = Vector3.new(0, 0, -size.Z / 2 - length)
+			frontDistance = size.Z / 2 + length
+			local frontMarker = Vector3.new(0, 0, -frontDistance)
 			local base = CFrame.new(frontMarker + Vector3.new(0, length * 0.2, 0)) * CFrame.Angles(math.pi / 2, 0, 0)
-			front.CFrame, front.Length, front.Thickness = CFrame.new(0,0,-size.Z/2), length, 2
 			tip.CFrame, tip.Radius, tip.Height = base, length * 0.12, length * 0.3
 			badge.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(frontMarker)
 		end
 		update()
 		indicators[part] = { Root = root, Connections = {
 			service.RunService.RenderStepped:Connect(function()
-				local offset = part.CFrame.LookVector * (part.Size.Z/2 + front.Length)
+				local offset = part.CFrame.LookVector * frontDistance
 				if badge.StudsOffsetWorldSpace ~= offset then badge.StudsOffsetWorldSpace = offset end
 			end),
 			part:GetPropertyChangedSignal("Size"):Connect(update),
