@@ -1,39 +1,41 @@
---!strict
-
-Properties.DisplayAddAttributeWindow()
-local win = Properties.AddAttributeWindow
-local fields = win.Elements
-assert(win.GuiElems.Main.Size.X.Offset == 252, "reference dialog width")
-assert(fields.NameBox.Size.Y.Offset == 22 and fields.TypeChooser.Size.Y.Offset == 22, "matching field sizes")
-assert(fields.SaveButton.Disabled and fields.SaveButton.Text == "Save", "empty create state")
-assert(service.UserInputService.Focus == fields.NameBox.TextBox, "initial focus")
-fields.NameBox:SetText("RBXReserved")
-fields.SaveButton:Trigger("Click")
-assert(#writes == 0 and not win.Closed and fields.Error.Text ~= "", "invalid name stays open")
-fields.NameBox:SetText("Health")
-fields.TypeChooser:SetSelected("number")
-fields.NameBox.TextBox.FocusLost:Fire(true)
-assert(#writes == 1 and writes[1][1].AttributeName == "Health" and writes[1][2] == 0, "Enter creates selected type")
-assert(win.Closed and fields.TypeChooser.Context.Hidden, "dialog closes its type popup")
-local previous = { AttributeName = "Enabled", ValueType = { Name = "bool" } }
-Properties.DisplayAddAttributeWindow(previous)
-assert(
-	fields.NameBox:GetText() == "Enabled" and fields.TypeChooser.Selected == "boolean",
-	"edit preserves name and type"
-)
-assert(fields.SaveButton.Text == "Save" and not fields.SaveButton.Disabled, "edit save enabled")
-fields.NameBox:SetText("Visible")
-fields.SaveButton:Trigger("Click")
-assert(writes[2][4] == previous, "edit passes original attribute to update")
-Properties.DisplayAddAttributeWindow()
-assert(
-	fields.NameBox:GetText() == "" and fields.TypeChooser.Selected == "string" and fields.Error.Text == "",
-	"reopen resets create state"
-)
-print("PASS: actual attribute dialog construction, validation, Enter, edit prefill and dropdown cleanup")
-
-assert(fields.NameCount.Text == "0/100", "empty character count")
-fields.NameBox:SetText(string.rep("x", 101))
-assert(fields.NameCount.Text == "101/100" and fields.SaveButton.Disabled, "character limit disables Save")
-Properties.DisplayAddAttributeWindow(previous)
-assert(not fields.TypeChooser.Visible and not fields.TypeLabel.Visible, "Rename cannot change attribute type")
+do
+	local gui
+	local show = Lib.ShowGui
+	Lib.ShowGui = function(value) gui = value end
+	local function find(text)
+		for _,child in ipairs(gui:GetDescendants()) do
+			if child.Name==text or child.Text==text then return child end
+		end
+	end
+	local function typeName(name)
+		local box = find("NameBox")
+		box.Text = name
+		box:GetPropertyChangedSignal("Text"):Fire()
+		return box
+	end
+	Properties.DisplayAddAttributeWindow()
+	assert(not find("Save").Interactable and find("0/100") and find("Shadow"))
+	assert(service.UserInputService.Focus == find("NameBox"))
+	assert(find("NameBox").Parent.Size==UDim2.fromOffset(252,182))
+	assert(find("Save").Position.X.Offset < find("Cancel").Position.X.Offset)
+	assert(find("NameBox").Size == UDim2.fromOffset(156,21))
+	typeName("RBXReserved")
+	find("Save").Activated:Fire()
+	assert(#writes==0 and find("Names cannot begin with 'RBX'."))
+	Properties.AttributeTypeChooser:SetSelected("number")
+	typeName("Health").FocusLost:Fire(true)
+	assert(#writes==1 and writes[1][1].AttributeName=="Health" and writes[1][2]==0)
+	assert(Properties.AttributeTypeChooser.Context.Hidden and not Properties.AttributeTypeChooser.Gui.Parent)
+	local previous = {AttributeName="Enabled",ValueType={Name="bool"}}
+	Properties.DisplayAddAttributeWindow(previous)
+	assert(find("NameBox").Text=="Enabled" and not find("Type"))
+	typeName("Visible").FocusLost:Fire(true)
+	assert(writes[2][4]==previous and writes[2][1].ValueType.Name=="bool")
+	Properties.DisplayAddAttributeWindow()
+	assert(Properties.AttributeTypeChooser.Selected=="string" and find("0/100"))
+	typeName(string.rep("x",101))
+	assert(find("101/100") and not find("Save").Interactable)
+	find("Cancel").Activated:Fire()
+	Lib.ShowGui = show
+	print("PASS: shared attribute dialog, validation, type selection, rename and Enter submission")
+end

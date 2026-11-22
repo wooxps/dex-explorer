@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "d9ac32d0d354485e003f",
+  "release": "035e458882a68977d344",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -171,6 +171,7 @@
     "React": "src/Shared/React.lua",
     "SearchQuery": "src/Shared/SearchQuery.lua",
     "Signal": "src/Shared/Signal.lua",
+    "StudioPopup": "src/Shared/StudioPopup.lua",
     "WindowLayout": "src/Shared/WindowLayout.lua"
   },
   "files": {
@@ -485,9 +486,9 @@
       "sha256": "151b661b0e81268d6add19627be22385f6ef0416cf2e3de8d12fd2011fda52ce"
     },
     "src/Apps/Explorer/Services/ExplorerFileActions.lua": {
-      "bytes": 22713,
-      "checksum": 2259597595,
-      "sha256": "b00c2e51a7bba531abb45f97e86f03e63a882ac7907eaa2049ed2dd554dd1611"
+      "bytes": 13232,
+      "checksum": 1619298075,
+      "sha256": "2d1c38ccaa23cfc5228e5beb22b60590382e45eab143c681bf53d3c15404c48e"
     },
     "src/Apps/Explorer/Services/ExplorerProjection.lua": {
       "bytes": 6135,
@@ -660,9 +661,9 @@
       "sha256": "2308f939d7a73430d4e566c4854de24aafb2c52dd9a9507fbdbe9eeb3184dab0"
     },
     "src/Apps/Properties/Properties.lua": {
-      "bytes": 87965,
-      "checksum": 916544349,
-      "sha256": "209def27f659d01621235d70b36afac424bcfedd0b451aa8950df39fb55f5c04"
+      "bytes": 83812,
+      "checksum": 1816165678,
+      "sha256": "5658fbe46dc901f1255ca27016fb493eeba929a6b094c958afcb672282a07de6"
     },
     "src/Apps/Properties/Util/PropertySchema.lua": {
       "bytes": 1143,
@@ -970,9 +971,9 @@
       "sha256": "edae32f0d5de0f6399aaa790b64374d99c1874e3e435481175faae47ef83aec2"
     },
     "src/Shared/Lib.lua": {
-      "bytes": 342741,
-      "checksum": 115810112,
-      "sha256": "c7f59be0b39f72f70d93800750803c0251dd05c689cc7713d1703e9f0d5540df"
+      "bytes": 340209,
+      "checksum": 2228821818,
+      "sha256": "929be5833306d04f693076580f350a0e93854ae6776b155adbc26028355c8854"
     },
     "src/Shared/LoadingSplash.lua": {
       "bytes": 9155,
@@ -1003,6 +1004,11 @@
       "bytes": 2047,
       "checksum": 3423561597,
       "sha256": "1a20be147f0466920853adcf7194870cd0b520ac417fb41f869146f969e25ef8"
+    },
+    "src/Shared/StudioPopup.lua": {
+      "bytes": 11384,
+      "checksum": 1859559677,
+      "sha256": "fbd657b98eb84a266a60334b5ce7edde357528dca8110d52a649211584b9b7c9"
     },
     "src/Shared/WindowLayout.lua": {
       "bytes": 6409,
@@ -1100,9 +1106,9 @@
       "sha256": "403ef993a4be8ed8c91cb5e06c8ede1aa38fceb9f6532a3c830abf086b0961a0"
     },
     "main.lua": {
-      "bytes": 100633,
-      "checksum": 3409265624,
-      "sha256": "9686cf9b74af899eab22a6ead3a7b326cf428784b2e58dbdec492102a092e85f"
+      "bytes": 100650,
+      "checksum": 1772636400,
+      "sha256": "910756402c8561d315f4e7a420752e1c124abb956d11c874e8d6e95c33443cb5"
     },
     "studio_assets.lua": {
       "bytes": 1131332,

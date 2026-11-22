@@ -946,107 +946,23 @@ local function CreateModule()
 		return Lib.LoadCustomAsset(filepath)
 	end
 
-	local currentfilename, currentextension, currentclickhandler
-	currentclickhandler = function() end
 	Lib.SaveAsPrompt = function(filename, codeToSave, ext)
-		local win = ScriptViewer.SaveAsWindow
-		if not win then
-			win = Lib.Window.new()
-			win.Alignable = false
-			win.Resizable = false
-			win:SetTitle("Save As")
-			win:SetSize(300, 95)
-
-			local saveButton = Lib.Button.new()
-			local nameLabel = Lib.Label.new()
-			nameLabel.Text = "Name"
-			nameLabel.Position = UDim2.new(0, 30, 0, 10)
-			nameLabel.Size = UDim2.new(0, 40, 0, 20)
-			win:Add(nameLabel)
-
-			local nameBox = Lib.ViewportTextBox.new()
-			nameBox.Position = UDim2.new(0, 75, 0, 10)
-			nameBox.Size = UDim2.new(0, 220, 0, 20)
-			win:Add(nameBox, "NameBox")
-
-
-			nameBox.TextBox:GetPropertyChangedSignal("Text"):Connect(function()
-				saveButton:SetDisabled(#nameBox:GetText() == 0)
-			end)
-
-			local errorLabel = Lib.Label.new()
-			errorLabel.Text = ""
-			errorLabel.Position = UDim2.new(0, 5, 1, -45)
-			errorLabel.Size = UDim2.new(1, -10, 0, 20)
-			errorLabel.TextColor3 = Settings.Theme.Important
-			win.ErrorLabel = errorLabel
-			win:Add(errorLabel, "Error")
-
-			local cancelButton = Lib.Button.new()
-			cancelButton.AnchorPoint = Vector2.new(1, 1)
-			cancelButton.Text = "Cancel"
-			cancelButton.Position = UDim2.new(1, -5, 1, -5)
-			cancelButton.Size = UDim2.new(0.5, -10, 0, 20)
-			cancelButton.OnClick:Connect(function()
-				win:Close()
-			end)
-			win:Add(cancelButton)
-
-			saveButton.Text = "Save"
-			saveButton.AnchorPoint = Vector2.new(0, 1)
-			saveButton.Position = UDim2.new(0, 5, 1, -5)
-			saveButton.Size = UDim2.new(0.5, -5, 0, 20)
-			saveButton.OnClick:Connect(function()
-				currentclickhandler()
-			end)
-
-			win:Add(saveButton, "SaveButton")
-
-			ScriptViewer.SaveAsWindow = win
-		end
-
-		currentclickhandler = function()
-			if type(codeToSave) == "string" then
-				filename = (win.Elements.NameBox.TextBox.Text ~= "" and win.Elements.NameBox.TextBox.Text) or filename
-				currentextension = ext or filename:match("%.([^%.]+)$") or "txt"
-				filename = filename:gsub("%.[^.]+$", "") .. "." .. currentextension
-
-				local codeText = codeToSave or ""
-				if env.writefile then
-					local s, msg = pcall(env.writefile, filename, codeText)
-					if not s then
-						win.Elements.Error.Text = "Error: " .. msg
-						task.spawn(error, msg)
-						task.wait(1)
-					end
-				else
-					win.Elements.Error.Text = "Your executor does not support 'writefile'"
-					task.wait(1)
-				end
-			elseif type(codeToSave) == "function" then
-				filename = (win.Elements.NameBox.TextBox.Text ~= "" and win.Elements.NameBox.TextBox.Text) or filename
-				currentextension = ext or filename:match("%.([^%.]+)$") or "txt"
-				filename = filename:gsub("%.[^.]+$", "") .. "." .. currentextension
-
-				local s, msg = pcall(codeToSave, filename)
-				if not s then
-					win.Elements.Error.Text = "Error: " .. msg
-					task.spawn(error, msg)
-					Lib.FastWait(1)
-				end
+		local d = Apps.StudioPopup.Open("Save As",222)
+		local box = d.input("File name",filename or "",52)
+		local function save()
+			local name = box.Text
+			local extension = ext or name:match("%.([^%./\\]+)$") or "txt"
+			name = name:gsub("%.[^%./\\]+$", "") .. "." .. extension
+			if type(codeToSave) == "function" then
+				codeToSave(name)
+			else
+				assert(env.writefile, "This executor does not support writing files")
+				env.writefile(name,codeToSave)
 			end
-			win:Close()
 		end
-
-		win:SetTitle("Save As")
-		win.Elements.Error.Text = ""
-		win.Elements.NameBox:SetText(filename or "")
-
-		win.Elements.SaveButton:SetDisabled(win.Elements.NameBox:GetText() == 0)
-
-		win:Show()
+		d.bindForm(box,"Save",function() return box.Text ~= "" end,save)
+		box:CaptureFocus()
 	end
-
 
 	Lib.Signal = (function()
 		local funcs = {}

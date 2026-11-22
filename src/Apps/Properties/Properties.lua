@@ -1137,206 +1137,57 @@ local function CreateModule()
 	end
 
 	Properties.DisplayAddAttributeWindow = function(editAttr)
-		local win = Properties.AddAttributeWindow
-		if not win then
-			win = Lib.Window.new()
-			win.Alignable = false
-			win.Resizable = false
-			win:SetTitle("Add Attribute")
-			win:SetSize(252, 182)
-			win.GuiElems.Minimize.Visible = false
-			win.GuiElems.Content.BackgroundColor3 = Settings.Theme.Main1
-			if win.GuiElems.TopBar then
-				win.GuiElems.TopBar.BackgroundColor3 = Color3.fromRGB(242, 242, 242)
+		local d = Apps.StudioPopup.Open(if editAttr then "Rename Attribute" else "Add Attribute",182,true)
+		d.label(d.panel,"Name",30,46,36,21,12,false)
+		local box = d.make("TextBox",d.panel,{Name="NameBox",Position=UDim2.fromOffset(66,46),Size=UDim2.fromOffset(156,21),
+			Text=if editAttr then editAttr.AttributeName else "",TextSize=12,Font=Enum.Font.BuilderSans,
+			TextXAlignment=Enum.TextXAlignment.Left,ClearTextOnFocus=false,BorderSizePixel=0,
+			TextColor3=Color3.fromRGB(220,222,228),BackgroundColor3=Color3.fromRGB(40,41,49)})
+		d.make("UIPadding",box,{PaddingLeft=UDim.new(0,4)})
+		local stroke = d.make("UIStroke",box,{ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Thickness=1,Color=Settings.Theme.Outline2})
+		box.Focused:Connect(function() stroke.Color = Settings.Theme.Focus end)
+		box.FocusLost:Connect(function() stroke.Color = Settings.Theme.Outline2 end)
+		local count = d.label(d.panel,"",66,70,156,20,12,false)
+		local chooser
+		if not editAttr then
+			d.label(d.panel,"Type",30,94,36,21,12,false)
+			chooser = Properties.AttributeTypeChooser
+			if not chooser then
+				chooser = Lib.DropDown.new()
+				chooser.CanBeEmpty = false
+				chooser:SetOptions(Properties.AllowedAttributeTypes)
+				Properties.AttributeTypeChooser = chooser
+				chooser.Gui.BorderSizePixel = 0
+				chooser.Gui.BackgroundColor3 = Color3.fromRGB(40,41,49)
+				chooser.GuiElems.Label.TextSize = 12
+				chooser.GuiElems.Label.Position = UDim2.fromOffset(4,0)
+				chooser.GuiElems.Label.Size = UDim2.new(1,-38,1,0)
 			end
-			if win.GuiElems.Title then
-				win.GuiElems.Title.TextColor3 = Color3.fromRGB(20, 20, 20)
-			end
-			if win.GuiElems.Close and win.GuiElems.Close:FindFirstChild("ImageLabel") then
-				win.GuiElems.Close.ImageLabel.ImageColor3 = Color3.fromRGB(20, 20, 20)
-			end
-			local function field(gui)
-				gui.BorderSizePixel = 0
-				gui.BackgroundColor3 = Settings.Theme.TextBox
-				Lib.StudioCorner(gui, 0)
-				return createSimple("UIStroke", {
-					Parent = gui,
-					ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-					Color = Settings.Theme.Outline2,
-					Thickness = 1,
-				})
-			end
-
-			local saveButton = Lib.Button.new()
-			local nameLabel = Lib.Label.new()
-			nameLabel.Text = "Name"
-			nameLabel.Position = UDim2.fromOffset(20, 16)
-			nameLabel.Size = UDim2.fromOffset(42, 22)
-			win:Add(nameLabel)
-
-			local nameBox = Lib.ViewportTextBox.new()
-			nameBox.Position = UDim2.fromOffset(66, 16)
-			nameBox.Size = UDim2.new(1, -96, 0, 22)
-			win:Add(nameBox, "NameBox")
-			local nameOutline = field(nameBox.Gui)
-			nameBox.TextBox.PlaceholderText = ""
-			nameBox.TextBox.PlaceholderColor3 = Settings.Theme.PlaceholderText
-			createSimple(
-				"UIPadding",
-				{ Parent = nameBox.Gui, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }
-			)
-			nameBox.TextBox.Focused:Connect(function()
-				nameOutline.Color = Settings.Theme.Focus
-			end)
-			nameBox.TextBox.FocusLost:Connect(function()
-				nameOutline.Color = Settings.Theme.Outline2
-			end)
-			local counter = Lib.Label.new()
-			counter.Position = UDim2.fromOffset(66, 40)
-			counter.Size = UDim2.fromOffset(156, 20)
-			counter.TextSize = 12
-			counter.Text = "0/100"
-			win:Add(counter, "NameCount")
-			nameBox.TextBox:GetPropertyChangedSignal("Text"):Connect(function()
-				local count = utf8.len(nameBox:GetText()) or #nameBox:GetText()
-				counter.Text = tostring(count) .. "/100"
-				saveButton:SetDisabled(count == 0 or count > 100)
-			end)
-
-			local typeLabel = Lib.Label.new()
-			typeLabel.Text = "Type"
-			typeLabel.Position = UDim2.fromOffset(20, 64)
-			typeLabel.Size = UDim2.fromOffset(42, 22)
-			win:Add(typeLabel, "TypeLabel")
-
-			local typeChooser = Lib.DropDown.new()
-			typeChooser.CanBeEmpty = false
-			typeChooser.Position = UDim2.fromOffset(66, 64)
-			typeChooser.Size = UDim2.new(1, -96, 0, 22)
-			typeChooser:SetOptions(Properties.AllowedAttributeTypes)
-			win:Add(typeChooser, "TypeChooser")
-			field(typeChooser.Gui)
-			typeChooser.GuiElems.Label.Position = UDim2.fromOffset(8, 0)
-			typeChooser.GuiElems.Label.Size = UDim2.new(1, -38, 1, 0)
-			local arrow = typeChooser.Gui:FindFirstChild("EnumArrow")
-			if arrow then
-				arrow.Position = UDim2.new(1, -24, 0.5, -8)
-				local asset = Main.GetStudioAsset and Main.GetStudioAsset("explorer/expanded")
-				if asset then
-					arrow:ClearAllChildren()
-					createSimple("ImageLabel", {
-						Parent = arrow,
-						BackgroundTransparency = 1,
-						Size = UDim2.fromScale(1, 1),
-						Image = asset,
-						ScaleType = Enum.ScaleType.Fit,
-					})
-				end
-			end
-			win.OnDeactivate:Connect(function()
-				typeChooser.Context:Hide()
-			end)
-
-			local errorLabel = Lib.Label.new()
-			errorLabel.Text = ""
-			errorLabel.Position = UDim2.fromOffset(16, 88)
-			errorLabel.Size = UDim2.new(1, -32, 0, 22)
-			errorLabel.TextColor3 = Color3.fromRGB(255, 155, 145)
-			errorLabel.TextWrapped = true
-			errorLabel.TextSize = 12
-			win.ErrorLabel = errorLabel
-			win:Add(errorLabel, "Error")
-
-			local cancelButton = Lib.Button.new()
-			cancelButton.Text = "Cancel"
-			cancelButton.Position = UDim2.fromOffset(148, 112)
-			cancelButton.Size = UDim2.fromOffset(76, 25)
-			cancelButton.OnClick:Connect(function()
-				win:Close()
-			end)
-			win:Add(cancelButton)
-			cancelButton.Gui.BorderSizePixel = 0
-			Lib.StudioCorner(cancelButton.Gui, 0)
-
-			saveButton.Text = "Save"
-			saveButton.Position = UDim2.fromOffset(66, 112)
-			saveButton.Size = UDim2.fromOffset(76, 25)
-			saveButton.OnClick:Connect(function()
-				local name = nameBox:GetText()
-				if name == "" then
-					errorLabel.Text = "Enter an attribute name."
-					return
-				elseif #name > 100 then
-					errorLabel.Text = "Use 100 characters or fewer."
-					return
-				elseif name:sub(1, 3) == "RBX" then
-					errorLabel.Text = "Names cannot begin with 'RBX'."
-					return
-				end
-
-				local typ = typeChooser.Selected
-				local valType = { Name = Properties.TypeNameConvert[typ] or typ, Category = "DataType" }
-				local attrProp = {
-					IsAttribute = true,
-					Name = "ATTR_" .. name,
-					AttributeName = name,
-					DisplayName = name,
-					Class = "Instance",
-					ValueType = valType,
-					Category = "Attributes",
-					Tags = {},
-				}
-
-				Settings.Properties.ShowAttributes = true
-				Properties.SetProp(
-					attrProp,
-					Properties.DefaultPropValue[valType.Name],
-					true,
-					Properties.EditingAttribute
-				)
-				Properties.ShowExplorerProps()
-				win:Close()
-			end)
-			win:Add(saveButton, "SaveButton")
-			saveButton.Gui.BorderSizePixel = 0
-			Lib.StudioCorner(saveButton.Gui, 0)
-			nameBox.TextBox.FocusLost:Connect(function(enterPressed)
-				if enterPressed and not saveButton.Disabled then
-					saveButton:Trigger("Click", 1)
-				end
-			end)
-
-			Properties.AddAttributeWindow = win
-		end
-
-		Properties.EditingAttribute = editAttr
-		win:SetTitle(editAttr and "Rename Attribute" or "Add Attribute")
-		win.Elements.Error.Text = ""
-		win.Elements.NameBox:SetText(editAttr and editAttr.AttributeName or "")
-		win.Elements.NameCount.Text = tostring(
-			utf8.len(win.Elements.NameBox:GetText()) or #win.Elements.NameBox:GetText()
-		) .. "/100"
-		win.Elements.SaveButton:SetDisabled(not editAttr)
-		win.Elements.SaveButton.Text = "Save"
-		win.Elements.TypeChooser.Visible = not editAttr
-		win.Elements.TypeLabel.Visible = not editAttr
-		local selectedType = 1
-		if editAttr then
-			for _, typ in ipairs(Properties.AllowedAttributeTypes) do
-				if (Properties.TypeNameConvert[typ] or typ) == editAttr.ValueType.Name then
-					selectedType = typ
-					break
-				end
+			chooser:SetSelected(1)
+			chooser.Gui.Position = UDim2.fromOffset(66,94)
+			chooser.Gui.Size = UDim2.fromOffset(156,21)
+			chooser.Gui.Parent = d.panel
+			d.onClose = function()
+				chooser.Context:Hide()
+				chooser.Gui.Parent = nil
 			end
 		end
-		win.Elements.TypeChooser:SetSelected(selectedType)
-		for _, element in ipairs(win.GuiElems.Content:GetDescendants()) do
-			if element:IsA("TextLabel") or element:IsA("TextButton") or element:IsA("TextBox") then
-				element.TextSize = 12
-			end
-		end
-		win:Show()
-		win.Elements.NameBox.TextBox:CaptureFocus()
+		d.bindForm(box,"Save",function()
+			local n = utf8.len(box.Text) or #box.Text
+			count.Text = tostring(n) .. "/100"
+			return n > 0 and n <= 100
+		end,function()
+			local name = box.Text
+			assert(name:sub(1,3) ~= "RBX","Names cannot begin with 'RBX'.")
+			local typ = chooser and chooser.Selected
+			local valType = if editAttr then editAttr.ValueType else {Name=Properties.TypeNameConvert[typ] or typ,Category="DataType"}
+			local prop = {IsAttribute=true,Name="ATTR_" .. name,AttributeName=name,DisplayName=name,
+				Class="Instance",ValueType=valType,Category="Attributes",Tags={}}
+			Settings.Properties.ShowAttributes = true
+			Properties.SetProp(prop,Properties.DefaultPropValue[valType.Name],true,editAttr)
+			Properties.ShowExplorerProps()
+		end)
+		box:CaptureFocus()
 	end
 
 	Properties.IsTextEditable = function(prop)

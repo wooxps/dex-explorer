@@ -240,6 +240,7 @@ Main = (function()
 		"GltfGeometry",
 		"GltfTextures",
 		"GltfExporter",
+		"StudioPopup",
 		"ExplorerFileActions",
 		"ReflectionService",
 		"TransformSession",

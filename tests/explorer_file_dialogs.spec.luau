@@ -37,17 +37,10 @@ do
 	assert(math.round(cancel.BackgroundColor3.R*255)==71 and math.round(cancel.BackgroundColor3.G*255)==74 and math.round(cancel.BackgroundColor3.B*255)==86)
 	cancel.MouseLeave:Fire()
 	assert(math.round(cancel.BackgroundColor3.R*255)==59)
-	local delay, showTip = task.delay, nil
-	task.delay = function(_, callback) showTip=callback end
+	assert(find("Shadow").BackgroundTransparency < 1)
 	closeButton.MouseEnter:Fire()
-	assert(not find("CloseTooltip").Visible)
-	showTip()
-	assert(find("CloseTooltip").Visible)
 	assert(hover.Visible and closeIcon.ImageColor3.R == 1)
 	closeButton.MouseLeave:Fire()
-	showTip()
-	assert(not find("CloseTooltip").Visible)
-	task.delay = delay
 	assert(not hover.Visible and closeIcon.ImageColor3.R < .2)
 	assert(find("Processing...").Interactable == false)
 	click("Cancel")
@@ -105,6 +98,19 @@ do
 	click("a.rbxmx")
 	assert(find("FileInput").Text=="models/a.rbxmx")
 	click("Cancel")
+	Lib.SaveAsPrompt("Original.lua","source","lua")
+	local fileName = find("NameBox")
+	fileName.Text = "folder.v1/Renamed.txt"
+	fileName.FocusLost:Fire(true)
+	assert(written[1]=="folder.v1/Renamed.lua" and written[2]=="source")
+	local called
+	Lib.SaveAsPrompt("",function(path) called=path end)
+	assert(not find("Save").Interactable)
+	fileName = find("NameBox")
+	fileName.Text = "My model.rbxm"
+	fileName:GetPropertyChangedSignal("Text"):Fire()
+	click("Save")
+	assert(called=="My model.rbxm")
 	Apps.Explorer.GetNodes, Apps.GltfExporter.Export = getNodes, export
 	Lib.ShowGui, task.defer, task.wait = show, defer, wait
 	deps.env.readfile, deps.env.writefile, deps.env.listfiles, deps.env.isfolder = read, write, list, folder

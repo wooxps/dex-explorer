@@ -91,235 +91,10 @@ function Actions.LoadCsv(input, targets, paste, cancelled)
 	end, entries)
 end
 
-local current
-local function close()
-	if current then
-		current.gui:Destroy()
-		current = nil
-	end
-end
-
 local rgb = Color3.fromRGB
-local function dialog(title, height)
-	close()
-	local gui = Instance.new("ScreenGui")
-	gui.Name, gui.IgnoreGuiInset, gui.ResetOnSpawn = "DexFileDialog", true, false
-	gui.DisplayOrder = Main.DisplayOrders.Menu + 2
-	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	local d = {gui=gui, busy=false}
-	current = d
-	local function make(class, parent, props)
-		local obj = Instance.new(class)
-		for key, value in pairs(props) do obj[key] = value end
-		obj.Parent = parent
-		return obj
-	end
-	local function round(obj, radius)
-		return make("UICorner", obj, {CornerRadius=UDim.new(0,radius)})
-	end
-	local function frame(parent, x, y, w, h, color)
-		return make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
-			BorderSizePixel=0,BackgroundColor3=color})
-	end
-	local backdrop = make("TextButton",gui,{Name="Modal",Modal=true,Text="",AutoButtonColor=false,
-		Size=UDim2.fromScale(1,1),BackgroundTransparency=1})
-	local panel = frame(backdrop,0,0,520,height,rgb(39,41,48))
-	panel.AnchorPoint, panel.Position = Vector2.new(.5,.5), UDim2.fromScale(.5,.5)
-	panel.ClipsDescendants, panel.Active = true, true
-	round(panel,8)
-	make("UIStroke",panel,{Name="WindowBorder",Thickness=1,Color=rgb(120,120,120),Transparency=.5,
-		ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-	local scale = make("UIScale", panel, {})
-	local function resize()
-		local size = backdrop.AbsoluteSize
-		scale.Scale = math.clamp(math.min((size.X-12)/520,(size.Y-12)/height),.2,1)
-	end
-	backdrop:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
-	local white, pale = rgb(247,247,248), rgb(213,215,222)
-	local function label(parent, text, x,y,w,h,size,bold,color)
-		return make("TextLabel",parent,{Text=text, Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
-			BackgroundTransparency=1,Font=if bold then Enum.Font.BuilderSansBold else Enum.Font.BuilderSans,
-			TextColor3=color or pale,TextSize=size,TextXAlignment=Enum.TextXAlignment.Left})
-	end
-	local hoverTiming = TweenInfo.new(.12,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
-	local function button(parent, text, x,y,w,h,color,callback)
-		local btn = make("TextButton",parent,{Text=text,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
-			AutoButtonColor=false,BorderSizePixel=0,BackgroundColor3=color,TextColor3=white,Font=Enum.Font.BuilderSans,TextSize=13})
-		round(btn,8)
-		local hovered, tween = false, nil
-		local function paint(animate)
-			if tween then tween:Cancel(); tween = nil end
-			local target = color
-			if hovered and btn.Interactable ~= false then
-				-- Studio's neutral button brightens from (59,62,72) to (71,74,86).
-				target = rgb(math.min(255,math.round(color.R*255)+12),
-					math.min(255,math.round(color.G*255)+12),math.min(255,math.round(color.B*255)+14))
-			end
-			if animate then
-				tween = service.TweenService:Create(btn,hoverTiming,{BackgroundColor3=target})
-				tween:Play()
-			else
-				btn.BackgroundColor3 = target
-			end
-		end
-		btn.MouseEnter:Connect(function() hovered=true; paint(true) end)
-		btn.MouseLeave:Connect(function() hovered=false; paint(true) end)
-		btn.Activated:Connect(callback)
-		return btn, function(base)
-			color = base
-			paint(false)
-		end
-	end
-	local atlas = Main.GetStudioAsset("export/dialog-controls-v1")
-	local function sprite(parent, name, x, y, width, height, sourceX)
-		return make("ImageLabel",parent,{Name=name,BackgroundTransparency=1,Position=UDim2.fromOffset(x,y),
-			Size=UDim2.fromOffset(width,height),Image=atlas,ImageRectOffset=Vector2.new(sourceX,2),
-			ImageRectSize=Vector2.new(width,height)})
-	end
-	local titlebar = frame(panel,0,0,520,30,rgb(243,243,243))
-	round(titlebar,8)
-	-- The title bar paints its own top corners. The lower strip squares its seam with the body.
-	frame(titlebar,0,20,520,10,titlebar.BackgroundColor3)
-	-- Drag the title bar without moving the checkboxes or other controls.
-	local dragStart, panelStart, pointer
-	titlebar.Active = true
-	titlebar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragStart, panelStart, pointer = input.Position, panel.Position, input
-		end
-	end)
-	local moving = service.UserInputService.InputChanged:Connect(function(input)
-		if not pointer or (input ~= pointer and input.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
-		local delta = input.Position-dragStart
-		panel.Position = UDim2.new(panelStart.X.Scale,panelStart.X.Offset+delta.X,panelStart.Y.Scale,panelStart.Y.Offset+delta.Y)
-	end)
-	local released = service.UserInputService.InputEnded:Connect(function(input)
-		if input == pointer then pointer = nil end
-	end)
-	gui.Destroying:Connect(function() moving:Disconnect(); released:Disconnect() end)
-	local logo = frame(titlebar,8,7,16,16,rgb(21,22,26))
-	round(logo,3)
-	local brand = Main.GetStudioAsset("branding/dex/caption-12-v1")
-	if brand then
-		make("ImageLabel",logo,{Name="DexIcon",BackgroundTransparency=1,Position=UDim2.fromOffset(2,2),
-			Size=UDim2.fromOffset(12,12),Image=brand,ResampleMode=Enum.ResamplerMode.Pixelated})
-	else
-		label(logo,"D",3,-1,14,17,14,true,white)
-	end
-	label(titlebar,title,29,0,430,30,12,false,rgb(20,20,20))
-	local x = make("TextButton",titlebar,{Name="Close",Text="",AutoButtonColor=false,
-		BorderSizePixel=0,Position=UDim2.fromOffset(490,0),Size=UDim2.fromOffset(30,30),BackgroundTransparency=1})
-	local hover = frame(x,0,0,30,29,rgb(196,43,28))
-	round(hover,8)
-	local left = frame(hover,0,0,10,29,hover.BackgroundColor3)
-	local bottom = frame(hover,0,20,30,9,hover.BackgroundColor3)
-	local glyphs = {}
-	if atlas then
-		glyphs[1] = sprite(x,"CloseIcon",9,8,12,12,88)
-	else
-		for _, angle in ipairs({45,-45}) do
-			local line = frame(x,8,14,14,1,rgb(23,24,24))
-			line.Rotation = angle
-			table.insert(glyphs,line)
-		end
-	end
-	local over, down = false, false
-	local function paintClose()
-		hover.Visible = over
-		local color = if down then rgb(171,38,26) else rgb(196,43,28)
-		hover.BackgroundColor3, left.BackgroundColor3, bottom.BackgroundColor3 = color,color,color
-		for _, glyph in ipairs(glyphs) do
-			local ink = if over then Color3.new(1,1,1) else rgb(23,24,24)
-			if atlas then glyph.ImageColor3 = ink else glyph.BackgroundColor3 = ink end
-		end
-	end
-	local tip = make("TextLabel",backdrop,{Name="CloseTooltip",Text="Close",Visible=false,ZIndex=10,
-		Size=UDim2.fromOffset(35,19),BackgroundColor3=rgb(255,255,225),BorderSizePixel=1,
-		BorderMode=Enum.BorderMode.Inset,BorderColor3=rgb(100,100,100),TextColor3=rgb(0,0,0),
-		Font=Enum.Font.Arial,TextSize=12})
-	local hoverRevision = 0
-	local function hideTip()
-		hoverRevision += 1
-		tip.Visible = false
-	end
-	x.MouseEnter:Connect(function()
-		over=true
-		paintClose()
-		hideTip()
-		local revision = hoverRevision
-		task.delay(.5,function()
-			if current ~= d or revision ~= hoverRevision or not over or down then return end
-			local origin, bounds = x.AbsolutePosition, backdrop.AbsoluteSize
-			tip.Position = UDim2.fromOffset(
-				math.clamp(origin.X-backdrop.AbsolutePosition.X+25*scale.Scale,0,math.max(0,bounds.X-35)),
-				math.clamp(origin.Y-backdrop.AbsolutePosition.Y+36*scale.Scale,0,math.max(0,bounds.Y-19)))
-			tip.Visible = true
-		end)
-	end)
-	x.MouseLeave:Connect(function() over,down=false,false; hideTip(); paintClose() end)
-	x.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=true; hideTip(); paintClose() end
-	end)
-	x.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then down=false; paintClose() end
-	end)
-	x.Activated:Connect(close)
-	paintClose()
-	local status = label(panel,"",20,height-57,312,46,13,false,rgb(255,180,172))
-	status.TextWrapped = true
-	local cancel = button(panel,"Cancel",0,height-52,57,32,rgb(59,62,72),close)
-	local submit
-	local primary, setPrimaryColor = button(panel,"",0,height-52,53,32,rgb(51,95,255),function()
-		if not d.busy and submit then submit() end
-	end)
-	local function buttons(text, width, busy)
-		primary.Position = UDim2.fromOffset(500-width,height-52)
-		primary.Size = UDim2.fromOffset(width,32)
-		cancel.Position = UDim2.fromOffset(435-width,height-52)
-		primary.Text, primary.Interactable = text, not busy
-		setPrimaryColor(if busy then rgb(45,68,152) else rgb(51,95,255))
-		primary.TextColor3 = if busy then rgb(157,168,200) else white
-	end
-	function d.setPrimary(text, callback, message)
-		submit = callback
-		status.Text = message or ""
-		-- Reserve the processing label width across every export state.
-		buttons(text,89,callback == nil)
-	end
-	d.sprite = if atlas then sprite else nil
-	function d.action(text, width, callback)
-		buttons(text,width,false)
-		submit = function()
-			d.busy = true
-			status.Text = ""
-			buttons("Processing...",89,true)
-			task.defer(function()
-				task.wait()
-				if d ~= current then return end
-				local ok, message = pcall(callback, function() return d ~= current end)
-				if d ~= current then return end
-				d.busy = false
-				if not ok then
-					status.Text = tostring(message):gsub("^.-:%d+: ", "")
-					buttons(text,width,false)
-				elseif message then
-					status.Text, status.TextColor3 = message, pale
-					buttons("Done",53,false)
-					submit = close
-				else
-					close()
-				end
-			end)
-		end
-	end
-	d.panel, d.make, d.frame, d.round, d.label, d.button = panel,make,frame,round,label,button
-	Lib.ShowGui(gui)
-	resize()
-	return d
-end
 
 local function configuration(targets, onReady)
-	local d = dialog("Export Configuration",320)
+	local d = Apps.StudioPopup.Open("Export Configuration",320)
 	if d.sprite then
 		d.sprite(d.panel,"Information",22,52,32,32,50)
 	else
@@ -342,9 +117,9 @@ local function configuration(targets, onReady)
 		running = true
 		task.defer(function()
 			task.wait()
-			while current == d do
+			while d.isOpen() do
 				local generation, snapshot = revision, table.clone(options)
-				local function cancelled() return current ~= d or generation ~= revision end
+				local function cancelled() return not d.isOpen() or generation ~= revision end
 				local ok, data, details = pcall(function()
 					checkTargets(targets)
 					return Apps.GltfExporter.Export(targets,snapshot,cancelled)
@@ -467,7 +242,7 @@ local function browse(d, extensions, choose)
 end
 
 local function filePrompt(title, verb, subject, initial, loadCsv, callback)
-	local d = dialog(title, if loadCsv then 324 else 238)
+	local d = Apps.StudioPopup.Open(title, if loadCsv then 324 else 238)
 	d.label(d.panel,subject,24,44,472,24,15,true)
 	local fieldY = if loadCsv then 116 else 100
 	local caption = d.label(d.panel,"Workspace path",24,fieldY-26,460,22,13)
@@ -554,7 +329,6 @@ end
 return {
 	InitDeps = function(d)
 		Main, Apps, Lib, env, service = d.Main, d.Apps, d.Lib, d.env, d.service
-		if Main then Main.AddCleanup(close) end
 	end,
 	InitAfterMain = function() end,
 	Main = function() return Actions end,
