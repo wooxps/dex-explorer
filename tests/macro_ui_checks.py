@@ -15,7 +15,10 @@ for token, path in {
     fixture = fixture.replace(token, (root / path).read_text(encoding='utf-8'))
 mock = (root / 'tests/roblox_mock.luau').read_text(encoding='utf-8')
 lib = (root / 'src/Shared/Lib.lua').read_text(encoding='utf-8')
-fixture = fixture.replace('-- WINDOW_CLOSE', lib[lib.index('\t\tfuncs.Close ='):lib.index('\t\tfuncs.Destroy =')])
+close_source = lib[lib.index('\t\tfuncs.Close ='):lib.index('\t\tfuncs.Destroy =')]
+sample = '\tlocal sample = {'
+assert fixture.count(sample) == 1
+fixture = fixture.replace(sample, close_source + sample, 1)
 with tempfile.TemporaryDirectory(prefix='dex-macro-ui-') as folder:
     harness = Path(folder) / 'macro_ui.luau'
     harness.write_text(mock + '\n' + fixture, encoding='utf-8')

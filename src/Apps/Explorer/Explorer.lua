@@ -3033,6 +3033,18 @@ local function CreateModule()
 			item.Disabled = disabled
 			return item
 		end
+		if hasNonService then
+			local union, intersect, negate, separate = Apps.SolidModeling.Availability(sList)
+			context:Add({
+				Name = "Solid Modeling",
+				Submenu = {
+					action("SOLID_UNION", not union),
+					action("SOLID_INTERSECT", not intersect),
+					action("SOLID_NEGATE", not negate),
+					action("SOLID_SEPARATE", not separate),
+				},
+			})
+		end
 		context:Add({
 			Name = "Insert",
 			Submenu = {
@@ -3587,6 +3599,24 @@ local function CreateModule()
 				Explorer.RestoreHistorySelection(objects)
 			end,
 		})
+
+		for _, entry in {
+			{ "SOLID_UNION", "Union", "Ctrl+Shift+G" },
+			{ "SOLID_INTERSECT", "Intersect", "Ctrl+Shift+I" },
+			{ "SOLID_NEGATE", "Negate", "Ctrl+Shift+N" },
+			{ "SOLID_SEPARATE", "Separate", "Ctrl+Shift+U" },
+		} do
+			local key, name, shortcut = entry[1], entry[2], entry[3]
+			context:Register(key, {
+				Name = name,
+				Shortcut = shortcut,
+				OnClick = function(): ()
+					if not Explorer.HasInferredSelection() then
+						Apps.SolidModeling.Run(name, selection.List)
+					end
+				end,
+			})
+		end
 
 		context:Register("SELECT_CHILDREN", {
 			Name = "Select Children",
@@ -5991,9 +6021,13 @@ return search]==]
 				elseif key == Enum.KeyCode.D then
 					command = "DUPLICATE"
 				elseif key == Enum.KeyCode.G then
-					command = alt and "GROUP_FOLDER" or (shift and "UNGROUP" or "GROUP")
+					command = if alt then "GROUP_FOLDER" elseif shift then "SOLID_UNION" else "GROUP"
 				elseif key == Enum.KeyCode.U then
-					command = "UNGROUP"
+					command = if shift and not alt then "SOLID_SEPARATE" else "UNGROUP"
+				elseif shift and not alt and key == Enum.KeyCode.I then
+					command = "SOLID_INTERSECT"
+				elseif shift and not alt and key == Enum.KeyCode.N then
+					command = "SOLID_NEGATE"
 				end
 			elseif key == Enum.KeyCode.Delete then
 				command = shift and "DELETE_CHILDREN" or "DELETE"

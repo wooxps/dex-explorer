@@ -245,6 +245,7 @@ Main = (function()
 		"ObjExporter",
 		"StudioPopup",
 		"ExplorerFileActions",
+		"SolidModeling",
 		"ReflectionService",
 		"TransformSession",
 		"TransformGizmo",

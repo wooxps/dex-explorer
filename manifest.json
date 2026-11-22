@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "16907fcaacb3104af8b3",
+  "release": "1c3a83a4514a166c6220",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -87,6 +87,7 @@
     "SearchTreeResults": "src/Apps/Explorer/Services/SearchTreeResults.lua",
     "SelectionService": "src/Apps/Explorer/Services/SelectionService.lua",
     "ServiceVisibility": "src/Apps/Explorer/Services/ServiceVisibility.lua",
+    "SolidModeling": "src/Apps/Explorer/Services/SolidModeling.lua",
     "InstancePath": "src/Apps/Explorer/Util/InstancePath.lua",
     "InputMacros": "src/Apps/InputMacros/InputMacros.lua",
     "MacroEngine": "src/Apps/InputMacros/MacroEngine.lua",
@@ -454,9 +455,9 @@
       "sha256": "4b4451cfdf32edf710eccc6079fd34fdb7194bc6b46455c62abad0b1ee4cd609"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 198848,
-      "checksum": 3747686686,
-      "sha256": "610a9b42301d474ec00ef74b0cfac607e6d02580d9b8a181229b89fd38bf7cf0"
+      "bytes": 199974,
+      "checksum": 2574545549,
+      "sha256": "d2fb74d3cd98238de67689c02bbcaf5f053680ebe70e15c445c83e30147a80ca"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7173,
@@ -587,6 +588,11 @@
       "bytes": 3029,
       "checksum": 3143291753,
       "sha256": "521091650f1d70793d56696a073721cc9b6397a5df815e1215ee79404a6737e4"
+    },
+    "src/Apps/Explorer/Services/SolidModeling.lua": {
+      "bytes": 10252,
+      "checksum": 2498441695,
+      "sha256": "7238efa47d17d34e98c491adc82bb7e7c3f426fc5a5a44254729317b9ec75514"
     },
     "src/Apps/Explorer/Util/InstancePath.lua": {
       "bytes": 1978,
@@ -1124,9 +1130,9 @@
       "sha256": "403ef993a4be8ed8c91cb5e06c8ede1aa38fceb9f6532a3c830abf086b0961a0"
     },
     "main.lua": {
-      "bytes": 100698,
-      "checksum": 3159774836,
-      "sha256": "72bd99d94ca47fd65c485cb651c9029b37b3d74dccf101cf0c5edf98b4485cef"
+      "bytes": 100717,
+      "checksum": 2605472810,
+      "sha256": "a10c3bfbedae785e1011d849888850d76f8383e8378f7e63a9abc92867051ae8"
     },
     "studio_assets.lua": {
       "bytes": 1131332,
