@@ -221,6 +221,25 @@ local function CreateModule()
 				if item then
 					self.MountedRows += 1
 					local label = item.Divider and (item.Text or "") or item.Name
+					local checkmark
+					if item.Checked and not item.Divider then
+						local color = item.Disabled and Settings.Theme.PlaceholderText
+							or (self.Theme.TextColor or Settings.Theme.Text)
+						local pixels = {}
+						for column, row in ipairs({2, 3, 4, 3, 2, 1, 0}) do
+							pixels["Pixel" .. column] = e("Frame", {
+								BackgroundColor3 = color,
+								BorderSizePixel = 0,
+								Position = UDim2.fromOffset(column - 1, row),
+								Size = UDim2.fromOffset(1, 1),
+							})
+						end
+						checkmark = e("Frame", {
+							BackgroundTransparency = 1,
+							Position = UDim2.fromOffset((self.Theme.IconInset or 4) + 5, math.floor((heights[index] - 5) / 2)),
+							Size = UDim2.fromOffset(7, 5),
+						}, pixels)
+					end
 					children["Item" .. slot] = e("TextButton", {
 						Name = item.Divider and "Divider" or "Item" .. slot,
 						AutoButtonColor = false,
@@ -321,31 +340,7 @@ local function CreateModule()
 								end
 							end,
 						}),
-						Checkmark = not item.Divider and item.Checked and e("Frame", {
-							BackgroundTransparency = 1,
-							AnchorPoint = Vector2.new(0, 0.5),
-							Position = UDim2.new(0, (self.Theme.IconInset or 4) + 4, 0.5, 0),
-							Size = UDim2.fromOffset(8, 7),
-						}, {
-							ShortStroke = e("Frame", {
-								AnchorPoint = Vector2.new(0.5, 0.5),
-								Position = UDim2.fromOffset(2, 4.5),
-								Size = UDim2.fromOffset(3, 1),
-								Rotation = 45,
-								BorderSizePixel = 0,
-								BackgroundColor3 = item.Disabled and Settings.Theme.PlaceholderText
-									or (self.Theme.TextColor or Settings.Theme.Text),
-							}),
-							LongStroke = e("Frame", {
-								AnchorPoint = Vector2.new(0.5, 0.5),
-								Position = UDim2.fromOffset(5, 3.5),
-								Size = UDim2.fromOffset(6, 1),
-								Rotation = -45,
-								BorderSizePixel = 0,
-								BackgroundColor3 = item.Disabled and Settings.Theme.PlaceholderText
-									or (self.Theme.TextColor or Settings.Theme.Text),
-							}),
-						}),
+						Checkmark = checkmark,
 						EntryName = e("TextLabel", {
 							BackgroundTransparency = 1,
 							Font = self.Theme.Font or Enum.Font.BuilderSans,
