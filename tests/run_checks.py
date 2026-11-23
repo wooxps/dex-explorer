@@ -343,29 +343,40 @@ parts += ['do\n(function()\nlocal funcs={}\n',
           lib[lib.index('\t\tfuncs.SetEditing = function(self, on, input)'):lib.index('\t\tfuncs.CursorAnim = function(self, on)')],
           (root / 'tests/editor_clipboard.spec.luau').read_text(), 'end)()\nend\n']
 parts += ['do\nlocal static, inputService = {}, service.UserInputService\nlocal resizeCursorOwner, resizeDragOwner\n', """
-local resizeCursorImage = {}
-local Main = { GetStudioAsset = function() return 'mock://text' end }
-local function ensureResizeCursorGui() return true end
-local function moveResizeCursor() resizeCursorImage.Moved = true end
-local function readMouseIconEnabled() return inputService.MouseIconEnabled end
-""", lib[lib.index('\t\tlocal textCursorOwner'):lib.index('\n\t\tlocal function restoreNativeCursor')],
-          lib[lib.index('\t\tstatic.SetTextCursor ='):lib.index('\n\t\tlocal function showResizeCursor')], """
+local assetRequests = 0
+local Main = { GetStudioAsset = function() assetRequests += 1 return 'mock://text' end }
+""", lib[lib.index('		local cursorOwner, cursorKey'):lib.index('\n		local function registerResizeTarget')], """
 local previous, previousEnabled = inputService.MouseIcon, inputService.MouseIconEnabled
 local code, other = {}, {}
 inputService.MouseIcon = "custom://previous"
 inputService.MouseIconEnabled = true
 static.SetTextCursor(code, true)
-assert(resizeCursorImage.Visible and resizeCursorImage.Moved and not inputService.MouseIconEnabled)
+for _ = 1, 1000 do static.SetTextCursor(code, true) end
+assert(assetRequests == 1 and inputService.MouseIcon == "mock://text" and inputService.MouseIconEnabled)
 static.SetTextCursor(other, false)
-assert(resizeCursorImage.Visible and not inputService.MouseIconEnabled)
+assert(inputService.MouseIcon == "mock://text" and inputService.MouseIconEnabled)
 resizeCursorOwner = other
 static.SetTextCursor(code, true)
-assert(not resizeCursorImage.Visible and inputService.MouseIconEnabled and inputService.MouseIcon == "custom://previous")
+assert(inputService.MouseIconEnabled and inputService.MouseIcon == "custom://previous")
 resizeCursorOwner = nil
 static.SetTextCursor(code, true)
 inputService.MouseIcon = "custom://game"
 static.SetTextCursor(code, false)
 assert(inputService.MouseIcon == "custom://game")
+inputService.MouseIconEnabled = false
+static.SetTextCursor(code, true)
+assert(inputService.MouseIconEnabled)
+static.SetTextCursor(code, false)
+assert(not inputService.MouseIconEnabled and inputService.MouseIcon == "custom://game")
+local knob = {}
+static.SetHandleCursor(knob, "native/gui-editor/icon_resize1")
+local count = assetRequests
+for _ = 1, 1000 do static.SetHandleCursor(knob, "native/gui-editor/icon_resize1") end
+assert(count == assetRequests and inputService.MouseIconEnabled)
+static.SetHandleCursor(knob, "native/gui-editor/icon_rotate1")
+assert(count + 1 == assetRequests)
+static.SetHandleCursor(knob, nil)
+assert(inputService.MouseIcon == "custom://game" and not inputService.MouseIconEnabled)
 inputService.MouseIcon, inputService.MouseIconEnabled = previous, previousEnabled
 end
 """]
