@@ -3084,13 +3084,13 @@ local function CreateModule()
 
 		local function resizeCursorInfo(dir)
 			if dir == "N" or dir == "S" or dir == "V" then
-				return "cursor/qt_split_vertical_32"
+				return "cursor/qt_split_vertical_32", 0, 32
 			elseif dir == "E" or dir == "W" or dir == "H" then
-				return "cursor/qt_split_horizontal_32"
+				return "cursor/qt_split_horizontal_32", 0, 32
 			elseif dir == "NE" or dir == "SW" then
-				return "cursor/windows_resize_nesw_centered"
+				return "cursor/windows_resize_nesw_32", 0, 32, 8, 8
 			end
-			return "cursor/windows_resize_nwse_centered"
+			return "cursor/windows_resize_nwse_32", 0, 32, 8, 8
 		end
 
 		local function currentMousePosition(fallback)
@@ -3257,8 +3257,7 @@ local function CreateModule()
 				moveResizeCursor(pos)
 				return
 			end
-			local key = resizeCursorInfo(dir)
-			local size = #dir == 2 and 48 or 32
+			local key, rotation, size, hotX, hotY = resizeCursorInfo(dir)
 			local asset = Main.GetStudioAsset and Main.GetStudioAsset(key)
 			if not asset or not ensureResizeCursorGui() then
 				return
@@ -3272,7 +3271,8 @@ local function CreateModule()
 			resizeCursorDirection = dir
 			resizeCursorImage.Image = asset
 			resizeCursorImage.Size = UDim2.fromOffset(size, size)
-			resizeCursorImage.AnchorPoint = Vector2.new(0.5, 0.5)
+			resizeCursorImage.AnchorPoint = Vector2.new((hotX or size / 2) / size, (hotY or size / 2) / size)
+			resizeCursorImage.Rotation = rotation
 			resizeCursorImage.Visible = true
 			pcall(function()
 				inputService.MouseIconEnabled = false

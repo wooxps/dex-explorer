@@ -33,7 +33,7 @@ for _,dir in {"N","S","V","E","W","H","NE","SW","NW","SE"} do
  local key,rotation,size,x,y=resizeCursorInfo(dir)
  if #dir==2 then
   local diagonal=(dir=="NE" or dir=="SW") and "nesw" or "nwse"
-  assert(key=="cursor/windows_resize_"..diagonal.."_centered","corner image and original CUR hotspot")
+  assert(key=="cursor/windows_resize_"..diagonal.."_32" and rotation==0 and size==32 and x==8 and y==8,"corner image and original CUR hotspot")
  else
   assert(key:find("cursor/qt_split_",1,true) and x==nil and y==nil,"side cursor remains unchanged")
  end
