@@ -3177,7 +3177,12 @@ local function CreateModule()
 				inputService.MouseIconEnabled = hoverIconEnabled
 			end
 		end
+		local function positionResizeHover()
+			local pos = currentMousePosition()
+			hoverImage.Position = UDim2.fromOffset(pos.X, pos.Y)
+		end
 		local function showResizeCursor(owner, dir)
+			if resizeCursorOwner == owner and not resizeDragOwner and hoverImage and hoverImage.Visible then return end
 			local key = resizeCursorInfo(dir)
 			if resizeDragOwner then
 				hideResizeHover()
@@ -3208,8 +3213,7 @@ local function CreateModule()
 				hoverImage.Size = UDim2.fromOffset(size, size)
 				hoverImage.Image = image
 			end
-			local pos = currentMousePosition()
-			hoverImage.Position = UDim2.fromOffset(pos.X, pos.Y)
+			positionResizeHover()
 			hoverImage.Visible = true
 			resizeCursorOwner = owner
 		end
@@ -3222,7 +3226,7 @@ local function CreateModule()
 
 		local function registerResizeTarget(resizer, dir, enabled)
 			resizeTargets[resizer] = { Dir = dir, Enabled = enabled }
-			resizer.MouseMoved:Connect(function()
+			resizer.MouseEnter:Connect(function()
 				if not resizeDragOwner and (not enabled or enabled()) then
 					showResizeCursor(resizer, dir)
 				end
@@ -3266,6 +3270,22 @@ local function CreateModule()
 				return pos.X >= p.X and pos.X < p.X + size.X and pos.Y >= p.Y and pos.Y < p.Y + size.Y
 			end)
 			return ok and result or false
+		end
+
+		Main.TrackSignal(inputService.InputChanged, function(input)
+			if not resizeCursorOwner or not hoverImage or not hoverImage.Visible then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			local owner = resizeCursorOwner
+			if pointInResizeTarget(owner, mouse) then
+				positionResizeHover()
+			else
+				clearResizeCursor(owner)
+			end
+		end)
+		if inputService.WindowFocusReleased then
+			Main.TrackSignal(inputService.WindowFocusReleased, function()
+				clearResizeCursor(resizeCursorOwner)
+			end)
 		end
 
 		local function refreshResizeCursor(pos)
