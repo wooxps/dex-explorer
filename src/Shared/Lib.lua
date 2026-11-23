@@ -3170,74 +3170,132 @@ local function CreateModule()
 			if key and not resizeCursorOwner and not resizeDragOwner and setCursor(owner, key, nil, surface) then return end
 			clearCursor(owner)
 		end
-		local hoverGui, hoverImage, hoverIconEnabled
-		local function hideResizeHover()
-			if hoverImage and hoverImage.Visible then
-				hoverImage.Visible = false
-				inputService.MouseIconEnabled = hoverIconEnabled
+		local resizeCursorDirection, resizeCursorGui, resizeCursorImage
+		local resizeCursorPreviousEnabled, resizeCursorPreviousIcon
+
+		local function ensureResizeCursorGui()
+			if resizeCursorGui and resizeCursorGui.Parent and resizeCursorImage then
+				return true
+			end
+			resizeCursorGui = createSimple("ScreenGui", {
+				Name = "DeXResizeCursor",
+				ResetOnSpawn = false,
+				IgnoreGuiInset = true,
+				DisplayOrder = (Main.DisplayOrders.Core or Main.DisplayOrders.Menu or 100000) + 100,
+			})
+			resizeCursorGui:SetAttribute("DexCursorOverlay", true)
+			resizeCursorImage = createSimple("ImageLabel", {
+				Name = "Cursor",
+				Parent = resizeCursorGui,
+				Visible = false,
+				Active = false,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Size = UDim2.fromOffset(32, 32),
+				ZIndex = 1000,
+				ScaleType = Enum.ScaleType.Fit,
+				ResampleMode = Enum.ResamplerMode.Pixelated,
+			})
+			Lib.ShowGui(resizeCursorGui)
+			return resizeCursorGui.Parent ~= nil
+		end
+
+		local function readMouseIcon()
+			local ok, current = pcall(function()
+				return inputService.MouseIcon
+			end)
+			if ok and type(current) == "string" then
+				return current
+			end
+			ok, current = pcall(function()
+				return mouse.Icon
+			end)
+			return ok and current or ""
+		end
+
+		local function readMouseIconEnabled()
+			local ok, current = pcall(function()
+				return inputService.MouseIconEnabled
+			end)
+			return ok and current ~= false
+		end
+
+		local function restoreNativeCursor()
+			local enabled = resizeCursorPreviousEnabled
+			local icon = resizeCursorPreviousIcon or ""
+			pcall(function()
+				inputService.MouseIcon = icon
+			end)
+			pcall(function()
+				mouse.Icon = icon
+			end)
+			if enabled ~= nil then
+				pcall(function()
+					inputService.MouseIconEnabled = enabled
+				end)
 			end
 		end
-		local function positionResizeHover()
-			local pos = currentMousePosition()
-			hoverImage.Position = UDim2.fromOffset(pos.X, pos.Y)
-		end
-		local function showResizeCursor(owner, dir)
-			if resizeCursorOwner == owner and not resizeDragOwner and hoverImage and hoverImage.Visible then return end
-			local key = resizeCursorInfo(dir)
-			if resizeDragOwner then
-				hideResizeHover()
-				if setCursor(owner, key, nil, owner) then resizeCursorOwner = owner end
+
+		local function moveResizeCursor(pos)
+			if not resizeCursorImage or not resizeCursorImage.Visible then
 				return
 			end
-			local image = Main.GetStudioAsset and Main.GetStudioAsset(key)
-			if not image then return end
-			if not hoverGui then
-				hoverGui = createSimple("ScreenGui", {
-					Name = "DexResizeCursor", IgnoreGuiInset = true, ResetOnSpawn = false,
-					DisplayOrder = (Main.DisplayOrders.Core or Main.DisplayOrders.Menu or 100000) + 100,
-				})
-				hoverGui:SetAttribute("DexCursorOverlay", true)
-				hoverImage = createSimple("ImageLabel", {
-					Parent = hoverGui, Active = false, Visible = false, BackgroundTransparency = 1,
-					AnchorPoint = Vector2.new(0.5, 0.5), ResampleMode = Enum.ResamplerMode.Pixelated,
-				})
-				Lib.ShowGui(hoverGui)
-			end
-			if cursorOwner then clearCursor() end
-			if not hoverImage.Visible then
-				hoverIconEnabled = inputService.MouseIconEnabled
-				inputService.MouseIconEnabled = false
-			end
-			if hoverImage.Image ~= image then
-				local size = #dir == 2 and 48 or 32
-				hoverImage.Size = UDim2.fromOffset(size, size)
-				hoverImage.Image = image
-			end
-			positionResizeHover()
-			hoverImage.Visible = true
-			resizeCursorOwner = owner
+			pos = currentMousePosition(pos)
+			resizeCursorImage.Position = UDim2.fromOffset(math.floor(pos.X + 0.5), math.floor(pos.Y + 0.5))
 		end
+		local function showResizeCursor(owner, dir, pos)
+			if
+				resizeCursorOwner == owner
+				and resizeCursorDirection == dir
+				and resizeCursorImage
+				and resizeCursorImage.Visible
+			then
+				pcall(function()
+					inputService.MouseIconEnabled = false
+				end)
+				moveResizeCursor(pos)
+				return
+			end
+			local key = resizeCursorInfo(dir)
+			local size = #dir == 2 and 48 or 32
+			local asset = Main.GetStudioAsset and Main.GetStudioAsset(key)
+			if not asset or not ensureResizeCursorGui() then
+				return
+			end
+			if not resizeCursorOwner then
+				clearCursor()
+				resizeCursorPreviousEnabled = readMouseIconEnabled()
+				resizeCursorPreviousIcon = readMouseIcon()
+			end
+			resizeCursorOwner = owner
+			resizeCursorDirection = dir
+			resizeCursorImage.Image = asset
+			resizeCursorImage.Size = UDim2.fromOffset(size, size)
+			resizeCursorImage.AnchorPoint = Vector2.new(0.5, 0.5)
+			resizeCursorImage.Visible = true
+			pcall(function()
+				inputService.MouseIconEnabled = false
+			end)
+			moveResizeCursor(pos)
+		end
+
 		local function clearResizeCursor(owner, force)
-			if not resizeCursorOwner or (not force and resizeCursorOwner ~= owner) then return end
-			hideResizeHover()
-			clearCursor(resizeCursorOwner)
+			if not resizeCursorOwner or not force and resizeCursorOwner ~= owner then
+				return
+			end
 			resizeCursorOwner = nil
+			resizeCursorDirection = nil
+			if resizeCursorImage then
+				resizeCursorImage.Visible = false
+			end
+			restoreNativeCursor()
+			resizeCursorPreviousEnabled = nil
+			resizeCursorPreviousIcon = nil
 		end
 
 		local function registerResizeTarget(resizer, dir, enabled)
 			resizeTargets[resizer] = { Dir = dir, Enabled = enabled }
-			resizer.MouseEnter:Connect(function()
-				if not resizeDragOwner and (not enabled or enabled()) then
-					showResizeCursor(resizer, dir)
-				end
-			end)
-			resizer.MouseLeave:Connect(function()
-				if not resizeDragOwner then clearResizeCursor(resizer) end
-			end)
-			resizer.Destroying:Connect(function()
-				clearResizeCursor(resizer)
-				resizeTargets[resizer] = nil
-			end)
 		end
 		static.BindSplitterCursor = function(gui, enabled)
 			registerResizeTarget(gui, "H", enabled)
@@ -3272,22 +3330,6 @@ local function CreateModule()
 			return ok and result or false
 		end
 
-		Main.TrackSignal(inputService.InputChanged, function(input)
-			if not resizeCursorOwner or not hoverImage or not hoverImage.Visible then return end
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-			local owner = resizeCursorOwner
-			if pointInResizeTarget(owner, mouse) then
-				positionResizeHover()
-			else
-				clearResizeCursor(owner)
-			end
-		end)
-		if inputService.WindowFocusReleased then
-			Main.TrackSignal(inputService.WindowFocusReleased, function()
-				clearResizeCursor(resizeCursorOwner)
-			end)
-		end
-
 		local function refreshResizeCursor(pos)
 			if resizeDragOwner then
 				showResizeCursor(resizeDragOwner, resizeDragDirection, pos)
@@ -3312,12 +3354,28 @@ local function CreateModule()
 			end
 		end
 
+		Main.TrackSignal(inputService.InputChanged, function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement then
+				if resizeDragOwner then
+					return
+				end
+				refreshResizeCursor(input.Position)
+			end
+		end)
+
 		Main.AddCleanup(function()
-			hideResizeHover()
-			if hoverGui then hoverGui:Destroy() end
 			clearCursor()
-			resizeDragOwner, resizeDragDirection = nil, nil
-			resizeCursorOwner = nil
+			resizeDragOwner = nil
+			resizeDragDirection = nil
+			clearResizeCursor(nil, true)
+			if resizeCursorGui then
+				pcall(function()
+					resizeCursorGui:Destroy()
+				end)
+			end
+			resizeCursorGui = nil
+			resizeCursorImage = nil
+			clearCursor()
 		end)
 
 		local function stopTweens()

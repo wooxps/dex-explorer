@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "b4826336655318b1ba18",
+  "release": "3db814b057ca025dea59",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -945,9 +945,9 @@
       "sha256": "513080e5ae4120e6731ae16cc90f8de60599d9375cc3819c152af073558b5f43"
     },
     "src/Apps/TransformTools/GuiTransformTools.lua": {
-      "bytes": 15201,
-      "checksum": 2530947334,
-      "sha256": "995050d351ed11af46cbe2563731bb8a5c4259f696c200ec0f1b1352a12fcaf0"
+      "bytes": 16169,
+      "checksum": 3614073377,
+      "sha256": "d73a8efde6ec117de10eefa247994c3ed1b74b66bd56eaac664d6dec3d236ad2"
     },
     "src/Apps/TransformTools/GuiTransformView.lua": {
       "bytes": 9177,
@@ -995,9 +995,9 @@
       "sha256": "edae32f0d5de0f6399aaa790b64374d99c1874e3e435481175faae47ef83aec2"
     },
     "src/Shared/Lib.lua": {
-      "bytes": 344346,
-      "checksum": 1101743910,
-      "sha256": "ce755a4d1eba267d335ff60c31765647ec93c7cfad0013029fcde3df3bd02d32"
+      "bytes": 345262,
+      "checksum": 1415663994,
+      "sha256": "035057fc8513a010d7505aa1d757d7e83d361bace3c18aecdc4c7f44bfa38b01"
     },
     "src/Shared/LoadingSplash.lua": {
       "bytes": 9155,
