@@ -253,40 +253,68 @@ local function CreateModule()
 			Lib.ShowGui(indicatorGui)
 		end
 		local root = Instance.new("Folder", indicatorGui)
-		local function adorn(class, color)
-			local item = Instance.new(class)
-			item.Adornee, item.Color3, item.AlwaysOnTop, item.ZIndex = part, color, true, 1
-			item.Parent = root
-			return item
-		end
-		local blue, green = Color3.fromRGB(50,145,255), Color3.fromRGB(76,205,99)
-		local front = adorn("LineHandleAdornment", blue)
-		local tip = adorn("ConeHandleAdornment", green)
+		local blue = Color3.fromRGB(2, 70, 255)
+		local white = Color3.new(1, 1, 1)
+		local front = Instance.new("LineHandleAdornment", root)
+		front.Adornee, front.Color3, front.AlwaysOnTop, front.ZIndex = part, blue, true, 1
+		front.Thickness = 1
+
 		local badge = Instance.new("BillboardGui", root)
-		badge.Adornee, badge.AlwaysOnTop, badge.Size = part, true, UDim2.fromOffset(20,20)
+		badge.Adornee, badge.AlwaysOnTop = part, true
+		badge.Size = UDim2.fromOffset(36, 36)
+		badge.LightInfluence = 0
+
 		local label = Instance.new("TextLabel", badge)
-		label.Size, label.BackgroundColor3 = UDim2.fromScale(1,1), blue
-		label.Text, label.TextColor3, label.Font, label.TextSize = "F", Color3.new(1,1,1), Enum.Font.SourceSansBold, 15
-		Instance.new("UICorner",label).CornerRadius = UDim.new(1,0)
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.Position = UDim2.fromScale(0.5, 0.5)
+		label.Size = UDim2.fromOffset(10, 10)
+		label.BackgroundColor3, label.BorderSizePixel = blue, 0
+		label.Text, label.TextColor3, label.Font, label.TextSize = "F", white, Enum.Font.Arial, 8
+		Instance.new("UICorner", label).CornerRadius = UDim.new(1, 0)
+		local rim = Instance.new("UIStroke", label)
+		rim.ApplyStrokeMode, rim.Color, rim.Thickness = Enum.ApplyStrokeMode.Border, white, 1
+
+		local arrow = Instance.new("Frame", badge)
+		arrow.AnchorPoint, arrow.Position = Vector2.new(0.5, 0.5), label.Position
+		arrow.Size, arrow.BackgroundTransparency = UDim2.fromOffset(36, 36), 1
+		local function triangleRow(y, width, color, layer)
+			local row = Instance.new("Frame", arrow)
+			row.AnchorPoint = Vector2.new(0.5, 0)
+			row.Position = UDim2.new(0.5, 0, 0, y)
+			row.Size = UDim2.fromOffset(width, 1)
+			row.BackgroundColor3, row.BorderSizePixel, row.ZIndex = color, 0, layer
+		end
+		local green = Color3.fromRGB(59, 175, 17)
+		for y, width in ipairs({1, 2, 3, 4, 5, 5}) do
+			triangleRow(y + 3, width, white, 1)
+			if y >= 3 and y <= 5 then triangleRow(y + 3, width - 2, green, 2) end
+		end
+
 		local frontDistance
+		local function updatePose()
+			local pose = part.CFrame
+			local offset = pose.LookVector * frontDistance
+			if badge.StudsOffsetWorldSpace ~= offset then badge.StudsOffsetWorldSpace = offset end
+			local camera = service.Workspace.CurrentCamera
+			if not camera then return end
+			local point = pose.Position + offset
+			local direction = camera.CFrame:VectorToObjectSpace(pose.UpVector)
+			local cameraPoint = camera.CFrame:PointToObjectSpace(point)
+			local dx = direction.X * -cameraPoint.Z + cameraPoint.X * direction.Z
+			local dy = direction.Y * -cameraPoint.Z + cameraPoint.Y * direction.Z
+			arrow.Visible = cameraPoint.Z < 0 and dx * dx + dy * dy > 1e-8
+			if arrow.Visible then arrow.Rotation = math.deg(math.atan2(dx, dy)) end
+		end
 		local function update()
 			local size = part.Size
-			local length = math.clamp(size.Magnitude * 0.2, 0.4, 4)
-			local lineLength = length * 0.5
-			front.CFrame = CFrame.new(0, 0, -size.Z / 2)
-			front.Length, front.Thickness = lineLength, 2
+			local lineLength = math.clamp(size.Magnitude * 0.1, 0.2, 2)
+			front.CFrame, front.Length = CFrame.new(0, 0, -size.Z / 2), lineLength
 			frontDistance = size.Z / 2 + lineLength
-			local frontMarker = Vector3.new(0, 0, -frontDistance)
-			local base = CFrame.new(frontMarker + Vector3.new(0, length * 0.2, 0)) * CFrame.Angles(math.pi / 2, 0, 0)
-			tip.CFrame, tip.Radius, tip.Height = base, length * 0.12, length * 0.3
-			badge.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(frontMarker)
+			updatePose()
 		end
 		update()
 		indicators[part] = { Root = root, Connections = {
-			service.RunService.RenderStepped:Connect(function()
-				local offset = part.CFrame.LookVector * frontDistance
-				if badge.StudsOffsetWorldSpace ~= offset then badge.StudsOffsetWorldSpace = offset end
-			end),
+			service.RunService.RenderStepped:Connect(updatePose),
 			part:GetPropertyChangedSignal("Size"):Connect(update),
 			part.AncestryChanged:Connect(function()
 				if not part:IsDescendantOf(service.Workspace) then clearIndicator(part) end

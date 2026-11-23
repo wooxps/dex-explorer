@@ -223,21 +223,20 @@ local function CreateModule()
 					local label = item.Divider and (item.Text or "") or item.Name
 					local checkmark
 					if item.Checked and not item.Divider then
-						local color = item.Disabled and Settings.Theme.PlaceholderText
-							or (self.Theme.TextColor or Settings.Theme.Text)
+						local color = item.Disabled and Settings.Theme.PlaceholderText or Color3.fromRGB(188, 190, 200)
 						local pixels = {}
-						for column, row in ipairs({2, 3, 4, 3, 2, 1, 0}) do
-							pixels["Pixel" .. column] = e("Frame", {
+						for column, row in ipairs({ 2, 3, 4, 3, 2, 1, 0 }) do
+							pixels["Column" .. column] = e("Frame", {
 								BackgroundColor3 = color,
 								BorderSizePixel = 0,
 								Position = UDim2.fromOffset(column - 1, row),
-								Size = UDim2.fromOffset(1, 1),
+								Size = UDim2.fromOffset(1, 2),
 							})
 						end
 						checkmark = e("Frame", {
 							BackgroundTransparency = 1,
-							Position = UDim2.fromOffset((self.Theme.IconInset or 4) + 5, math.floor((heights[index] - 5) / 2)),
-							Size = UDim2.fromOffset(7, 5),
+							Position = UDim2.fromOffset((self.Theme.IconInset or 4) + 4, math.floor((heights[index] - 6) / 2)),
+							Size = UDim2.fromOffset(7, 6),
 						}, pixels)
 					end
 					children["Item" .. slot] = e("TextButton", {

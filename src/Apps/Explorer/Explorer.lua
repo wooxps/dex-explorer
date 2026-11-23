@@ -3125,15 +3125,6 @@ local function CreateModule()
 		end
 		table.insert(exportItems, action("EXPORT_GLTF", not env.writefile))
 		context:Add({ Name = "Save / Export", Submenu = exportItems })
-		if #sList == 1 and hasNonService and Apps.ReflectionService.CanCreate(sList[1].Obj.ClassName) then
-			local object = sList[1].Obj
-			local class = object.ClassName
-			context:QueueDivider()
-			context:Add({ Name = "Save as Default " .. class, OnClick = function() Apps.InsertionService.SaveDefault(object) end })
-			if Apps.InsertionService.HasDefault(class) then
-				context:Add({ Name = "Reset Default " .. class, OnClick = function() Apps.InsertionService.ResetDefault(class) end })
-			end
-		end
 		if hasService then
 			context:QueueDivider()
 			context:Add({
