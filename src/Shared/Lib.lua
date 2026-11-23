@@ -3171,7 +3171,10 @@ local function CreateModule()
 			clearCursor(owner)
 		end
 		local function showResizeCursor(owner, dir)
-			if setCursor(owner, resizeCursorInfo(dir), nil, owner) then
+			local target = resizeTargets[owner]
+			local surface = owner
+			if target and target.Detector then surface = nil end
+			if setCursor(owner, resizeCursorInfo(dir), nil, surface) then
 				resizeCursorOwner = owner
 			end
 		end
@@ -3182,7 +3185,19 @@ local function CreateModule()
 		end
 
 		local function registerResizeTarget(resizer, dir, enabled)
-			resizeTargets[resizer] = { Dir = dir, Enabled = enabled }
+			local target = { Dir = dir, Enabled = enabled }
+			resizeTargets[resizer] = target
+			local icon = Main.GetStudioAsset and Main.GetStudioAsset(resizeCursorInfo(dir))
+			if icon then
+				local detector = Instance.new("UIDragDetector")
+				detector.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomOffset
+				detector.CursorIcon = icon
+				detector.ActivatedCursorIcon = icon
+				local ok, active = pcall(enabled)
+				detector.Enabled = not enabled or (ok and active == true)
+				detector.Parent = resizer
+				target.Detector = detector
+			end
 		end
 		static.BindSplitterCursor = function(gui, enabled)
 			registerResizeTarget(gui, "H", enabled)
@@ -3230,6 +3245,9 @@ local function CreateModule()
 				if data.Enabled then
 					local ok, result = pcall(data.Enabled)
 					enabled = ok and result
+				end
+				if data.Detector and data.Detector.Enabled ~= (enabled == true) then
+					data.Detector.Enabled = enabled == true
 				end
 				if enabled and pointInResizeTarget(resizer, pos) then
 					showResizeCursor(resizer, data.Dir, pos)
