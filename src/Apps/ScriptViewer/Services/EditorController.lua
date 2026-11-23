@@ -46,6 +46,7 @@ local function CreateModule()
 		local refreshCompletion
 		local syntax = { Available = false, Message = "Not checked" }
 		local function hideHover()
+			if not hoverTarget and not hoverLeaving and not hover.Gui.Visible then return end
 			hoverTicket += 1
 			hoverTarget = nil
 			hoverLeaving = false
@@ -1662,13 +1663,10 @@ local function CreateModule()
 				Lib.Window.SetTextCursor(textArea, enabled)
 			end
 		end
-		local function updateTextCursor(input)
-			local x, y = hit.Pointer(input)
+		local function updateTextCursor(x, y, insideText)
 			if
-				not x
-				or not window:IsVisible()
+				not insideText
 				or window.Minimized
-				or not hit.Contains(textArea, x, y)
 				or (options.NewScriptOverlay and options.NewScriptOverlay.Visible)
 				or Apps.ContextMenu.IsAnyShown()
 			then
@@ -1691,7 +1689,7 @@ local function CreateModule()
 				setTextCursor(false)
 				return
 			end
-			setTextCursor(hit.OwnsPoint(window, textArea, x, y))
+			setTextCursor(hit.OwnsPoint(window, textArea, x, y, true))
 		end
 		local function resetPointer()
 			pointerClick = nil
@@ -1706,7 +1704,8 @@ local function CreateModule()
 		Main.AddCleanup(resetPointer)
 		local function refreshTextCursor()
 			if Main.Alive then
-				updateTextCursor()
+				local x, y = hit.Pointer()
+				updateTextCursor(x, y, x and window:IsVisible() and hit.Contains(textArea, x, y))
 			end
 		end
 		local function watchOverlay(overlay)
@@ -1733,8 +1732,7 @@ local function CreateModule()
 			Main.TrackSignal(search.GuiElems.Main.MouseEnter, refreshTextCursor)
 			Main.TrackSignal(search.GuiElems.Main.MouseLeave, refreshTextCursor)
 		end
-		local function updateHover(input)
-			local x, y = Apps.EditorHitTest.Pointer(input)
+		local function updateHover(input, x, y, insideText)
 			if
 				not x
 				or not window:IsVisible()
@@ -1764,7 +1762,7 @@ local function CreateModule()
 				return
 			end
 			local lines = cf.GuiElems.LinesFrame or cf.Frame
-			if not cf.ScreenToEditorPoint or not Apps.EditorHitTest.Contains(lines, x, y) then
+			if not cf.ScreenToEditorPoint or not insideText then
 				leaveHover()
 				return
 			end
@@ -1873,9 +1871,11 @@ local function CreateModule()
 		end
 		Main.TrackSignal(service.UserInputService.InputChanged, function(input)
 			if input.UserInputType == Enum.UserInputType.MouseMovement then
-				updateTextCursor(input)
+				local x, y = hit.Pointer(input)
+				local insideText = x and window:IsVisible() and hit.Contains(textArea, x, y)
+				updateTextCursor(x, y, insideText)
 				if not cursorDrag then
-					updateHover(input)
+					updateHover(input, x, y, insideText)
 				end
 			elseif input.UserInputType == Enum.UserInputType.MouseWheel then
 				hideHover()

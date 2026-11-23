@@ -20,7 +20,9 @@ local function CreateModule()
 			self.GeometryFontSize = self.FontSize
 			self.LineGeometryCache = {}
 			self.LineGeometryOrder = {}
+			self.LineGeometrySlot = 1
 			self.GlyphWidthCount = 0
+			self.AsciiWidths = {}
 		end
 		local width = cache[text]
 		if width == nil then
@@ -60,7 +62,25 @@ local function CreateModule()
 			bytes[#bytes + 1] = last
 			pixels[#pixels + 1] = geometry.Width
 		end
-		if utf8.graphemes then
+		if not text:find("[^ -~]") then
+			local ascii = self.AsciiWidths
+			bytes = table.create(#text + 1)
+			pixels = table.create(#text + 1)
+			bytes[1], pixels[1] = 0, 0
+			local width = 0
+			for i = 1, #text do
+				local byte = text:byte(i)
+				local advance = ascii[byte]
+				if advance == nil then
+					advance = measured(self, string.char(byte))
+					ascii[byte] = advance
+				end
+				width += advance
+				bytes[i+1], pixels[i+1] = i, width
+			end
+			geometry.Bytes, geometry.Pixels, geometry.Width = bytes, pixels, width
+			position = #text + 1
+		elseif utf8.graphemes then
 			local valid = pcall(function()
 				for first, last in utf8.graphemes(text) do
 					append(first, last)
@@ -83,10 +103,11 @@ local function CreateModule()
 		end
 		self.LineGeometryCache[text] = geometry
 		local order = self.LineGeometryOrder
-		order[#order + 1] = text
-		if #order > geometryLimit then
-			self.LineGeometryCache[table.remove(order, 1)] = nil
-		end
+		local slot = self.LineGeometrySlot
+		local evicted = order[slot]
+		if evicted then self.LineGeometryCache[evicted] = nil end
+		order[slot] = text
+		self.LineGeometrySlot = slot % geometryLimit + 1
 		return geometry
 	end
 	local function floorIndex(values, value)
@@ -967,28 +988,29 @@ local function CreateModule()
 			end
 			local rowIndex = relaY - 1
 			local rectangles = lineFrame:FindFirstChild("ExtraSelections")
-			if not rectangles then
-				rectangles = Instance.new("Frame")
-				rectangles.Name = "ExtraSelections"
-				rectangles.BackgroundTransparency = 1
-				rectangles.Size = UDim2.fromScale(1, 1)
-				rectangles.Parent = lineFrame
-			end
 			for index, range in ipairs(ranges) do
-				local rectangle = index == 1 and lineFrame.SelectionHighlight
-					or rectangles:FindFirstChild(tostring(index))
+				local a, b = range[1], range[2]
+				local visible = a and b and rowIndex >= a[2] and rowIndex <= b[2]
+				if index > 1 and visible and not rectangles then
+					rectangles = Instance.new("Frame")
+					rectangles.Name = "ExtraSelections"
+					rectangles.BackgroundTransparency = 1
+					rectangles.Size = UDim2.fromScale(1, 1)
+					rectangles.Parent = lineFrame
+				end
+				local rectangle = if index == 1 then lineFrame.SelectionHighlight
+					else rectangles and rectangles:FindFirstChild(tostring(index))
 				if not rectangle then
+					if not visible then continue end
 					rectangle = Instance.new("Frame")
 					rectangle.Name = tostring(index)
 					rectangle.BorderSizePixel = 0
 					rectangle.ZIndex = 2
 					rectangle.Parent = rectangles
 				end
-				local a, b = range[1], range[2]
-				local visible = a and b and rowIndex >= a[2] and rowIndex <= b[2]
-				rectangle.BackgroundColor3 = self.Colors.SelectionBack
 				rectangle.Visible = visible == true
 				if visible then
+					rectangle.BackgroundColor3 = self.Colors.SelectionBack
 					local from = rowIndex == a[2] and View.GetColumnPixelX(self, a[1], rowIndex) or 0
 					local to = rowIndex == b[2] and View.GetColumnPixelX(self, b[1], rowIndex) or scrollPixel + hSize
 					from = math.clamp(math.round(from - scrollPixel), 0, hSize)
@@ -997,25 +1019,25 @@ local function CreateModule()
 					rectangle.Size = UDim2.new(0, math.max(0, to - from), 1, 0)
 				end
 			end
-			for _, rectangle in ipairs(rectangles:GetChildren()) do
-				if tonumber(rectangle.Name) > #ranges then
-					rectangle.Visible = false
+			if rectangles then
+				for _, rectangle in ipairs(rectangles:GetChildren()) do
+					if tonumber(rectangle.Name) > #ranges then rectangle.Visible = false end
 				end
 			end
 			local caretHost = lineFrame:FindFirstChild("ExtraCarets")
-			if not caretHost then
-				caretHost = Instance.new("Frame")
-				caretHost.Name = "ExtraCarets"
-				caretHost.BackgroundTransparency = 1
-				caretHost.Size = UDim2.fromScale(1, 1)
-				caretHost.Parent = lineFrame
-			end
 			local caretCount = 0
 			for _, range in ipairs(self.AdditionalSelections or {}) do
 				local point = range.Caret or range[2]
 				if point and point[2] == rowIndex then
 					local x = math.round(View.GetColumnPixelX(self, point[1], rowIndex) - scrollPixel)
 					if x >= 0 and x < hSize then
+						if not caretHost then
+							caretHost = Instance.new("Frame")
+							caretHost.Name = "ExtraCarets"
+							caretHost.BackgroundTransparency = 1
+							caretHost.Size = UDim2.fromScale(1, 1)
+							caretHost.Parent = lineFrame
+						end
 						caretCount += 1
 						local caret = caretHost:FindFirstChild(tostring(caretCount))
 						if not caret then
@@ -1032,9 +1054,11 @@ local function CreateModule()
 					end
 				end
 			end
-			for _, caret in ipairs(caretHost:GetChildren()) do
-				if tonumber(caret.Name) > caretCount then
-					caret.Visible = false
+			if caretHost then
+				for _, caret in ipairs(caretHost:GetChildren()) do
+					if tonumber(caret.Name) > caretCount then
+						caret.Visible = false
+					end
 				end
 			end
 			drawLineText(self, lineFrame, rowIndex, geometry, ranges, scrollPixel, hSize, syntax)

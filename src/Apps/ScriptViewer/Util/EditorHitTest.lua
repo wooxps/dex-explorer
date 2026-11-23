@@ -52,27 +52,41 @@ local function CreateModule()
 		end
 		return true
 	end
-	function Hit.OwnsPoint(window, target, x, y)
-		if not window:IsVisible() or not Hit.Contains(target, x, y) then
-			return false
-		end
-		local function layer(object)
-			while object do
-				if object:IsA("ScreenGui") then
-					return object
-				end
-				object = object.Parent
+	local function layer(object)
+		while object do
+			if object:IsA("ScreenGui") then
+				return object
 			end
+			object = object.Parent
+		end
+	end
+	local function meaningful(object)
+		return not (
+			object.ClassName == "Frame"
+			and (object.BackgroundTransparency or 0) >= 0.995
+			and not object.Active
+		)
+	end
+	local function subtreeBlocks(parent, x, y)
+		for _, object in ipairs(parent:GetChildren()) do
+			if object:IsA("GuiObject") then
+				if not object.Visible then continue end
+				local inside = rect(object, x, y)
+				if inside and meaningful(object) and Hit.Contains(object, x, y) then return true end
+				if not inside and object.ClipsDescendants then continue end
+			elseif object:IsA("LayerCollector") and not object.Enabled then
+				continue
+			end
+			if subtreeBlocks(object, x, y) then return true end
+		end
+		return false
+	end
+	function Hit.OwnsPoint(window, target, x, y, insideTarget)
+		if not insideTarget and (not window:IsVisible() or not Hit.Contains(target, x, y)) then
+			return false
 		end
 		local own = window.Gui
 		local order = own.DisplayOrder or 0
-		local function meaningful(object)
-			return not (
-				object.ClassName == "Frame"
-				and (object.BackgroundTransparency or 0) >= 0.995
-				and not object.Active
-			)
-		end
 		local root = window.Gui.Parent
 		if root then
 			local ok, objects = pcall(function()
@@ -105,11 +119,7 @@ local function CreateModule()
 				and not gui:GetAttribute("DexCursorOverlay")
 				and (gui.DisplayOrder or 0) > order
 			then
-				for _, object in ipairs(gui:GetDescendants()) do
-					if meaningful(object) and Hit.Contains(object, x, y) then
-						return false
-					end
-				end
+				if subtreeBlocks(gui, x, y) then return false end
 			end
 		end
 		return true

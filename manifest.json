@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "325d09d1b906a7f2933f",
+  "release": "60c083a7a936fdd934ff",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -785,9 +785,9 @@
       "sha256": "0de1a66fe295f8dbd9b7e6f4598f5719fdf0e57a4b0c7cb53e0f411a200f4fdd"
     },
     "src/Apps/ScriptViewer/Components/CodeViewport.lua": {
-      "bytes": 38275,
-      "checksum": 3869711796,
-      "sha256": "319c8025812c892b38d13c85a70e7dbf75cf7797a61f53375bc0cf0bc187ff4e"
+      "bytes": 39129,
+      "checksum": 30547929,
+      "sha256": "20577aa0f891d7ce041098fded97ae3ae55f8e7039556d9b9bab2498a3fe6c91"
     },
     "src/Apps/ScriptViewer/Components/EditorCompletion.lua": {
       "bytes": 24198,
@@ -870,9 +870,9 @@
       "sha256": "0e88833237f393d5a873406908a4ba1367a421cf473ddf623ab246cc78e9986a"
     },
     "src/Apps/ScriptViewer/Services/EditorController.lua": {
-      "bytes": 59603,
-      "checksum": 485645905,
-      "sha256": "00d8aeec05f5f40fda51fb113b95d2e4b93eb1197f7df99a4f3aac8383c1b200"
+      "bytes": 59787,
+      "checksum": 2381880702,
+      "sha256": "246295ff0e10a0f62e081050557d2ba492def0fb3f2f2675dbe0fba758362c1a"
     },
     "src/Apps/ScriptViewer/Services/EditorDefinitions.lua": {
       "bytes": 22092,
@@ -930,9 +930,9 @@
       "sha256": "6d3ed088b406756053f76e598437e7d39078332f5484b442ee32ddab7d5b5509"
     },
     "src/Apps/ScriptViewer/Util/EditorHitTest.lua": {
-      "bytes": 2957,
-      "checksum": 634485723,
-      "sha256": "87dd3e6dd2f35c20482577e2b2d3bed8f114c6c3bc1ae8029a667bff42511dbd"
+      "bytes": 3414,
+      "checksum": 2444696622,
+      "sha256": "a84884d69bf84b5e25c93a7023779be5df04feee64f40716f2a0267d59bf17f9"
     },
     "src/Apps/TransformTools/GuiAlignment.lua": {
       "bytes": 4984,
