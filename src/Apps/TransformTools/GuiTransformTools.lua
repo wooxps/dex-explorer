@@ -20,7 +20,7 @@ local function CreateModule()
 		ScaleSnap = 1,
 		RotateSnap = 1,
 	}
-	local gui, view, connection, gesture, hover, cursor, previousIcon, previousEnabled
+	local gui, view, connection, gesture, hover
 	local refreshing = false
 	local destroyed = false
 	local editCapabilities
@@ -55,23 +55,9 @@ local function CreateModule()
 		return Main.IsPointInDexUI and Main.IsPointInDexUI(p.X, p.Y)
 	end
 	local function clearCursor()
-		if previousEnabled ~= nil then
-			pcall(function()
-				input.MouseIconEnabled = previousEnabled
-			end)
-			previousEnabled = nil
-		end
-		if previousIcon ~= nil then
-			pcall(function()
-				Main.Mouse.Icon = previousIcon
-			end)
-			previousIcon = nil
-		end
-		if cursor then
-			cursor.Visible = false
-		end
+		Lib.Window.SetHandleCursor(T, nil)
 	end
-	local function showCursor(h, p)
+	local function showCursor(h)
 		if not h or h.Kind == "Move" then
 			clearCursor()
 			return
@@ -85,25 +71,7 @@ local function CreateModule()
 		else
 			key = "icon_resize" .. ({ 2, 3, 4, 1, 2, 3, 4, 1 })[index]
 		end
-		local asset = Main.GetStudioAsset("native/gui-editor/" .. key)
-		if not asset then
-			clearCursor()
-			return
-		end
-		if previousEnabled == nil then
-			pcall(function()
-				previousEnabled = input.MouseIconEnabled
-			end)
-			pcall(function()
-				previousIcon = Main.Mouse.Icon
-			end)
-		end
-		pcall(function()
-			input.MouseIconEnabled = false
-		end)
-		cursor.Image = asset
-		cursor.Position = UDim2.fromOffset(p.X, p.Y)
-		cursor.Visible = true
+		Lib.Window.SetHandleCursor(T, "native/gui-editor/" .. key, h.Frame)
 	end
 	local function report(problem)
 		T.LastError = tostring(problem)
@@ -374,7 +342,7 @@ local function CreateModule()
 			hover = not blocked(p) and view:HitTest(p) or nil
 			view:Update(g, T.Tool, hover, nil, editCapabilities)
 		end
-		showCursor(gesture and gesture.Handle or hover, p)
+		showCursor(gesture and gesture.Handle or hover)
 	end
 	refresh = function()
 		if destroyed then
@@ -518,15 +486,7 @@ local function CreateModule()
 		view = Apps.GuiTransformView.Create(gui, begin)
 		T.View = view
 		T.Gui = gui
-		cursor = Instance.new("ImageLabel")
-		cursor.Name = "Cursor"
-		cursor.BackgroundTransparency = 1
-		cursor.Size = UDim2.fromOffset(64, 64)
-		cursor.AnchorPoint = Vector2.new(0.5, 0.5)
-		cursor.Active = false
-		cursor.ZIndex = 20
-		cursor.Visible = false
-		cursor.Parent = gui
+
 		Main.TrackSignal(Apps.Explorer.Selection.Changed, refresh)
 		Main.TrackSignal(input.InputChanged, function(e)
 			if
