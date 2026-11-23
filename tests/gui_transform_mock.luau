@@ -109,8 +109,6 @@ service.ContextActionService = {
 	end,
 }
 Lib.StudioFont = Enum.Font.BuilderSans
-Lib.Window = Lib.Window or {}
-Lib.Window.SetHandleCursor = function() end
 Lib.StudioTooltip = function() end
 Main.GetStudioAsset = function(key)
 	return key

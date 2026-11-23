@@ -67,9 +67,10 @@ local found=false for _,c in Main.GlobalConnections do if c==persistent then fou
 print("PASS: gesture listener compaction retains active subscriptions and bounds disconnected records")
 '''
 lib=(root/'src/Shared/Lib.lua').read_text()
-code+='\nlocal inputService={GetMouseLocation=function() return Vector2.new(412,366) end}\nlocal mouse={X=412,Y=308}\n'+lib[lib.index('\t\tlocal function currentMousePosition('):lib.index('\n\t\tlocal cursorOwner, cursorKey')]+r'''
-local pos=currentMousePosition(Vector2.new(412,308))
-assert(pos.X==412 and pos.Y==366,"drag coordinates use the absolute pointer location")
+code+='\nlocal inputService={GetMouseLocation=function() return Vector2.new(412,366) end}\nlocal mouse={X=412,Y=308}\nlocal resizeCursorImage=Instance.new("ImageLabel") resizeCursorImage.Visible=true\n'+lib[lib.index('\t\tlocal function currentMousePosition('):lib.index('\n\t\tlocal function ensureResizeCursorGui(')]+lib[lib.index('\t\tlocal function moveResizeCursor('):lib.index('\n\t\tstatic.SetTextCursor =')]+r'''
+moveResizeCursor(Vector2.new(412,308))
+assert(resizeCursorImage.Position==UDim2.fromOffset(412,366),"cursor overlay uses absolute pointer coordinates rather than inset-relative hover input")
+print("PASS: resize cursor remains aligned across a 58px client inset")
 '''
 with tempfile.TemporaryDirectory() as temp:
     path=Path(temp)/'hit.luau';path.write_text(code)

@@ -22,18 +22,15 @@ for direction, digest in [('nwse', '3306219d72cf4e0ce39aa4abe33f03357470d77befed
     image = Image.open(io.BytesIO(raw)).convert('RGBA')
     assert image.size == (32, 32)
     assert hashlib.sha256(image.tobytes()).hexdigest() == digest, direction
-    centered = re.findall(r'\["cursor/windows_resize_' + direction + r'_centered"\] = "([^"\n]*)"', assets)
-    png = bytes(int(n) for n in re.findall(r'\\(\d{3})', centered[0]))
-    native = Image.open(io.BytesIO(png)).convert("RGBA")
-    assert native.size == (48,48) and native.crop((16,16,48,48)).tobytes() == image.tobytes()
 lib = (root / 'src/Shared/Lib.lua').read_text()
 body = lib[lib.index('\t\tlocal function resizeCursorInfo('):lib.index('\n\t\tlocal function currentMousePosition(')]
 body += '''
 for _,dir in {"N","S","V","E","W","H","NE","SW","NW","SE"} do
  local key,rotation,size,x,y=resizeCursorInfo(dir)
+ assert(rotation==0 and size==32,"native cursors must not be rotated or resized")
  if #dir==2 then
   local diagonal=(dir=="NE" or dir=="SW") and "nesw" or "nwse"
-  assert(key=="cursor/windows_resize_"..diagonal.."_centered","corner image and original CUR hotspot")
+  assert(key=="cursor/windows_resize_"..diagonal.."_32" and x==8 and y==8,"corner image and original CUR hotspot")
  else
   assert(key:find("cursor/qt_split_",1,true) and x==nil and y==nil,"side cursor remains unchanged")
  end
@@ -43,4 +40,5 @@ with tempfile.TemporaryDirectory() as folder:
     target = Path(folder) / 'cursors.luau'
     target.write_text(body)
     subprocess.run([args.luau, str(target)], check=True)
+assert 'Vector2.new((hotX or size / 2) / size, (hotY or size / 2) / size)' in lib
 print('PASS: original diagonal cursor RGBA, both orientations, native hotspots and unchanged side cursors')
