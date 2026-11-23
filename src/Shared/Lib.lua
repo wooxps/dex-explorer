@@ -186,13 +186,13 @@ local function CreateModule()
 		if not asset then
 			local fallback = {
 				Insert = "+",
-				History = "↶",
-				Options = "•••",
-				Previous = "‹",
-				Next = "›",
-				SelectAll = "□",
-				Refresh = "↻",
-				Sidebar = "‹",
+				History = "Ã¢â€ Â¶",
+				Options = "Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢",
+				Previous = "Ã¢â‚¬Â¹",
+				Next = "Ã¢â‚¬Âº",
+				SelectAll = "Ã¢â€“Â¡",
+				Refresh = "Ã¢â€ Â»",
+				Sidebar = "Ã¢â‚¬Â¹",
 			}
 			button.Text = fallback[kind] or ""
 			return
@@ -256,7 +256,7 @@ local function CreateModule()
 			if icon then
 				icon.Visible = false
 			end
-			button.Text = (hidden ~= rightSide) and "›" or "‹"
+			button.Text = (hidden ~= rightSide) and "Ã¢â‚¬Âº" or "Ã¢â‚¬Â¹"
 			return
 		end
 		if not icon then
@@ -5932,6 +5932,98 @@ local function CreateModule()
 		return { new = new }
 	end)()
 
+	function Lib.NumberEnd(text, start)
+		local prefix = text:sub(start, start + 1):lower()
+		if prefix == "0x" or prefix == "0b" then
+			local digits = if prefix == "0x" then "^%x[%x_]*" else "^[01][01_]*"
+			local _, last = text:find(digits, start + 2)
+			return last or start
+		end
+		local _, last = text:find("^%d[%d_]*", start)
+		last = last or start - 1
+		if text:sub(last + 1, last + 1) == "." and text:sub(last + 2, last + 2) ~= "." then
+			last += 1
+			local _, fraction = text:find("^%d[%d_]*", last + 1)
+			last = fraction or last
+		end
+		local _, exponent = text:find("^[eE][+-]?%d[%d_]*", last + 1)
+		return exponent or last
+	end
+
+	function Lib.LexLine(text, hasNext, stack, closer)
+		stack = stack or ""
+		local spans
+		local function mark(start, kind, last)
+			if last < start then return end
+			spans = spans or {}
+			spans[start] = {kind, last}
+		end
+		local i = 1
+		while i <= #text do
+			local mode = stack:sub(-1)
+			if mode == "L" or mode == "C" then
+				local _, last = text:find(closer, i, true)
+				mark(i, if mode == "L" then 3 else 4, last or #text)
+				if not last then break end
+				stack, closer, i = stack:sub(1,-2), nil, last + 1
+			elseif mode == "T" or mode == "'" or mode == '"' then
+				local start = i
+				local delimiter = if mode == "T" then "`" else mode
+				local escapedNewline = false
+				while i <= #text do
+					local c = text:sub(i,i)
+					if c == "\\" then
+						escapedNewline = i == #text
+						i += 2
+					elseif c == delimiter then
+						stack = stack:sub(1,-2)
+						i += 1
+						break
+					elseif mode == "T" and c == "{" then
+						break
+					else
+						i += 1
+					end
+				end
+				mark(start, if mode == "T" then 18 elseif mode == "'" then 2 else 1, math.min(i-1,#text))
+				if mode == "T" and stack:sub(-1) == "T" and text:sub(i,i) == "{" then
+					mark(i,5,i)
+					stack ..= "{"
+					i += 1
+				elseif mode ~= "T" and stack:sub(-1) == mode and not escapedNewline then
+					stack = stack:sub(1,-2)
+				end
+			else
+				local pos = text:find(if stack == "" then "[\"'`%[%-]" else "[\"'`%[%-%{%}]", i)
+				if not pos then break end
+				i = pos
+				local ch = text:sub(i,i)
+				local comment = text:sub(i,i+1) == "--"
+				local opening = if comment then i+2 else i
+				local _, last, equals = text:find("^%[(=*)%[", opening)
+				if last then
+					stack ..= if comment then "C" else "L"
+					closer = "]"..equals.."]"
+					mark(i, if comment then 4 else 3, last)
+					i = last + 1
+				elseif comment then
+					mark(i,4,#text)
+					break
+				elseif ch == "'" or ch == '"' or ch == "`" then
+					stack ..= if ch == "`" then "T" else ch
+					mark(i, if ch == "`" then 18 elseif ch == "'" then 2 else 1, i)
+					i += 1
+					if i > #text and ch ~= "`" then stack = stack:sub(1,-2) end
+				else
+					if ch == "{" then stack ..= "{"
+					elseif ch == "}" then stack = stack:sub(1,-2) mark(i,5,i) end
+					i += 1
+				end
+			end
+		end
+		return spans, if hasNext and stack ~= "" then stack else nil, if hasNext then closer else nil
+	end
+
 	Lib.CodeFrame = (function()
 		local funcs = {}
 
@@ -5968,6 +6060,7 @@ local function CreateModule()
 		local keywords = {
 			["and"] = true,
 			["break"] = true,
+			["continue"] = true,
 			["do"] = true,
 			["else"] = true,
 			["elseif"] = true,
@@ -6992,65 +7085,8 @@ local function CreateModule()
 			end
 		end
 
-		local function lexLine(line, hasNext, activeType, activeCloser)
-			local text = if line:find("\\\\", 1, true) then line:gsub("\\\\", "  ") else line
-			local cursor = 1
-			local spans
-
-			while cursor <= #text or activeType do
-				local position, kind, closer, first
-				if activeType then
-					position, kind, closer, first = 0, activeType, activeCloser, 1
-					activeType, activeCloser = nil, nil
-				else
-					position = text:find("[\"'`%[%-]", cursor)
-					if not position then
-						break
-					end
-					local char = text:sub(position, position)
-					local comment = char == "-" and text:sub(position + 1, position + 1) == "-"
-					local opening = comment and position + 2 or position
-					local equals = (comment or char == "[") and text:match("^%[(=*)%[", opening)
-					if equals then
-						kind = comment and 4 or 3
-						closer = "]" .. equals .. "]"
-						first = opening + 1
-					elseif comment then
-						kind = 4
-					elseif char == "[" or char == "-" then
-						cursor = position + 1
-						continue
-					else
-						kind = if char == '"' then 1 elseif char == "'" then 2 else 18
-						closer = char
-						first = position + 1
-					end
-				end
-
-				local ending = #text
-				if closer then
-					local start, finish = text:find(closer, first, true)
-					if kind == 1 or kind == 2 or kind == 18 then
-						while start and text:sub(start - 1, start - 1) == "\\" do
-							start, finish = text:find(closer, finish + 1, true)
-						end
-					end
-					if finish then
-						ending = finish
-					elseif kind ~= 1 and kind ~= 2 and hasNext then
-						activeType, activeCloser = kind, closer
-					end
-				end
-				if ending >= 1 then
-					spans = spans or {}
-					spans[position] = { kind, ending }
-				end
-				if activeType then
-					break
-				end
-				cursor = ending + 1
-			end
-			return spans, activeType, activeCloser
+		local function lexLine(...)
+			return Lib.LexLine(...)
 		end
 
 		funcs.PreHighlight = function(self, changedRow)
@@ -7155,48 +7191,35 @@ local function CreateModule()
 						else
 							currentType = nil
 						end
+					elseif find(char, "%d") or (char == "." and find(sub(lineText,col+1,col+1), "%d")) then
+						currentType = 6
+						lastEnding = Lib.NumberEnd(lineText,col)
+						highlights[col] = 6
+						wordBeginsDotted, lastWord, funcStatus = false, nil, 0
 					elseif find(char, "%p") then
 						local isDot = (char == ".")
-						local isNum = isDot and find(sub(lineText, col + 1, col + 1), "%d")
-						highlights[col] = (isNum and 6 or 5)
-
-						if not isNum then
-							local dotStr = isDot and match(lineText, "%.%.?%.?", col)
-							if dotStr and #dotStr > 1 then
-								currentType = 5
-								lastEnding = col + #dotStr - 1
+						highlights[col] = 5
+						local dotStr = isDot and match(lineText, "%.%.?%.?", col)
+						if dotStr and #dotStr > 1 then
+							currentType = 5
+							lastEnding = col + #dotStr - 1
+							wordBeginsDotted = false
+							lastWord = nil
+							funcStatus = 0
+						else
+							if isDot then
+								if wordBeginsDotted then
+									lastWord = nil
+								else
+									wordBeginsDotted = true
+								end
+							else
 								wordBeginsDotted = false
 								lastWord = nil
-								funcStatus = 0
-							else
-								if isDot then
-									if wordBeginsDotted then
-										lastWord = nil
-									else
-										wordBeginsDotted = true
-									end
-								else
-									wordBeginsDotted = false
-									lastWord = nil
-								end
-
-								funcStatus = ((isDot or char == ":") and funcStatus == 1 and 2) or 0
 							end
+
+							funcStatus = ((isDot or char == ":") and funcStatus == 1 and 2) or 0
 						end
-					elseif find(char, "%d") then
-						local _, endPos = find(lineText, "%x+", col)
-						local endPart = sub(lineText, endPos, endPos + 1)
-						if
-							(endPart == "e+" or endPart == "e-") and find(sub(lineText, endPos + 2, endPos + 2), "%d")
-						then
-							endPos = endPos + 1
-						end
-						currentType = 6
-						lastEnding = endPos
-						highlights[col] = 6
-						wordBeginsDotted = false
-						lastWord = nil
-						funcStatus = 0
 					else
 						highlights[col] = currentType
 						local _, endPos = find(lineText, "%s+", col)
@@ -10328,7 +10351,7 @@ local function CreateModule()
 					picking = nil
 					return
 				end
-				pickScreen.Text = "Click an object · Esc to cancel"
+				pickScreen.Text = "Click an object Ã‚Â· Esc to cancel"
 				picking = user.InputBegan:Connect(function(input)
 					if
 						input.KeyCode == Enum.KeyCode.Escape

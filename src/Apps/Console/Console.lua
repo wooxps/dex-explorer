@@ -16,6 +16,8 @@ local function createHighlighter()
 		lua = {
 			"and",
 			"break",
+			"continue",
+			"not",
 			"or",
 			"else",
 			"elseif",
@@ -75,7 +77,6 @@ local function createHighlighter()
 			"Rect",
 			"TweenInfo",
 			"collectgarbage",
-			"not",
 			"utf8",
 			"pcall",
 			"xpcall",
@@ -341,70 +342,41 @@ local function createHighlighter()
 
 	function highlighter.run(source)
 		local tokens = {}
-		local currentToken = ""
-
-		local inString = false
-		local inComment = false
-		local commentPersist = false
-
-		for i = 1, #source do
-			local character = source:sub(i, i)
-
-			if inComment then
-				if character == "\n" and not commentPersist then
-					table.insert(tokens, currentToken)
-					table.insert(tokens, character)
-					currentToken = ""
-
-					inComment = false
-				elseif source:sub(i - 1, i) == "]]" and commentPersist then
-					currentToken ..= "]"
-
-					table.insert(tokens, currentToken)
-					currentToken = ""
-
-					inComment = false
-					commentPersist = false
-				else
-					currentToken = currentToken .. character
+		local styles = {}
+		local stack, closer
+		local lines = source:split("\n")
+		for row, line in ipairs(lines) do
+			local spans
+			spans, stack, closer = Lib.LexLine(line, row < #lines, stack, closer)
+			local i = 1
+			while i <= #line do
+				local span = spans and spans[i]
+				local char = line:sub(i,i)
+				local last, style = i, nil
+				if span then
+					last = span[2]
+					style = if span[1] == 4 then colors.comment elseif span[1] == 5 then colors.operator else colors.str
+				elseif char:match("%d") or (char == "." and line:sub(i+1,i+1):match("%d")) then
+					last = Lib.NumberEnd(line,i)
+					style = colors.numbers
+				elseif char:match("[%a_]") then
+					local _, wordEnd = line:find("^[%w_]+", i)
+					last = wordEnd
+				elseif line:sub(i,i+1) == ".." then
+					last = if line:sub(i,i+2) == "..." then i+2 else i+1
+					style = colors.operator
 				end
-			elseif inString then
-				if character == inString and source:sub(i - 1, i - 1) ~= "\\" or character == "\n" then
-					currentToken = currentToken .. character
-					inString = false
-				else
-					currentToken = currentToken .. character
-				end
-			else
-				if source:sub(i, i + 1) == "--" then
-					table.insert(tokens, currentToken)
-					currentToken = "-"
-					inComment = true
-					commentPersist = source:sub(i + 2, i + 3) == "[["
-				elseif character == '"' or character == "'" then
-					table.insert(tokens, currentToken)
-					currentToken = character
-					inString = character
-				elseif operatorsSet[character] then
-					table.insert(tokens, currentToken)
-					table.insert(tokens, character)
-					currentToken = ""
-				elseif character:match("[%w_]") then
-					currentToken = currentToken .. character
-				else
-					table.insert(tokens, currentToken)
-					table.insert(tokens, character)
-					currentToken = ""
-				end
+				table.insert(tokens,line:sub(i,last))
+				styles[#tokens] = style
+				i = last + 1
 			end
+			if row < #lines then table.insert(tokens,"\n") end
 		end
-
-		table.insert(tokens, currentToken)
 
 		local highlighted = {}
 
 		for i, token in ipairs(tokens) do
-			local highlight = getHighlight(tokens, i)
+			local highlight = styles[i] or getHighlight(tokens, i)
 
 			if highlight then
 				local syntax = string.format('<font color = "#%s">%s</font>', highlight:ToHex(), escapeRichText(token))
@@ -556,7 +528,7 @@ local function CreateModule()
 	local options = button(
 		toolbar,
 		"Options",
-		"ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦",
+		"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦",
 		UDim2.new(1, -30, 0, 5),
 		UDim2.fromOffset(24, 22),
 		"native/plugins/more",

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "1b227a22fb7d38bcfeb7",
+  "release": "325d09d1b906a7f2933f",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -350,9 +350,9 @@
       "sha256": "c2b503f74732e150b8a3f3546ad13a935e712832096e492e00d364ef9837cb3f"
     },
     "src/Apps/Console/Console.lua": {
-      "bytes": 24424,
-      "checksum": 1413347832,
-      "sha256": "22960acfb59515d900fd2f1e92a088e6a1d262e0658d36108a096e61a1564541"
+      "bytes": 23974,
+      "checksum": 3810826735,
+      "sha256": "0f27809b3f6f5d4af69f33ede9d3dbfa803a517da7e9ac32e7e7765ba18f836b"
     },
     "src/Apps/Explorer/Components/BoxSelectIndicator.lua": {
       "bytes": 984,
@@ -995,9 +995,9 @@
       "sha256": "edae32f0d5de0f6399aaa790b64374d99c1874e3e435481175faae47ef83aec2"
     },
     "src/Shared/Lib.lua": {
-      "bytes": 342833,
-      "checksum": 769396897,
-      "sha256": "6f0de08e2fe77b32058c810b857412c745f4a2a807980ba990337356fc8f7a3d"
+      "bytes": 343867,
+      "checksum": 3933696248,
+      "sha256": "5c14d0be890f47d8e6b31113c84928283e0bbeb4de34e27eca8d5a08cb7949d1"
     },
     "src/Shared/LoadingSplash.lua": {
       "bytes": 9155,

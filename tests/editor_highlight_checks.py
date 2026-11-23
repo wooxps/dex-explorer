@@ -5,7 +5,7 @@ root=Path(__file__).resolve().parents[1]
 source=(root/'src/Shared/Lib.lua').read_text()
 start=source.index('\t\tlocal function lexLine(')
 end=source.index('\n\t\tfuncs.HighlightLine =',start)
-program='local funcs={} local tick=os.clock\n'+source[start:end]+'''
+program='local Lib={} local funcs={} local tick=os.clock\n'+source[source.index('\tfunction Lib.NumberEnd'):source.index('\tLib.CodeFrame =')]+source[start:end]+'''
 local function highlight(text)
  local cf={Lines=text:split("\\n")}
  funcs.PreHighlight(cf)
@@ -13,6 +13,15 @@ local function highlight(text)
 end
 local h=highlight("warn(`couldn't register {result}`)\\nlocal after = true")
 assert(h[1] and not h[2],"apostrophe in backticks must not color subsequent code")
+local line = "`Score: {score + {bonus=3}.bonus}!`"
+local interp=highlight(line)[1]
+assert(interp[1][1]==18 and interp[9][1]==5 and not interp[10] and interp[#line-1][1]==18)
+local nested=highlight("`{`inner {value}`} tail`")[1]
+assert(nested[3][1]==18 and nested[10][1]==5 and not nested[11])
+for _, literal in {"3.14",".25","1e-3","2E+5","0b1010_0101","0xFF_A0"} do
+ assert(Lib.NumberEnd(literal.." + 2",1)==#literal)
+end
+assert(Lib.NumberEnd("1..2",1)==1)
 local h2=highlight('local a = "unfinished\\nlocal b = true')
 assert(h2[1] and not h2[2],"unfinished short strings recover at newline")
 local h3=highlight("local a = [=[multiline\\ntext]=]\\nlocal b=true")
@@ -40,7 +49,7 @@ assert(cf.ColoredLines[2] == nil, "different raw text invalidates colors even wh
 local edit={Lines={"local prefix = 1","local middle = 2","return 'tail'"},ColoredLines={}}
 funcs.PreHighlight(edit)
 for _,row in ipairs({ 2, 3, 1 }) do
- edit.Lines[row]..=" -- é"
+ edit.Lines[row]..=" -- ÃƒÂ©"
  funcs.PreHighlight(edit,row)
  same(edit.PreHighlights,highlight(table.concat(edit.Lines,"\\n")))
 end

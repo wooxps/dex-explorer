@@ -185,7 +185,7 @@ def main():
         '__MODULES__': '\n'.join(modules),
         '__OLD_SEARCH__': section(explorer, 'local function defaultSearch(root)', '\n\t\t\tif Main.Elevated'),
         '__OLD_COLORS__': section(old_lib, 'funcs.MapNewLines =', '\n\t\tfuncs.HighlightLine ='),
-        '__NEW_COLORS__': section(new_lib, 'local function lexLine(', '\n\t\tfuncs.HighlightLine ='),
+        '__NEW_COLORS__': 'local Lib={}\n' + section(new_lib, 'function Lib.NumberEnd', '\tLib.CodeFrame =') + section(new_lib, 'local function lexLine(', '\n\t\tfuncs.HighlightLine ='),
         '__RUNS__': str(args.runs),
     }
     source = DRIVER
