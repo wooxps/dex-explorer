@@ -663,6 +663,87 @@ local function Main()
 		return literalView(layout, terms, context, checkpoint, positions, top, matches:Prepare(checkpoint), included:Prepare(checkpoint), width, depth, widthRevision)
 	end
 
+	function Results.CanRefine(view, terms)
+		return terms and view.FilteredTerms and impliesTerms(terms, view.FilteredTerms)
+	end
+
+	function Results.TrySelectiveCold(roots, terms, context, checkpoint, visited)
+		local children, visibility = {}, {}
+		local readName = context.PeekName or context.Name
+		local scanned, retained = 0, 0
+		local broad = false
+		local first = terms[1]
+		local lastName, lastHit
+		local function matches(name)
+			if name == lastName then return lastHit end
+			lastName = name
+			local lower = string.lower(name)
+			lastHit = string.find(lower, first, 1, true) ~= nil
+			if lastHit then
+				for i = 2, #terms do
+					if not string.find(lower, terms[i], 1, true) then
+						lastHit = false
+						break
+					end
+				end
+			end
+			return lastHit
+		end
+		local function scan(parent)
+			local kept
+			local items = table.move(parent, 1, #parent, 1, table.create(#parent))
+			for _, node in ipairs(items) do
+				if node.Del or node.Parent ~= parent then continue end
+				if parent == roots[1] and context.VisibleOnly then
+					local shown = context.Visible(node)
+					visibility[node] = shown
+					if not shown then continue end
+				end
+				scanned += 1
+				if scanned % 128 == 0 then checkpoint() end
+				if visited then visited[node] = true end
+				local hit = matches(readName(node))
+				if #node > 0 then
+					scan(node)
+					if broad then return end
+				end
+				if hit or children[node] then
+					kept = kept or {}
+					kept[#kept + 1] = node
+					retained += 1
+					if retained > 4096 or (scanned <= 1024 and retained >= 64 and retained * 4 > scanned) then
+						broad = true
+						return
+					end
+				end
+			end
+			children[parent] = kept
+		end
+		scan(roots[1])
+		if not broad and roots[2] then
+			if visited then visited[roots[2]] = true end
+			scan(roots[2])
+		end
+		checkpoint()
+		if broad then return nil end
+		local projected = table.clone(context)
+		local empty = {}
+		projected.Estimate = retained + 1
+		projected.Children = function(parent, check)
+			local kept = children[parent]
+			if not kept then return empty end
+			if #kept > 1 then return context.OrderMatches(parent, kept, check) end
+			return kept
+		end
+		local result = Results.CreateCold(roots, terms, projected, checkpoint)
+		projected.Children = nil
+		result.FilteredLayout = result.ColdLayout
+		result.FilteredLayout.RootVisibility = visibility
+		result.FilteredTerms = terms
+		result.ColdLayout = nil
+		return result
+	end
+
 	function Results.CreateCold(roots, terms, context, checkpoint, layout, visited)
 		local widthRevision = context.WidthRevision and context.WidthRevision()
 		if context.VisibleOnly and (not layout or not layout.RootVisibility or not Results.MatchesVisibility(layout, context.Visible)) then

@@ -529,20 +529,20 @@ do
 	outside.Name = "OutsideMarker"
 	Explorer.SyncHistoryObject(host)
 	Explorer.SyncHistoryObject(outside)
-	local original = Apps.SearchResults.CreateCold
+	local original = Apps.SearchResults.TrySelectiveCold
 	local entered = false
 	local fallbacks = Explorer.SearchFallbacks
-	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, layout, visited)
+	Apps.SearchResults.TrySelectiveCold = function(roots, terms, context, checkpoint, visited)
 		local trial = table.clone(context)
-		trial.Children = function(node, check)
+		trial.PeekName = function(node)
 			if not entered and visited and next(visited) and not visited[nodes[host]] then
 				entered = true
 				children[1].Name = "EarlyBranchEdit"
 				game.ItemChanged:Fire(children[1], "Name")
 			end
-			return context.Children(node, check)
+			return context.PeekName(node)
 		end
-		return original(roots, terms, trial, checkpoint, layout, visited)
+		return original(roots, terms, trial, checkpoint, visited)
 	end
 	assert(Explorer.DoSearch("earlybranchedit") and entered and #Explorer.MatchList == 1)
 	assert(Explorer.Matches[nodes[children[1]]] and Explorer.SearchFallbacks == fallbacks)
@@ -550,18 +550,18 @@ do
 	children[1].Name = "FallbackNeedle001"
 	game.ItemChanged:Fire(children[1], "Name")
 	local scans, changed = 0, false
-	Apps.SearchResults.CreateCold = function(roots, terms, context, checkpoint, layout, visited)
+	Apps.SearchResults.TrySelectiveCold = function(roots, terms, context, checkpoint, visited)
 		scans += 1
 		local trial = table.clone(context)
-		trial.Name = function(node)
+		trial.PeekName = function(node)
 			if not changed and node == nodes[host] then
 				changed = true
 				children[1].Name = "FallbackNeedleRenamed"
 				game.ItemChanged:Fire(children[1], "Name")
 			end
-			return context.Name(node)
+			return context.PeekName(node)
 		end
-		return original(roots, terms, trial, checkpoint, layout, visited)
+		return original(roots, terms, trial, checkpoint, visited)
 	end
 	task.wait = function() return 0 end
 	assert(Explorer.DoSearch("fallbackneedle") and changed and scans == 1, "a changing game does not repeat the failed cold scan")
@@ -573,7 +573,7 @@ do
 	assert(Explorer.DoSearch("fallbackneedle00") and #Explorer.MatchList == 8 and scans == 1, "the next query skips another doomed scan without losing matches")
 	assert(Explorer.DoSearch("outsidemarker") and Explorer.Matches[nodes[outside]], "query replacement keeps complete game coverage")
 	assert(Explorer.DoSearch("no such marker anywhere") and #Explorer.MatchList == 0, "empty fallback is valid")
-	Apps.SearchResults.CreateCold = original
+	Apps.SearchResults.TrySelectiveCold = original
 	task.wait = previousWait
 	Explorer.InitialObjectCount = previousSize
 	Explorer.ClearSearch()

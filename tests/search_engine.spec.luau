@@ -878,3 +878,33 @@ end).MatchList == 1)
 print(
 	"PASS: bitset boundaries/rank/select, substring/short/Unicode/overflow coverage, live broad-cache updates, 70000 virtual matches, bounded scrolling, snapshot isolation, delta rename/move/delete, predicate fallback and cancellation"
 )
+
+do
+	local root, detached = {}, { Obj = { Name = "needle" } }
+	local left, right, hidden = add(root, "Left"), add(root, "Right"), add(root, "Hidden")
+	for i = 1, 2048 do add(left, "Object" .. i) end
+	add(left, "Needle A")
+	add(right, "Needle B")
+	add(hidden, "Needle C")
+	add(detached, "Needle D")
+	local context = {
+		Name = function(node) return node.Obj.Name end, Children = function(node) return node end,
+		VisibleOnly = true, Visible = function(node) return node ~= hidden end,
+		OrderMatches = function(_, kept) return kept end,
+	}
+	local roots = { root, detached }
+	local function check() end
+	for _, terms in { { "needle" }, { "absent" }, { "needle", "a" } } do
+		local actual = assert(Apps.SearchResults.TrySelectiveCold(roots, terms, context, check))
+		local full = Apps.SearchResults.CreateCold(roots, terms, context, check)
+		assert(actual.ColdLayout == nil and actual.FilteredLayout)
+		assert(#actual.Rows == #full.Rows and #actual.MatchList == #full.MatchList)
+		assert(actual.Width == full.Width and actual.Depth == full.Depth)
+		for i = 1, #full.Rows do assert(actual.Rows[i] == full.Rows[i]) end
+		for i = 1, #full.MatchList do assert(actual.MatchList[i] == full.MatchList[i]) end
+		assert(Apps.SearchResults.CanRefine(actual, terms))
+		assert(not Apps.SearchResults.CanRefine(actual, { "object" }))
+		assert(not Apps.SearchResults.MatchesVisibility(actual.FilteredLayout, function() return true end))
+	end
+	assert(not Apps.SearchResults.TrySelectiveCold(roots, { "object" }, context, check))
+end

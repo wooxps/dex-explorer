@@ -1047,6 +1047,24 @@ local function CreateModule()
 		return items
 	end
 
+	local function orderedColdNames(items, check)
+		local previous = items[1]
+		local class = previous.Class or previous.Obj.ClassName
+		local name = coldName(previous)
+		if previous.ManualOrder then return false end
+		for i = 2, #items do
+			local node = items[i]
+			if node.ManualOrder or (node.Class or node.Obj.ClassName) ~= class then return false end
+			local nextName = coldName(node)
+			if nextName < name or (nextName == name and (not previous.Id or not node.Id or previous.Id >= node.Id)) then
+				return false
+			end
+			previous, name = node, nextName
+			if i % 128 == 0 then check() end
+		end
+		return true
+	end
+
 	local function sortColdNames(items, check, sameOrder)
 		local class = items[1].Class or items[1].Obj.ClassName
 		local names, byName = table.create(#items), {}
@@ -1224,7 +1242,7 @@ local function CreateModule()
 		local names = {}
 		local less = Explorer.NodeSorter
 		if less == defaultNodeSorter then
-			if #items > 512 and sortColdNames(items, check) then
+			if #items > 512 and (orderedColdNames(items, check) or sortColdNames(items, check)) then
 				return remember(items)
 			end
 			less = function(a, b)
@@ -2511,7 +2529,7 @@ local function CreateModule()
 		end
 		if searchView.Cold then
 			return searchView.TreeVersion ~= searchTreeVersion
-				or not Apps.SearchResults.MatchesVisibility(searchView.ColdLayout, characterSearch.Context.Visible)
+				or not Apps.SearchResults.MatchesVisibility(searchView.FilteredLayout or searchView.ColdLayout, characterSearch.Context.Visible)
 		end
 		return searchEngine:HasChanges() or searchView.State ~= searchEngine.Snapshots.State
 	end
@@ -5099,7 +5117,28 @@ return search]==]
 	end
 	characterSearch.Context = {
 		Name = coldName,
+		PeekName = function(node) return node.SearchRawName or node.Obj.Name end,
 		Children = coldChildren,
+		OrderMatches = function(parent, kept, check)
+			if not sortingEnabled or parent.Sorted then return kept end
+			local names, seen = {}, {}
+			for _, node in ipairs(kept) do
+				local name = coldName(node)
+				if seen[name] then
+					local wanted, ordered = {}, {}
+					for _, item in ipairs(kept) do wanted[item] = true end
+					for i, item in ipairs(coldChildren(parent, check)) do
+						if wanted[item] then ordered[#ordered + 1] = item end
+						if i % 128 == 0 then check() end
+					end
+					return ordered
+				end
+				names[node], seen[name] = name, true
+			end
+			return sortColdItems(kept, function(a, b)
+				return compareNodes(a, b, names, true)
+			end, check)
+		end,
 		VisibleOnly = true,
 		Object = Apps.SearchQuery.Object,
 		WidthRevision = function() return characterSearch.WidthRevision end,
@@ -5416,13 +5455,20 @@ return search]==]
 		local refreshing = searchView ~= nil and Explorer.Query == query
 		local layout = searchView and searchView.TreeVersion == searchTreeVersion and searchView.ColdLayout
 			or characterSearch.Ready(nilRoot)
+		local filteredLayout, filteredTerms
+		if not layout and searchView and searchView.TreeVersion == searchTreeVersion
+			and Apps.SearchResults.CanRefine(searchView, terms) then
+			layout = searchView.FilteredLayout
+			filteredLayout, filteredTerms = layout, searchView.FilteredTerms
+		end
 		if layout and layout.NilRoot ~= nilRoot then
 			layout = nil
 		end
 		if layout and not Apps.SearchResults.MatchesVisibility(layout, characterSearch.Context.Visible) then
 			layout = nil
 		end
-		if terms and layout and Explorer.Query == query then
+		if terms and layout and refreshing and searchView.TreeVersion == searchTreeVersion
+			and Apps.SearchResults.MatchesVisibility(searchView.FilteredLayout or searchView.ColdLayout, characterSearch.Context.Visible) then
 			Explorer.SetSearchBusy(false, query)
 			Explorer.Update()
 			Explorer.Refresh()
@@ -5596,7 +5642,19 @@ return search]==]
 				end
 				local context = characterSearch.Context
 				context.Estimate = Explorer.InitialObjectCount
-				local ok, view = pcall(Apps.SearchResults.CreateCold, roots, terms, context, checkpoint, layout, visited)
+				local ok, view = pcall(function()
+					if not layout and visited and #terms[1] > 1 then
+						local selective = Apps.SearchResults.TrySelectiveCold(roots, terms, context, checkpoint, visited)
+						if selective then return selective end
+						table.clear(visited)
+					end
+					local result = Apps.SearchResults.CreateCold(roots, terms, context, checkpoint, layout, visited)
+					if filteredLayout and result.ColdLayout == filteredLayout then
+						result.FilteredLayout, result.FilteredTerms = layout, filteredTerms
+						result.ColdLayout = nil
+					end
+					return result
+				end)
 				if characterSearch.ColdScan == scan then characterSearch.ColdScan = nil end
 				if characterSearch.RemovedNodes == removed then
 					characterSearch.RemovedNodes = nil
