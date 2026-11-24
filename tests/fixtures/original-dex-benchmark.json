@@ -1,14 +1,14 @@
 {
   "originalDexCommit": "d6286cf27c77af749ad515d517d2500330f63ff2",
-  "dexExplorerCommit": "e67653ff44aff44532f600347569d25a79bfcf09",
+  "dexExplorerCommit": "5fb4b5ed5d1c8eb174afdf59f0163519c501d8c0",
   "sourceSha256": {
-    "src/Apps/Explorer/Services/SearchBits.lua": "22f7b45e7d27d5e9d8cf60adb76017c8dbcab66125e04f9d9655ac6bc78e8e53",
-    "src/Apps/Explorer/Services/SearchPostings.lua": "6da4f20218f456ed9df7e52955b32da2f905a3a7e587199e97033f2a5919820a",
-    "src/Apps/Explorer/Services/SearchSnapshot.lua": "0a58c69cb83658e2a73fb54d99b7dfa4b0340f618fc87b7140629192ac12b735",
-    "src/Apps/Explorer/Services/SearchResults.lua": "69fd7bc41c216b38c1d057fc8924011212f3adec9b5802e89c2daf2afc3796bd",
-    "src/Apps/Explorer/Services/SearchTreeResults.lua": "b8db923b2bd3301ce540b57ef68fa6a95c305519049c3ea09f8bd0f0a8f1608f",
+    "src/Apps/Explorer/Services/SearchBits.lua": "b57856d5a7036b6d41c4a493cb55832c3d90353ee8c3406806785569228c5473",
+    "src/Apps/Explorer/Services/SearchPostings.lua": "91a8b440884fc07380d15c7133a4906767c58616c614e7c84bb057c65b604dd5",
+    "src/Apps/Explorer/Services/SearchSnapshot.lua": "c0a712cbf774c7d6c2308717c65556df688d65edba2f945affacfe9ce223d877",
+    "src/Apps/Explorer/Services/SearchResults.lua": "8dbf89b5cedc52a3200e4a115f689d54fcd16c63e0806b32981df3944f57a477",
+    "src/Apps/Explorer/Services/SearchTreeResults.lua": "a5633ed0063c65b728cb45e58162999ccfb42c6f5d093f3d3b61efe15fdb2af4",
     "src/Apps/Explorer/Services/ExplorerSearch.lua": "cd6d04ace7489cfda9b2212a83d86dd24ce87f3137bd1b8b2147fa38a7bcb9f6",
-    "src/Shared/Lib.lua": "cc4b03c3bb6724998b14b15e7d749adc4f2e04da8f412236d463458fa0ec1470"
+    "src/Shared/Lib.lua": "fbe4149b880516cc57b58dc7bbbf63f8da2db84fa6c5a0054bbbf86733a1e25d"
   },
   "runs": 9,
   "measurement": "Luau CLI elapsed time for isolated search and syntax-coloring functions",
@@ -42,99 +42,93 @@
   },
   "measurements": {
     "originalSearch": {
-      "medianMs": 44.847099984,
+      "medianMs": 42.92710009,
       "samplesMs": [
-        39.926400001,
-        40.899300016,
-        41.695400025,
-        44.847099984,
-        40.119300014,
-        49.956700008,
-        79.094099987,
-        48.170999973,
-        54.543200007
+        40.769699961,
+        44.183599995,
+        36.679200013,
+        38.269700017,
+        36.44419997,
+        42.92710009,
+        52.540299948,
+        47.341799946,
+        47.383100027
       ]
     },
     "currentSearch": {
-      "medianMs": 23.312300036,
+      "medianMs": 1.75340008,
       "samplesMs": [
-        23.312300036,
-        20.066099998,
-        22.716099978,
-        18.126300012,
-        20.350900013,
-        25.311300007,
-        40.122200036,
-        29.987699992,
-        31.141599989
+        4.891399993,
+        1.75340008,
+        1.645900076,
+        1.611699932,
+        1.618799986,
+        1.744700014,
+        2.501900075,
+        2.330100047,
+        2.790100058
       ]
     },
     "originalRepeat": {
-      "medianMs": 77.141066664,
+      "medianMs": 64.920533332,
       "samplesMs": [
-        65.925333338,
-        62.629599997,
-        58.127266665,
-        58.456900006,
-        81.40096666,
-        98.002800019,
-        101.198266668,
-        86.778199979,
-        77.141066664
+        64.920533332,
+        60.140266743,
+        55.916233337,
+        57.130033267,
+        59.636866674,
+        75.244133322,
+        73.021600023,
+        73.726099993,
+        98.56579996
       ]
     },
     "currentRepeat": {
-      "medianMs": 0.018616999,
+      "medianMs": 0.0179075,
       "samplesMs": [
-        0.011270501,
-        0.015145,
-        0.015177999,
-        0.017592499,
-        0.018616999,
-        0.0221055,
-        0.025788501,
-        0.0305165,
-        0.020124
+        0.0120525,
+        0.015771499,
+        0.011837999,
+        0.0179075,
+        0.010755499,
+        0.020466,
+        0.0181025,
+        0.029648,
+        0.029880001
       ]
     },
     "originalColors": {
-      "medianMs": 20.753160003,
+      "medianMs": 19.252379995,
       "samplesMs": [
-        17.917699995,
-        17.793929996,
-        19.128109998,
-        19.184890005,
-        20.753160003,
-        21.293909999,
-        33.4989,
-        30.084559997,
-        30.773990002
+        17.050719995,
+        18.050170003,
+        17.726759997,
+        19.252379995,
+        18.676730001,
+        24.375139992,
+        25.16363,
+        24.886030005,
+        29.367089993
       ]
     },
     "currentColors": {
-      "medianMs": 0.003900001,
+      "medianMs": 0.003929995,
       "samplesMs": [
-        0.002889999,
-        0.003900001,
-        0.003180001,
-        0.004320004,
-        0.00384,
-        0.004280003,
-        0.005230005,
         0.003610004,
-        0.003960001
+        0.003869995,
+        0.003430003,
+        0.005240005,
+        0.003589992,
+        0.005939999,
+        0.003929995,
+        0.003979995,
+        0.004519999
       ]
     }
   },
   "speedup": {
-    "search": 1.9237526934169904,
-    "repeat": 4143.5822531869935,
-    "colors": 5321.321713250843
-  },
-  "environment": {
-    "cpu": "Intel Core i7-12700H",
-    "os": "Windows",
-    "timing": "os.clock",
-    "order": "alternating versions within one process"
+    "search": 24.48220493408441,
+    "repeat": 3625.32644601424,
+    "colors": 4898.830658817631
   }
 }
