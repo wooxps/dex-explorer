@@ -48,20 +48,20 @@ Also includes [Transform Tools](docs/USAGE.md#transform-tools), a [Console](docs
 
 ## Performance
 
-Compared with the [original Dex](https://github.com/LorekeeperZinnia/Dex):
+Dex Explorer timings are from the latest benchmark. Speedups compare them with the previously recorded [original Dex](https://github.com/LorekeeperZinnia/Dex) baseline.
 
 | Task | Original Dex | Dex Explorer | Improvement |
 | :--- | ---: | ---: | :--- |
-| Find objects by name among 70,000 objects | 42.93 ms | 1.75 ms | **24.5× faster** |
-| Repeat a search with 70,000 matches | 64.92 ms | 0.0179 ms | **3,625× faster** |
-| Update syntax colors after an edit in a 10,000 line script | 19.25 ms | 0.00393 ms | **4,899× faster** |
+| Find objects by name among 70,000 objects | 42.93 ms | 1.55 ms | **27.7× faster** |
+| Repeat a search with 70,000 matches | 64.92 ms | 0.0103 ms | **6,315× faster** |
+| Update syntax colors after an edit in a 10,000 line script | 19.25 ms | 0.00271 ms | **7,104× faster** |
 
 Local tests with simulated objects and the search index ready. Index setup and UI rendering are excluded.
 
 <details>
 <summary>Benchmark details</summary>
 
-Median of nine runs on an Intel Core i7-12700H, alternating both versions in the Luau CLI. The original Dex functions come from [d6286cf](https://github.com/LorekeeperZinnia/Dex/commit/d6286cf27c77af749ad515d517d2500330f63ff2).
+Each column reports the median of nine runs of the same Luau CLI benchmark on an Intel Core i7-12700H. The original Dex functions come from [d6286cf](https://github.com/LorekeeperZinnia/Dex/commit/d6286cf27c77af749ad515d517d2500330f63ff2).
 
 - **Name search:** a different search each run, with the same 70,000 simulated parts in both versions. Both return the same objects. Dex Explorer's initial index build is excluded.
 - **Repeat search:** an unchanged query returning all 70,000 parts. Dex Explorer reuses its previous results; original Dex scans again.

@@ -1,13 +1,13 @@
 {
   "originalDexCommit": "d6286cf27c77af749ad515d517d2500330f63ff2",
-  "dexExplorerCommit": "5fb4b5ed5d1c8eb174afdf59f0163519c501d8c0",
+  "dexExplorerCommit": "e54f7a45352b268a3062d2334735df1e53876f0c",
   "sourceSha256": {
-    "src/Apps/Explorer/Services/SearchBits.lua": "b57856d5a7036b6d41c4a493cb55832c3d90353ee8c3406806785569228c5473",
-    "src/Apps/Explorer/Services/SearchPostings.lua": "91a8b440884fc07380d15c7133a4906767c58616c614e7c84bb057c65b604dd5",
-    "src/Apps/Explorer/Services/SearchSnapshot.lua": "c0a712cbf774c7d6c2308717c65556df688d65edba2f945affacfe9ce223d877",
-    "src/Apps/Explorer/Services/SearchResults.lua": "8dbf89b5cedc52a3200e4a115f689d54fcd16c63e0806b32981df3944f57a477",
-    "src/Apps/Explorer/Services/SearchTreeResults.lua": "a5633ed0063c65b728cb45e58162999ccfb42c6f5d093f3d3b61efe15fdb2af4",
-    "src/Apps/Explorer/Services/ExplorerSearch.lua": "cd6d04ace7489cfda9b2212a83d86dd24ce87f3137bd1b8b2147fa38a7bcb9f6",
+    "src/Apps/Explorer/Services/SearchBits.lua": "7c82cbd2c86a24e0cafea929f8f1ecd4e31409861fc95e49b2d91cfee31ac42e",
+    "src/Apps/Explorer/Services/SearchPostings.lua": "db45cb87a47a42ad18eb8546e71204255ea7988d00283bf78d66e372008a15ba",
+    "src/Apps/Explorer/Services/SearchSnapshot.lua": "e34980277e606d32ef692fcba967230d7826fb865f108871e5c9bb1664811de5",
+    "src/Apps/Explorer/Services/SearchResults.lua": "de770e66ab1283a48b0645e0ea33ed46c2e096209958866371e33fddeeacd018",
+    "src/Apps/Explorer/Services/SearchTreeResults.lua": "8de62a70de0a1c0b7846a4d9c4ebac190cb0d894dd25e97ea341f6b9f888cf16",
+    "src/Apps/Explorer/Services/ExplorerSearch.lua": "9a91e4e712fb49985154389cb2b83f96bd74f6140e9a354328833c9a72f8c66b",
     "src/Shared/Lib.lua": "fbe4149b880516cc57b58dc7bbbf63f8da2db84fa6c5a0054bbbf86733a1e25d"
   },
   "runs": 9,
@@ -56,17 +56,17 @@
       ]
     },
     "currentSearch": {
-      "medianMs": 1.75340008,
+      "medianMs": 1.54940004,
       "samplesMs": [
-        4.891399993,
-        1.75340008,
-        1.645900076,
-        1.611699932,
-        1.618799986,
-        1.744700014,
-        2.501900075,
-        2.330100047,
-        2.790100058
+        1.390599995,
+        1.738800085,
+        1.710599987,
+        1.05099997,
+        1.54940004,
+        0.955500058,
+        1.612400054,
+        0.90460002,
+        2.812199993
       ]
     },
     "originalRepeat": {
@@ -84,17 +84,17 @@
       ]
     },
     "currentRepeat": {
-      "medianMs": 0.0179075,
+      "medianMs": 0.010280499,
       "samplesMs": [
-        0.0120525,
-        0.015771499,
-        0.011837999,
-        0.0179075,
-        0.010755499,
-        0.020466,
-        0.0181025,
-        0.029648,
-        0.029880001
+        0.011638,
+        0.012901501,
+        0.010280499,
+        0.010653,
+        0.0053225,
+        0.008565499,
+        0.007617499,
+        0.009190501,
+        0.029314001
       ]
     },
     "originalColors": {
@@ -112,23 +112,27 @@
       ]
     },
     "currentColors": {
-      "medianMs": 0.003929995,
+      "medianMs": 0.002709997,
       "samplesMs": [
-        0.003610004,
-        0.003869995,
-        0.003430003,
-        0.005240005,
-        0.003589992,
-        0.005939999,
-        0.003929995,
-        0.003979995,
-        0.004519999
+        0.002490007,
+        0.003400003,
+        0.002339995,
+        0.002709997,
+        0.002689997,
+        0.002770009,
+        0.002219994,
+        0.00301,
+        0.011600007
       ]
     }
   },
   "speedup": {
-    "search": 24.48220493408441,
-    "repeat": 3625.32644601424,
-    "colors": 4898.830658817631
+    "search": 27.705627327852657,
+    "repeat": 6314.920446176786,
+    "colors": 7104.207124583532
+  },
+  "benchmarkRunDexExplorerCommits": {
+    "originalDex": "5fb4b5ed5d1c8eb174afdf59f0163519c501d8c0",
+    "dexExplorer": "e54f7a45352b268a3062d2334735df1e53876f0c"
   }
 }
