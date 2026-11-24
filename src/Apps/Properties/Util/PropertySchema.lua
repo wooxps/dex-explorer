@@ -38,4 +38,4 @@ local function Main()
 	return PropertySchema
 end
 
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

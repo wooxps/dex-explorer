@@ -567,4 +567,4 @@ local function Main()
 	end
 	return Symbols
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

@@ -13,7 +13,7 @@ parts.append((root/'tests/bridge_client.spec.luau').read_text(encoding='utf-8'))
 parts.append("local copiedText, clipboardText\nlocal viewEnv={setclipboard=function(value) copiedText=value end,getclipboard=function() return clipboardText end}\n")
 for name in ['BridgeUI','BridgeConnectionView','BridgeSetupView','BridgeActivityView','BridgeCommandCatalog','BridgeCommandsView','AIBridge']:
     path=next((root/'src/Apps/AIBridge').rglob(name+'.lua'))
-    parts.append('do local control=(function()\n'+path.read_text(encoding='utf-8')+'\nend)()\ncontrol.InitDeps({Apps=Apps,Main=Main,Lib=Lib,Settings=Settings,service=service,env=viewEnv,createSimple=createSimple}) Apps.'+name+'=control.Main() end\n')
+    parts.append('do local control=(function()\n'+path.read_text(encoding='utf-8')+'\nend)()\nif control.InitDeps then control.InitDeps({Apps=Apps,Main=Main,Lib=Lib,Settings=Settings,service=service,env=viewEnv,createSimple=createSimple}) end Apps.'+name+'=control.Main() end\n')
 parts.append((root/'tests/bridge_ui.spec.luau').read_text(encoding='utf-8'))
 with tempfile.TemporaryDirectory(prefix='dex-bridge-client-') as folder:
     harness=Path(folder)/'bridge-client.luau'

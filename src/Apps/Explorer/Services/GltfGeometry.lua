@@ -230,6 +230,6 @@ function Geometry.ProjectFace(source, size, offset, decal, emit, layer, checkCan
 end
 
 return {
-	InitDeps = function(d) service = d.service end, InitAfterMain = function() end,
+	InitDeps = function(d) service = d.service end,
 	Main = function() return Geometry end,
 }

@@ -288,4 +288,4 @@ local function CreateModule()
 	return Output
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

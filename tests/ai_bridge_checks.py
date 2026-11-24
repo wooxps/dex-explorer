@@ -36,7 +36,7 @@ modules = [
 ]
 for name, path in modules:
     parts.append('do local control=(function()\n' + (root/path).read_text(encoding='utf-8') +
-                 '\nend)()\ncontrol.InitDeps({Apps=Apps,Main=Main,Lib=Lib,service=service,API=API,RMD=RMD,Settings=Settings}) Apps.' + name + '=control.Main() end\n')
+                 '\nend)()\nif control.InitDeps then control.InitDeps({Apps=Apps,Main=Main,Lib=Lib,service=service,API=API,RMD=RMD,Settings=Settings}) end Apps.' + name + '=control.Main() end\n')
 parts.append((root/'tests/ai_bridge.spec.luau').read_text(encoding='utf-8'))
 parts.append((root/'tests/ai_bridge_extras.spec.luau').read_text(encoding='utf-8'))
 parts.append((root/'tests/ai_bridge_remotes.spec.luau').read_text(encoding='utf-8'))

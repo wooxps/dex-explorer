@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='dex-optimization-') as folder:
         pieces = [(ROOT/'tests/roblox_mock.luau').read_text(), 'local Apps={}']
         for name, path in paths.items():
             source = subprocess.check_output(['git', 'show', args.baseline+':'+path], cwd=ROOT, text=True) if version=='before' else (ROOT/path).read_text()
-            pieces.append('do local control=(function()\n'+source+'\nend)() control.InitDeps({API=API,env={},Main=Main}) Apps.'+name+'=control.Main() end')
+            pieces.append('do local control=(function()\n'+source+'\nend)() if control.InitDeps then control.InitDeps({API=API,env={},Main=Main}) end Apps.'+name+'=control.Main() end')
         bootstrap = subprocess.check_output(['git','show',args.baseline+':src/Runtime/Bootstrap.luau'], cwd=ROOT,text=True) if version=='before' else (ROOT/'src/Runtime/Bootstrap.luau').read_text()
         pieces.append(bootstrap[bootstrap.index('local function checksum(data)'):bootstrap.index('if type(makefolder)')])
         pieces.append(fixture)

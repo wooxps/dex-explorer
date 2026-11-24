@@ -80,4 +80,4 @@ local function Main()
 	end
 	return Strings
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

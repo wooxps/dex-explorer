@@ -24,7 +24,7 @@ local apps={SearchNameIndex=indexControl.Main()}
 local control=(function()
 SOURCE
 end)()
-control.InitDeps({API={Classes={}},service={},Apps=apps})
+if control.InitDeps then control.InitDeps({API={Classes={}},service={},Apps=apps}) end
 local search=control.Main()
 local root={}
 for i=1,NODES do root[i]={Obj={Name="Part"..i},Parent=root} end

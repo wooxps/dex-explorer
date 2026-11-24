@@ -139,4 +139,4 @@ local function CreateModule()
 	end
 	return Bar
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

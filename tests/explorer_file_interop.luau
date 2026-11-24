@@ -8,7 +8,7 @@ local service, apps, env = {}, {}, {}
 local function loadModule(name)
 	local fn = require("@lune/luau").load(fs.readFile(base .. name .. ".lua"), {debugName=name, environment=globals, injectGlobals=true})
 	local control = fn()
-	control.InitDeps({service=service,Apps=apps,env=env})
+	if control.InitDeps then control.InitDeps({service=service,Apps=apps,env=env}) end
 	apps[name] = control.Main()
 end
 for _, name in {"GltfGeometry","GltfTerrain","GltfFacs","GltfTextures","GltfExporter","ObjExporter","ExplorerFileActions","LocalizationCsv"} do loadModule(name) end

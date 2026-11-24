@@ -64,4 +64,4 @@ local function Main()
 
 	return InstancePath
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

@@ -53,4 +53,4 @@ local function Main()
 	return Changes
 end
 
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

@@ -964,4 +964,4 @@ local function CreateModule()
 	return console
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

@@ -947,4 +947,4 @@ local function Main()
 	end
 	return Paths
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

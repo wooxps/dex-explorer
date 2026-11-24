@@ -9,8 +9,8 @@ for _, pair in ipairs({
 	{ "SearchTreeResults", require("../src/Apps/Explorer/Services/SearchTreeResults") },
 	{ "ExplorerSearch", require("../src/Apps/Explorer/Services/ExplorerSearch") },
 }) do
-	pair[2].InitDeps({ Apps = Apps })
-	Apps[pair[1]] = pair[2].Main()
+	if pair[2].InitDeps then pair[2].InitDeps({ Apps = Apps }) end
+	Apps[pair[1]] = if pair[1] == "SearchResults" then pair[2].Create(Apps.SearchBits) else pair[2].Main()
 end
 local Bits = Apps.SearchBits
 for _, size in ipairs({ 0, 1, 31, 32, 33, 63, 64, 65, 1001 }) do

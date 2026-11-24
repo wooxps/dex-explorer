@@ -96,4 +96,4 @@ local function Main()
 	end
 	return Service
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

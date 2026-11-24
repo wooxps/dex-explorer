@@ -1946,4 +1946,4 @@ local function CreateModule()
 	end
 	return Controller
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

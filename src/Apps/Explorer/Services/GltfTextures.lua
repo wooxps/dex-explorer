@@ -171,6 +171,6 @@ function Textures.Create(addImage, checkpoint)
 end
 
 return {
-	InitDeps = function(d) service = d.service end, InitAfterMain = function() end,
+	InitDeps = function(d) service = d.service end,
 	Main = function() return Textures end,
 }

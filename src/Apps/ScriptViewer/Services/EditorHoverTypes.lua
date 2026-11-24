@@ -1369,4 +1369,4 @@ local function Main()
 	return Types
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

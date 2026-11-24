@@ -339,7 +339,7 @@ local function CreateModule()
 	end
 	return H
 end
-local control = { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+local control = { InitDeps = InitDeps, Main = CreateModule }
 if gethsfuncs then
 	_G.moduleData = control
 else

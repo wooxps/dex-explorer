@@ -1,9 +1,8 @@
 --!strict
 
-local Apps
+type SearchBits = typeof(require(script.Parent.SearchBits).Main())
 
-local function Main()
-	local Bits = Apps.SearchBits
+local function Create(Bits: SearchBits)
 	local Results = {}
 
 	local createView
@@ -1157,10 +1156,9 @@ local function Main()
 	end
 	return Results
 end
-return {
-	InitDeps = function(d)
-		Apps = d.Apps
+return table.freeze({
+	Create = Create,
+	Main = function(apps: { SearchBits: SearchBits })
+		return Create(apps.SearchBits)
 	end,
-	InitAfterMain = function() end,
-	Main = Main,
-}
+})

@@ -311,4 +311,4 @@ local function CreateModule()
 	return toolbar
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

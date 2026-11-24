@@ -180,7 +180,7 @@ def main():
                       + '\n'.join('\t' + line for line in entries.splitlines()) + '\n\t\t}),\n'
                       '\t\tOverloads = table.freeze({\n' + overloads + '\n\t\t}),\n'
                       '\t\tDatatypeMembers = table.freeze({\n' + datatype_entries + '\n\t\t}),\n\t})\nend\n\n'
-                      'return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }\n',
+                      'return { Main = Main }\n',
                       encoding='utf-8', newline='\n')
 
 

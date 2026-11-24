@@ -287,7 +287,6 @@ local function CreateModule()
 		end
 	end
 	local nilNode = { Obj = Instance.new("Folder") }
-	local idCounter = 0
 	local scrollV, scrollH, clipboard
 	local copyFrames = setmetatable({}, { __mode = "k" })
 	local function rememberFrame(source, clone)
@@ -821,458 +820,9 @@ local function CreateModule()
 		Explorer.Index = scrollV.Index
 	end
 
-	local sortingNames
-	local function compareNodes(a, b, names, includeDeleted)
-		if not includeDeleted and (a.Del or b.Del) then
-			return false
-		end
-		if a.Parent == b.Parent and (a.ManualOrder or b.ManualOrder) then
-			local x, y = a.ManualOrder or math.huge, b.ManualOrder or math.huge
-			if x ~= y then
-				return x < y
-			end
-		end
-
-		local aClass = a.Class
-		local bClass = b.Class
-		if not aClass then
-			aClass = a.Obj.ClassName
-			a.Class = aClass
-		end
-		if not bClass then
-			bClass = b.Obj.ClassName
-			b.Class = bClass
-		end
-
-		local aOrder = explorerOrders[aClass]
-		local bOrder = explorerOrders[bClass]
-		if not aOrder then
-			aOrder = RMD.Classes[aClass] and tonumber(RMD.Classes[aClass].ExplorerOrder) or 9999
-			explorerOrders[aClass] = aOrder
-		end
-		if not bOrder then
-			bOrder = RMD.Classes[bClass] and tonumber(RMD.Classes[bClass].ExplorerOrder) or 9999
-			explorerOrders[bClass] = bOrder
-		end
-
-		if aOrder ~= bOrder then
-			return aOrder < bOrder
-		else
-			local aName, bName
-			if names then
-				aName, bName = names[a], names[b]
-				if not aName then
-					aName = tostring(a.Obj)
-					names[a] = aName
-				end
-				if not bName then
-					bName = tostring(b.Obj)
-					names[b] = bName
-				end
-			else
-				aName, bName = tostring(a.Obj), tostring(b.Obj)
-			end
-			if aName ~= bName then
-				return aName < bName
-			elseif aClass ~= bClass then
-				return aClass < bClass
-			else
-				local aId = a.Id
-				if not aId then
-					aId = idCounter
-					idCounter = (idCounter + 0.001) % 999999999
-					a.Id = aId
-				end
-				local bId = b.Id
-				if not bId then
-					bId = idCounter
-					idCounter = (idCounter + 0.001) % 999999999
-					b.Id = bId
-				end
-				return aId < bId
-			end
-		end
-	end
-
-	Explorer.NodeSorter = function(a, b)
-		return compareNodes(a, b, sortingNames)
-	end
-	defaultNodeSorter = Explorer.NodeSorter
-	local function coldName(node)
-		local name = node.SearchRawName
-		if name == nil then
-			name = node.Obj.Name
-			node.SearchRawName = name
-		end
-		return name
-	end
-	local function sortNamedSiblings(children, namesByNode, sort, readName)
-		local class
-		local names = table.create(#children)
-		local byName = {}
-		local firstRepeat
-		local ordered = true
-		local fallback = false
-		for i, node in ipairs(children) do
-			if node.Del or node.ManualOrder then
-				fallback = true
-				break
-			end
-			local nodeClass = node.Class or node.Obj.ClassName
-			if class and nodeClass ~= class then
-				fallback = true
-				break
-			end
-			class = nodeClass
-			node.Class = nodeClass
-			local name = namesByNode[node] or (if readName then readName(node) else tostring(node.Obj))
-			if ordered and i > 1 then
-				local previous = names[i - 1]
-				local previousId = children[i - 1].Id
-				ordered = previous < name or (previous == name and previousId and node.Id and previousId < node.Id)
-			end
-			names[i] = name
-			if not firstRepeat then
-				if byName[name] then firstRepeat = i else byName[name] = node end
-			end
-		end
-
-		if ordered and not fallback then return end
-		if fallback or firstRepeat then
-			if not fallback and firstRepeat <= #children // 4 and children[1].Id then
-				local groups, keys = {}, {}
-				local orderedTies = true
-				for i, name in ipairs(names) do
-					local node = children[i]
-					local group = groups[name]
-					if group then
-						local previousId = group[#group].Id
-						if not node.Id or not previousId or node.Id <= previousId then
-							orderedTies = false
-							break
-						end
-						group[#group + 1] = node
-					else
-						groups[name] = { node }
-						keys[#keys + 1] = name
-					end
-				end
-				if orderedTies then
-					table.sort(keys)
-					local at = 1
-					for _, name in ipairs(keys) do
-						local group = groups[name]
-						table.move(group, 1, #group, at, children)
-						at += #group
-					end
-					return
-				end
-			end
-			for i, name in ipairs(names) do namesByNode[children[i]] = name end
-			if fallback then
-				table.sort(children, sort)
-				return
-			end
-			table.sort(children, function(a, b)
-				local left, right = namesByNode[a], namesByNode[b]
-				if left == right then
-					if a.Id and b.Id then return a.Id < b.Id end
-					return sort(a, b)
-				end
-				return left < right
-			end)
-			return
-		end
-
-		table.sort(names)
-		for i, name in ipairs(names) do
-			children[i] = byName[name]
-		end
-	end
-	local function sortSiblings(children, sort)
-		if #children >= 16 and sort == defaultNodeSorter then
-			sortNamedSiblings(children, sortingNames, sort)
-		else
-			table.sort(children, sort)
-		end
-	end
-
-	local function sortColdItems(items, less, check)
-		if #items <= 512 then
-			table.sort(items, less)
-			check()
-			return items
-		end
-		local page = {}
-		for first = 1, #items, 512 do
-			table.clear(page)
-			table.move(items, first, math.min(first + 511, #items), 1, page)
-			table.sort(page, less)
-			table.move(page, 1, #page, first, items)
-			check()
-		end
-		local count, width = #items, 512
-		local merged = table.create(count)
-		while width < count do
-			for first = 1, count, width * 2 do
-				local middle = math.min(first + width, count + 1)
-				local last = math.min(first + width * 2 - 1, count)
-				local left, right, at = first, middle, first
-				if right > last or not less(items[right], items[middle - 1]) then
-					table.move(items, first, last, first, merged)
-					check()
-					continue
-				end
-				while left < middle and right <= last do
-					if less(items[right], items[left]) then
-						merged[at] = items[right]
-						right += 1
-					else
-						merged[at] = items[left]
-						left += 1
-					end
-					at += 1
-					if at % 128 == 0 then
-						check()
-					end
-				end
-				if left < middle then
-					table.move(items, left, middle - 1, at, merged)
-				elseif right <= last then
-					table.move(items, right, last, at, merged)
-				end
-				check()
-			end
-			items, merged = merged, items
-			width *= 2
-		end
-		return items
-	end
-
-	local function orderedColdNames(items, check)
-		local previous = items[1]
-		local class = previous.Class or previous.Obj.ClassName
-		local name = coldName(previous)
-		if previous.ManualOrder then return false end
-		for i = 2, #items do
-			local node = items[i]
-			if node.ManualOrder or (node.Class or node.Obj.ClassName) ~= class then return false end
-			local nextName = coldName(node)
-			if nextName < name or (nextName == name and (not previous.Id or not node.Id or previous.Id >= node.Id)) then
-				return false
-			end
-			previous, name = node, nextName
-			if i % 128 == 0 then check() end
-		end
-		return true
-	end
-
-	local function sortNumberedSiblings(items, check)
-		local first = items[1]
-		local firstName = coldName(first)
-		local digits = firstName:match("([0-9]+)$")
-		if not digits or #digits > 8 then return false end
-		local start = #firstName - #digits + 1
-		local prefix = firstName:sub(1, start - 1)
-		local class = first.Class or first.Obj.ClassName
-		local origin = tonumber(digits)
-		local capacity = #items * 2
-		local minimum, maximum = origin, origin
-		local fixedWidth, padded = true, false
-		local function key(node)
-			if node.ManualOrder or (node.Class or node.Obj.ClassName) ~= class then return nil end
-			local name = coldName(node)
-			if #name < start or #name >= start + 8 or name:sub(1, start - 1) ~= prefix then return nil end
-			local suffix = name:sub(start)
-			if suffix:find("[^0-9]") then return nil end
-			local n = tonumber(suffix)
-			minimum, maximum = math.min(minimum, n), math.max(maximum, n)
-			fixedWidth = fixedWidth and #suffix == #digits
-			padded = padded or (#suffix > 1 and string.byte(suffix) == 48)
-			if maximum - minimum >= capacity or (not fixedWidth and (padded or maximum > capacity)) then return nil end
-			return n
-		end
-		for i = 1, 8 do
-			if not key(items[1 + (i - 1) * (#items - 1) // 7]) then return false end
-		end
-		local slots = table.create(#items)
-		local base = minimum
-		for i, node in ipairs(items) do
-			local n = key(node)
-			if not n then return false end
-			local slot = n - base + 1
-			if slots[slot] then return false end
-			slots[slot] = node
-			if i % 128 == 0 then check() end
-		end
-		local index = 0
-		if fixedWidth then
-			for n = minimum, maximum do
-				local node = slots[n - base + 1]
-				if node then
-					index += 1
-					items[index] = node
-				end
-				if n % 256 == 0 then check() end
-			end
-		else
-			local function emit(n)
-				local node = slots[n - base + 1]
-				if node then
-					index += 1
-					items[index] = node
-				end
-				if n % 128 == 0 then check() end
-				if n > 0 then
-					for child = n * 10, math.min(n * 10 + 9, maximum) do emit(child) end
-				end
-			end
-			for n = 0, math.min(9, maximum) do emit(n) end
-		end
-		return true
-	end
-
-	local function sortColdNames(items, check, sameOrder)
-		local class = items[1].Class or items[1].Obj.ClassName
-		local names, byName = table.create(#items), {}
-		local duplicates = {}
-		local first, last
-		for i, node in ipairs(items) do
-			if node.ManualOrder then return false end
-			local nodeClass = node.Class or node.Obj.ClassName
-			if not sameOrder and nodeClass ~= class then
-				local orders, groups = {}, {}
-				for at, child in ipairs(items) do
-					if child.ManualOrder then return false end
-					local childClass = child.Class or child.Obj.ClassName
-					child.Class = childClass
-					local order = explorerOrders[childClass]
-					if not order then
-						local details = RMD.Classes[childClass]
-						order = details and tonumber(details.ExplorerOrder) or 9999
-						explorerOrders[childClass] = order
-					end
-					local group = groups[order]
-					if not group then
-						group = {}
-						groups[order] = group
-						orders[#orders + 1] = order
-					end
-					group[#group + 1] = child
-					if at % 128 == 0 then check() end
-				end
-				table.sort(orders)
-				for _, order in ipairs(orders) do
-					local group = groups[order]
-					if #group > 1 and not sortColdNames(group, check, true) then return false end
-				end
-				local at = 1
-				for _, order in ipairs(orders) do
-					local group = groups[order]
-					table.move(group, 1, #group, at, items)
-					at += #group
-				end
-				return true
-			end
-			node.Class = nodeClass
-			local name = coldName(node)
-			local previous = byName[name]
-			if previous then
-				local group = duplicates[name]
-				if not group then
-					group = { previous }
-					duplicates[name] = group
-				end
-				group[#group + 1] = node
-			else
-				names[#names + 1], byName[name] = name, node
-			end
-			if not first or name < first then
-				first = name
-			end
-			if not last or name > last then
-				last = name
-			end
-			if i % 128 == 0 then
-				check()
-			end
-		end
-		for name, group in pairs(duplicates) do
-			local ordered, previousId, previousClass = true, -math.huge, nil
-			for index, node in ipairs(group) do
-				if not node.Id then
-					node.Id = idCounter
-					idCounter = (idCounter + 0.001) % 999999999
-				end
-				ordered = ordered and (not previousClass or previousClass < node.Class
-					or previousClass == node.Class and previousId <= node.Id)
-				previousClass = node.Class
-				previousId = node.Id
-				if index % 128 == 0 then
-					check()
-				end
-			end
-			if not ordered then
-				duplicates[name] = sortColdItems(group, function(a, b)
-					if a.Class ~= b.Class then return a.Class < b.Class end
-					return a.Id < b.Id
-				end, check)
-			end
-			check()
-		end
-		local out = 0
-		local function emit(group)
-			table.sort(group)
-			for _, name in ipairs(group) do
-				local repeated = duplicates[name]
-				if repeated then
-					table.move(repeated, 1, #repeated, out + 1, items)
-					out += #repeated
-				else
-					out += 1
-					items[out] = byName[name]
-				end
-			end
-			check()
-		end
-		local function partition(group, minimum, maximum, at)
-			if #group <= 1024 then
-				emit(group)
-				return
-			end
-			while string.byte(minimum, at) == string.byte(maximum, at) do
-				at += 1
-			end
-			local buckets, keys = {}, {}
-			for i, name in ipairs(group) do
-				local key = string.byte(name, at) or -1
-				local bucket = buckets[key]
-				if not bucket then
-					bucket = { Min = name, Max = name }
-					buckets[key] = bucket
-					keys[#keys + 1] = key
-				end
-				bucket[#bucket + 1] = name
-				if name < bucket.Min then
-					bucket.Min = name
-				end
-				if name > bucket.Max then
-					bucket.Max = name
-				end
-				if i % 128 == 0 then
-					check()
-				end
-			end
-			table.sort(keys)
-			for _, key in ipairs(keys) do
-				local bucket = buckets[key]
-				partition(bucket, bucket.Min, bucket.Max, at + 1)
-			end
-		end
-		partition(names, first, last, 1)
-		return true, first, last
-	end
-
+	local siblingSort = Apps.ExplorerSiblingSort.Create(RMD.Classes, explorerOrders)
+	defaultNodeSorter = siblingSort.DefaultSorter
+	Explorer.NodeSorter = defaultNodeSorter
 	local function coldChildren(parent, check)
 		if not sortingEnabled or parent.Sorted or #parent < 2 then
 			return parent
@@ -1320,22 +870,22 @@ local function CreateModule()
 		local less = Explorer.NodeSorter
 		if less == defaultNodeSorter then
 			if #items > 512 then
-				if orderedColdNames(items, check) or sortNumberedSiblings(items, check) then
-					return remember(items, coldName(items[1]), coldName(items[#items]))
+				if siblingSort.AlreadyOrdered(items, check) or siblingSort.SortNumbered(items, check) then
+					return remember(items, siblingSort.ColdName(items[1]), siblingSort.ColdName(items[#items]))
 				end
-				local sorted, minimum, maximum = sortColdNames(items, check)
+				local sorted, minimum, maximum = siblingSort.SortColdNames(items, check)
 				if sorted then return remember(items, minimum, maximum) end
 			end
 			less = function(a, b)
-				return compareNodes(a, b, names, true)
+				return siblingSort.Compare(a, b, names, true)
 			end
 			if #items >= 16 and #items <= 512 then
-				sortNamedSiblings(items, names, less, coldName)
+				siblingSort.SortNamed(items, names, less, siblingSort.ColdName)
 				check()
 				return remember(items)
 			end
 		end
-		return remember(sortColdItems(items, less, check))
+		return remember(siblingSort.SortItems(items, less, check))
 	end
 
 	local widthRecent, widthPrevious, widthCount = {}, {}, 0
@@ -1387,9 +937,9 @@ local function CreateModule()
 				end,
 				Sort = function(parent)
 					if sortingEnabled and not parent.Sorted then
-						sortingNames = {}
-						local ok, problem = pcall(sortSiblings, parent, Explorer.NodeSorter)
-						sortingNames = nil
+						siblingSort.Names = {}
+						local ok, problem = pcall(siblingSort.Sort, parent, Explorer.NodeSorter)
+						siblingSort.Names = nil
 						if not ok then
 							error(problem, 0)
 						end
@@ -1449,22 +999,22 @@ local function CreateModule()
 					children[#children + 1] = node
 				end
 			end
-			sortingNames = {}
+			siblingSort.Names = {}
 			local ok, problem = pcall(function()
 				for parent, children in pairs(searchChildren) do
 					if #children * 4 >= #parent then
 						if not parent.Sorted then
-							sortSiblings(parent, sortFunc)
+							siblingSort.Sort(parent, sortFunc)
 							parent.Sorted = true
 							changeSearchTree()
 						end
 						searchChildren[parent] = parent
 					else
-						sortSiblings(children, sortFunc)
+						siblingSort.Sort(children, sortFunc)
 					end
 				end
 			end)
-			sortingNames = nil
+			siblingSort.Names = nil
 			if not ok then
 				error(problem, 0)
 			end
@@ -1516,9 +1066,9 @@ local function CreateModule()
 			depth = depth + 1
 			if not searchChildren and sortingEnabled and not root.Sorted then
 				changeSearchTree()
-				sortingNames = {}
-				local sorted, sortError = pcall(sortSiblings, root, sortFunc)
-				sortingNames = nil
+				siblingSort.Names = {}
+				local sorted, sortError = pcall(siblingSort.Sort, root, sortFunc)
+				siblingSort.Names = nil
 				if not sorted then
 					error(sortError, 0)
 				end
@@ -5201,14 +4751,14 @@ return search]==]
 			local cached = sortedSearchChildren[parent]
 			return cached and cached.Items == children and cached.Prefix
 		end,
-		Name = coldName,
+		Name = siblingSort.ColdName,
 		PeekName = function(node) return node.SearchRawName or node.Obj.Name end,
 		Children = coldChildren,
 		OrderMatches = function(parent, kept, check)
 			if not sortingEnabled or parent.Sorted then return kept end
 			local names, seen = {}, {}
 			for _, node in ipairs(kept) do
-				local name = coldName(node)
+				local name = siblingSort.ColdName(node)
 				if seen[name] then
 					local wanted, ordered = {}, {}
 					for _, item in ipairs(kept) do wanted[item] = true end
@@ -5220,8 +4770,8 @@ return search]==]
 				end
 				names[node], seen[name] = name, true
 			end
-			return sortColdItems(kept, function(a, b)
-				return compareNodes(a, b, names, true)
+			return siblingSort.SortItems(kept, function(a, b)
+				return siblingSort.Compare(a, b, names, true)
 			end, check)
 		end,
 		VisibleOnly = true,

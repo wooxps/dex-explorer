@@ -2111,8 +2111,6 @@ local commands = {
 }
 
 return {
-	InitDeps = function() end,
-	InitAfterMain = function() end,
 	Main = function()
 		return commands
 	end,

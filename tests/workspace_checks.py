@@ -11,7 +11,7 @@ local deps={Main={AddCleanup=function(fn) cleanup[#cleanup+1]=fn end},env={
  readfile=function(path) return assert(disk[path]) end},service={HttpService={
  JSONEncode=function(_,data) encoded=data return "snapshot" end,
  JSONDecode=function() return encoded end}}}
-control.InitDeps(deps) local workspace=control.Main()
+if control.InitDeps then control.InitDeps(deps) end local workspace=control.Main()
 local viewer={Documents={{title="Unsaved",text="return 42",x=3,y=7,vx=2,vy=5,dirty=true}}}
 viewer.ActiveDocument=viewer.Documents[1]
 workspace.Attach(viewer,function() if viewer.ScheduleWorkspaceSave then viewer.ScheduleWorkspaceSave() end end)

@@ -1032,4 +1032,4 @@ local function CreateModule()
 	return runtime
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

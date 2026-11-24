@@ -190,4 +190,4 @@ local function Main()
 	end
 	return Reader
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

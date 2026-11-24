@@ -12,7 +12,7 @@ parts = [(root / 'tests/roblox_mock.luau').read_text(), (root / 'tests/preview_m
 for name in ['PreviewCamera', 'PreviewScene', 'ModelViewer']:
     source = next((root / 'src').rglob(name + '.lua')).read_text()
     parts.append('do local control=(function()\n' + source + '\nend)()\n'
-                 'control.InitDeps({Main=Main,Lib=Lib,Apps=Apps,Settings=Settings,env={},service=service})\n'
+                 'if control.InitDeps then control.InitDeps({Main=Main,Lib=Lib,Apps=Apps,Settings=Settings,env={},service=service}) end\n'
                  'Apps.' + name + '=control.Main() end\n')
 parts.append((root / 'tests/preview.spec.luau').read_text())
 with tempfile.TemporaryDirectory(prefix='dex-preview-') as folder:

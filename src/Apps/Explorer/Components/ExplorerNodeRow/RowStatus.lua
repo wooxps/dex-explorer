@@ -137,4 +137,4 @@ local function Main()
 	end
 	return Status
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

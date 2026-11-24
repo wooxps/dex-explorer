@@ -313,7 +313,7 @@ local function CreateModule()
 	end
 	return Splash
 end
-local control = { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+local control = { InitDeps = InitDeps, Main = CreateModule }
 if gethsfuncs then
 	_G.moduleData = control
 else

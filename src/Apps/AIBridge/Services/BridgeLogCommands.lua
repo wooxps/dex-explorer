@@ -196,4 +196,4 @@ local function Main()
 	end
 	return Logs
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

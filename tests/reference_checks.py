@@ -15,7 +15,7 @@ parts = [(root / 'tests/roblox_mock.luau').read_text(), (root / 'tests/preview_m
 for name in ['BytecodeStrings', 'ReferenceSource', 'ReferenceScan', 'ReferenceFinder']:
     source = next((root / 'src').rglob(name + '.lua')).read_text()
     parts.append('do local control=(function()\n' + source + '\nend)()\n'
-                 'control.InitDeps({API=API,Main=Main,Lib=Lib,Apps=Apps,service=service,env=referenceEnv,Clock=function() return referenceClock() end})\n'
+                 'if control.InitDeps then control.InitDeps({API=API,Main=Main,Lib=Lib,Apps=Apps,service=service,env=referenceEnv,Clock=function() return referenceClock() end}) end\n'
                  'Apps.' + name + '=control.Main() end\n')
 with tempfile.TemporaryDirectory(prefix='dex-references-') as folder:
     fixture = Path(folder) / 'fixture.luau'

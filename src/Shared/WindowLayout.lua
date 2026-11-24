@@ -226,4 +226,4 @@ local function CreateModule()
 	end
 	return Layout
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

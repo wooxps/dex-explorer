@@ -65,4 +65,4 @@ local function CreateModule()
 	end)
 	return Rig
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

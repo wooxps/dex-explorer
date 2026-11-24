@@ -80,4 +80,4 @@ local function CreateModule()
 	Main.Performance = P
 	return P
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

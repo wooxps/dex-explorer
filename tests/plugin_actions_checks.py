@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="dex-plugin-actions-") as temp:
     script = Path(temp) / "check.luau"
     script.write_text(
         f"{mock}\nlocal control = (function()\n{source}\nend)()\n"
-        "control.InitDeps({ Apps = Apps, Main = Main, Lib = Lib, service = service })\n"
+        "if control.InitDeps then control.InitDeps({ Apps = Apps, Main = Main, Lib = Lib, service = service }) end\n"
         f"Apps.PluginActions = control.Main()\n{spec}",
         encoding="utf-8",
     )

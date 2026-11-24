@@ -81,7 +81,5 @@ local function Main()
 end
 
 return table.freeze({
-	InitDeps = function() end,
-	InitAfterMain = function() end,
 	Main = Main,
 })

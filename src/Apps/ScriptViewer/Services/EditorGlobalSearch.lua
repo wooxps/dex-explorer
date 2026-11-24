@@ -868,6 +868,6 @@ return {
 	InitDeps = function(d)
 		Main, Apps, env = d.Main, d.Apps, d.env or {}
 	end,
-	InitAfterMain = function() end,
+
 	Main = CreateModule,
 }

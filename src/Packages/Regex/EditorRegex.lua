@@ -2613,4 +2613,4 @@ local function Main()
 	end
 	return { Search = search, Source = "Roblox/luau-regexp", Revision = "5672cbe8d3244775bcd76c592e2992b44500508c" }
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

@@ -70,4 +70,4 @@ local function Main()
 	return InsertObjectMenu
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

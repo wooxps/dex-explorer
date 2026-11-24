@@ -40,7 +40,7 @@ local function fire() for _,fn in ipairs(table.clone(callbacks)) do fn() end end
 local control=(function()
 """+source+r"""
 end)()
-control.InitDeps({Main=Main,Settings=Settings,service=service,plr={Idled=event}})
+if control.InitDeps then control.InitDeps({Main=Main,Settings=Settings,service=service,plr={Idled=event}}) end
 local anti=control.Main()
 assert(#cleanup==1 and active==0,'disabled feature has no idle connection')
 assert(anti.SetEnabled(false) and clicks==0 and active==0)

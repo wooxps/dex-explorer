@@ -479,5 +479,5 @@ end
 
 return {
 	InitDeps = function(d) Apps, service = d.Apps, d.service end,
-	InitAfterMain = function() end, Main = function() return Exporter end,
+	Main = function() return Exporter end,
 }

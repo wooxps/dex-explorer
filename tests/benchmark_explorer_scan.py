@@ -25,8 +25,8 @@ __AFTER__
 end)()
 local versions = {}
 for _, control in {before, after} do
- control.InitDeps({Apps = {SearchBits = bits}})
- versions[#versions + 1] = {api = control.Main(), cold = {}, existing = {}, filtered = {}}
+ if control.InitDeps then control.InitDeps({Apps = {SearchBits = bits}}) end
+ versions[#versions + 1] = {api = control.Main({SearchBits=bits}), cold = {}, existing = {}, filtered = {}}
 end
 local root = {}
 for group = 1, 600 do

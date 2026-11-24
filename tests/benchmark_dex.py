@@ -176,7 +176,7 @@ def main():
         source = (ROOT / path).read_text(encoding='utf-8')
         sources[path] = hashlib.sha256(source.encode()).hexdigest()
         modules.append(f'do local control = (function()\n{source}\nend)() '
-                       f'control.InitDeps({{Apps = Apps}}) Apps.{name} = control.Main() end')
+                       f'if control.InitDeps then control.InitDeps({{Apps = Apps}}) end Apps.{name} = control.Main(Apps) end')
     explorer = original_source('Explorer.lua')
     old_lib = original_source('Lib.lua')
     new_lib = (ROOT / 'src/Shared/Lib.lua').read_text(encoding='utf-8')

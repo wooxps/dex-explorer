@@ -18,4 +18,4 @@ local function Main()
 	end
 	return Details
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

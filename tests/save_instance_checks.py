@@ -13,7 +13,7 @@ Main.LoadModule=function(name) return assert(modules[name],name) end
 ''')
 for name in ['SaveOptions','SaveConfiguration','SaveBackend','SaveInstance']:
  source=(root/f'src/Apps/SaveInstance/{name}.lua').read_text(encoding='utf-8')
- parts.append('do local control=(function()\n'+source+'\nend)() control.InitDeps(deps) modules.'+name+'=control.Main() end\n')
+ parts.append('do local control=(function()\n'+source+'\nend)() if control.InitDeps then control.InitDeps(deps) end modules.'+name+'=control.Main() end\n')
 parts.append(r'''
 local schema=modules.SaveOptions assert(#schema==50)
 local config=modules.SaveConfiguration

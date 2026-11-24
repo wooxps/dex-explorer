@@ -884,4 +884,4 @@ local function CreateModule()
 
 	return SearchBox
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

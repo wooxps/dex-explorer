@@ -265,6 +265,6 @@ return {
 		Main, Lib, Apps, service = d.Main, d.Lib, d.Apps, d.service
 		Main.AddCleanup(close)
 	end,
-	InitAfterMain = function() end,
+
 	Main = function() return Popup end,
 }

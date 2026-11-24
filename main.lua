@@ -260,6 +260,7 @@ Main = (function()
 		"SearchQuery",
 		"ExplorerPolicy",
 		"ExplorerProjection",
+		"ExplorerSiblingSort",
 		"SearchBits",
 		"SearchPostings",
 		"SearchSnapshot",
@@ -966,15 +967,14 @@ Main = (function()
 		end
 	end
 
-	Main.LoadModule = function(name)
+	Main.LoadModule = function(name: string)
 		local began = os.clock()
 		if Main.StartupStatus then
 			local path = DexRuntime and DexRuntime.ModulePaths[name]
 			Main.StartupStatus("Loading " .. (path or name))
 		end
+		local control
 		if EmbeddedModules or Main.Elevated then
-			local control
-
 			if EmbeddedModules then
 				control = EmbeddedModules[name]()
 
@@ -1036,35 +1036,24 @@ Main = (function()
 					control = loadstring(moduleStr)()
 				end
 			end
-
-			Main.AppControls[name] = control
-			control.InitDeps(Main.GetInitDeps())
-
-			local moduleData = control.Main()
-			assert(type(moduleData) == "table", "Module " .. name .. " must return its API table")
-			Apps[name] = moduleData
-			if Main.Performance then
-				Main.Performance.Record("module/" .. name, os.clock() - began)
-			end
-			return moduleData
 		else
 			local module = script:WaitForChild("Modules"):WaitForChild(name, 2)
 			if not module then
 				Main.Error("CANNOT FIND MODULE " .. name)
 			end
 
-			local control = require(module)
-			Main.AppControls[name] = control
-			control.InitDeps(Main.GetInitDeps())
-
-			local moduleData = control.Main()
-			assert(type(moduleData) == "table", "Module " .. name .. " must return its API table")
-			Apps[name] = moduleData
-			if Main.Performance then
-				Main.Performance.Record("module/" .. name, os.clock() - began)
-			end
-			return moduleData
+			control = require(module)
 		end
+
+		Main.AppControls[name] = control
+		if control.InitDeps then control.InitDeps(Main.GetInitDeps()) end
+		local moduleData = control.Main(Apps)
+		assert(type(moduleData) == "table", `Module {name} must return its API table`)
+		Apps[name] = moduleData
+		if Main.Performance then
+			Main.Performance.Record("module/" .. name, os.clock() - began)
+		end
+		return moduleData
 	end
 
 	local moduleAppTable
@@ -1081,7 +1070,7 @@ Main = (function()
 			loading = true
 			local ok, value = pcall(function()
 				local api = Main.LoadModule(name)
-				if moduleAppTable then
+				if moduleAppTable and Main.AppControls[name].InitAfterMain then
 					Main.AppControls[name].InitAfterMain(moduleAppTable)
 				end
 				return api
@@ -1154,10 +1143,10 @@ Main = (function()
 		}
 
 		moduleAppTable = appTable
-		Main.AppControls.Lib.InitAfterMain(appTable)
+		if Main.AppControls.Lib.InitAfterMain then Main.AppControls.Lib.InitAfterMain(appTable) end
 		for i, v in pairs(Main.ModuleList) do
 			local control = Main.AppControls[v]
-			if control then
+			if control and control.InitAfterMain then
 				control.InitAfterMain(appTable)
 			end
 		end

@@ -26,7 +26,7 @@ local deps={Main=Main,Apps=Apps,Lib=Lib,Settings=Settings,env=env,service=servic
 ''']
 for name in ['AssetQuery','AssetCatalog','AssetDownload','AssetRig','AssetPlayback','AssetPreview','AssetRows','AssetManager']:
  source=(root/f'src/Apps/AssetManager/{name}.lua').read_text(encoding='utf-8')
- parts.append('do local control=(function()\n'+source+'\nend)() control.InitDeps(deps) modules.'+name+'=control.Main() Apps.'+name+'=modules.'+name+' end\n')
+ parts.append('do local control=(function()\n'+source+'\nend)() if control.InitDeps then control.InitDeps(deps) end modules.'+name+'=control.Main() Apps.'+name+'=modules.'+name+' end\n')
 parts.append(r'''
 local originalIsA=methods.IsA
 methods.IsA=function(self,class) return class=="LuaSourceContainer" and (self.ClassName=="Script" or self.ClassName=="LocalScript" or self.ClassName=="ModuleScript") or originalIsA(self,class) end

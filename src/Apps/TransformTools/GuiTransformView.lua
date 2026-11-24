@@ -316,4 +316,4 @@ local function CreateModule()
 	end
 	return V
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

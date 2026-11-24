@@ -480,6 +480,6 @@ return {
 	InitDeps = function(d)
 		Main, Apps, Lib, env, service = d.Main, d.Apps, d.Lib, d.env, d.service
 	end,
-	InitAfterMain = function() end,
+
 	Main = function() return Actions end,
 }

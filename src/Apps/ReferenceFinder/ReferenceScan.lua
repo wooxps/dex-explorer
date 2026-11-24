@@ -357,4 +357,4 @@ local function Main()
 	end
 	return Scan
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

@@ -824,6 +824,6 @@ return {
 	InitDeps = function(d)
 		Apps = d.Apps
 	end,
-	InitAfterMain = function() end,
+
 	Main = Main,
 }

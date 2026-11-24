@@ -202,4 +202,4 @@ local function Main()
 	end
 	return Folding
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

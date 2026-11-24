@@ -738,4 +738,4 @@ local function Main()
 	return table.freeze(Definitions)
 end
 
-return table.freeze({ InitDeps = function() end, InitAfterMain = function() end, Main = Main })
+return table.freeze({ Main = Main })

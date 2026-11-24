@@ -29,9 +29,13 @@ with tempfile.TemporaryDirectory(prefix='dex-major-paths-') as folder:
   def source(path): return prior(path) if version=='before' else (ROOT/path).read_text()
   pieces=['local Apps={} local RMD={Classes={}} local Explorer={} local explorerOrders={} local idCounter=0\n']
   for name,path in [('SearchNameIndex','src/Apps/Explorer/Services/SearchNameIndex.lua'),('SearchQuery','src/Shared/SearchQuery.lua')]:
-   pieces.append('do local c=(function()\n'+source(path)+'\nend)() c.InitDeps({Apps=Apps,API={Classes={}},service={}}) Apps.'+name+'=c.Main() end')
+   pieces.append('do local c=(function()\n'+source(path)+'\nend)() if c.InitDeps then c.InitDeps({Apps=Apps,API={Classes={}},service={}}) end Apps.'+name+'=c.Main() end')
   explorer=source('src/Apps/Explorer/Explorer.lua')
-  pieces.append('local sortingNames\n'+explorer[explorer.index('\tExplorer.NodeSorter = function'):explorer.index('\n\tExplorer.Update = function')])
+  if version == 'before':
+   pieces.append('local sortingNames\n'+explorer[explorer.index('\tExplorer.NodeSorter = function'):explorer.index('\n\tExplorer.Update = function')])
+  else:
+   pieces.append('local control=(function()\n'+source('src/Apps/Explorer/Services/ExplorerSiblingSort.lua')+'\nend)() local siblingSort=control.Main().Create(RMD.Classes,explorerOrders) Explorer.NodeSorter=siblingSort.DefaultSorter')
+
   pieces.append('local size='+str(args.nodes)+r'''
 local root={} local nativeNames=0
 local mt={__tostring=function(o) nativeNames+=1 return o.Name end}
@@ -55,7 +59,7 @@ local function run(query)
  print("QUERY "..query.."|"..samples[3].."|"..reads.."|"..matchCount)
 end
 run("part123") run("name:Part123") run('"Part123"')
-'''.replace('SORT_START','sortingNames={}' if version=='after' else ''))
+'''.replace('SORT_START','siblingSort.Names={}' if version=='after' else ''))
   manifest=old if version=='before' else new
   pieces.append('local sources={'+','.join('['+json.dumps(path)+']='+literal(prior(path) if version=='before' else (ROOT/'dist/github'/path).read_text()) for path in manifest['files'])+'}')
   pieces.append('local times={} for iteration=1,5 do local chunks={} local started=os.clock() for path,text in pairs(sources) do chunks[#chunks+1]=assert(loadstring(text,"@DexExplorer/"..path)) end times[iteration]=os.clock()-started end table.sort(times) print("COMPILE "..times[3])')

@@ -637,4 +637,4 @@ local function CreateModule()
 	end
 	return Transform
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

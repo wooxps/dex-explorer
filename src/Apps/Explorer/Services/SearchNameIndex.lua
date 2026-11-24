@@ -475,4 +475,4 @@ local function Main()
 	return SearchNameIndex
 end
 
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

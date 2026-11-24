@@ -278,4 +278,4 @@ local function Main()
 	end
 	return Reconstruction
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

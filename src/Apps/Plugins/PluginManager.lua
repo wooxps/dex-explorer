@@ -815,4 +815,4 @@ local function CreateModule()
 	return Manager
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

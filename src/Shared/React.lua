@@ -10,4 +10,4 @@ local function Main()
 		Version = "17.2.1",
 	}
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

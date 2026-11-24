@@ -113,4 +113,4 @@ function Csv.Decode(text)
 	return entries
 end
 
-return { InitDeps = function() end, InitAfterMain = function() end, Main = function() return Csv end }
+return { Main = function() return Csv end }

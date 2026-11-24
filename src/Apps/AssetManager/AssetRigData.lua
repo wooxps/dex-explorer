@@ -1,7 +1,5 @@
 -- Roblox reference avatars; executable scripts removed before embedding.
 return {
-	InitDeps = function() end,
-	InitAfterMain = function() end,
 	Main = function()
 		return {
 			R6 = [=[<roblox xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">

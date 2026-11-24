@@ -481,4 +481,4 @@ local function Main()
 	end
 	return Spatial
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

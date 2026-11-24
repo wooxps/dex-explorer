@@ -48,7 +48,7 @@ local function fixture(options)
   SelectedText=Color3.fromRGB(238,239,241),Text=Color3.fromRGB(213,215,221),
   Menu=Color3.fromRGB(25,27,31),Outline2=Color3.fromRGB(55,55,55),
   PlaceholderText=Color3.fromRGB(187,188,190)}}
- control.InitDeps({Main=main,Settings=settings,service=options.noFrames and {} or {RunService={RenderStepped=frame}},createSimple=createSimple})
+ if control.InitDeps then control.InitDeps({Main=main,Settings=settings,service=options.noFrames and {} or {RunService={RenderStepped=frame}},createSimple=createSimple}) end
  local api=control.Main()
  local splash=api.Create("Loading src/Shared/Lib.lua")
  local function step(dt)

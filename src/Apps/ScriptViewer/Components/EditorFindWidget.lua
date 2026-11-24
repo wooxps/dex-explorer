@@ -211,4 +211,4 @@ local function Main()
 	end
 	return Widget
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

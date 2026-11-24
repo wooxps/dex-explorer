@@ -88,4 +88,4 @@ local function Main()
 	end
 	return Camera
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

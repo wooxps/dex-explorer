@@ -622,4 +622,4 @@ local function CreateModule()
 	end
 	return Session
 end
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = CreateModule }
+return { InitDeps = InitDeps, Main = CreateModule }

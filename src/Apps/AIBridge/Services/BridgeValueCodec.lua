@@ -288,4 +288,4 @@ local function Main()
 	end
 	return Codec
 end
-return { InitDeps = function() end, InitAfterMain = function() end, Main = Main }
+return { Main = Main }

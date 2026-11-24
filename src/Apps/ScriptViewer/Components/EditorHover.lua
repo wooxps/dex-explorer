@@ -196,4 +196,4 @@ local function Main()
 	return Hover
 end
 
-return { InitDeps = InitDeps, InitAfterMain = function() end, Main = Main }
+return { InitDeps = InitDeps, Main = Main }

@@ -9,7 +9,7 @@ local hostEnv={decompile=function() error("unexpected native decompile") end}
 '''
 for name in ['EditorFindModel','EditorGlobalSearch']:
     source=next((root/'src').rglob(name+'.lua')).read_text()
-    program+='do local c=(function()\n'+source+'\nend)();c.InitDeps({Apps=Apps,Main=Main,env=hostEnv});Apps.'+name+'=c.Main() end\n'
+    program+='do local c=(function()\n'+source+'\nend)();if c.InitDeps then c.InitDeps({Apps=Apps,Main=Main,env=hostEnv}) end;Apps.'+name+'=c.Main() end\n'
 program+=r'''
 local function object(name,source,parent)
  return {Name=name,ClassName="ModuleScript",Source=source,Parent=parent,GetFullName=function(self) return "game."..self.Name end}
