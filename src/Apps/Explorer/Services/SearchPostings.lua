@@ -12,6 +12,7 @@ local function Main()
 			NameBlocks = {},
 			Ids = {},
 			Groups = {},
+			LinearBlocks = {},
 			Cache = {},
 			NodeCache = {},
 			BroadCounts = {},
@@ -31,6 +32,9 @@ local function Main()
 			self.Names[id] = name
 			self.Ids[name] = id
 			self.Stats.Names += 1
+			if id % 128 == 0 then
+				self.NameBlocks[id // 128] = table.concat(self.Names, "\0", id - 127, id)
+			end
 			for term, bits in pairs(self.Cache) do
 				if contains(name, term) then
 					bits:Set(id)
@@ -55,6 +59,19 @@ local function Main()
 			else
 				group:Set(id)
 			end
+			local block = (nameId - 1) // 32 + 1
+			self.LinearBlocks[block] = nil
+			if not group and nameId % 32 == 0 then
+				local first = id - 31
+				local consecutive = true
+				for offset = 1, 31 do
+					if self.Groups[nameId - offset] ~= id - offset then
+						consecutive = false
+						break
+					end
+				end
+				if consecutive then self.LinearBlocks[block] = first end
+			end
 			for term, bits in pairs(self.NodeCache) do
 				if self.Cache[term]:Has(nameId) then
 					bits:Set(id)
@@ -63,6 +80,7 @@ local function Main()
 		end
 		function p:RemoveMember(nameId, id)
 			local group = self.Groups[nameId]
+			self.LinearBlocks[(nameId - 1) // 32 + 1] = nil
 			table.clear(self.BroadCounts)
 			for _, bits in pairs(self.NodeCache) do
 				bits:Set(id, false)
@@ -227,7 +245,12 @@ local function Main()
 			local nodes = Bits.Sparse()
 			local words = nodes.Words
 			local work = 0
-			local complete = matching:Each(function(nameId)
+			local function mergeWord(word: number, value: number)
+				local previous = words[word] or 0
+				words[word] = bit32.bor(previous, value)
+				nodes.Count += Bits.Pop(bit32.band(value, bit32.bnot(previous)))
+			end
+			local function addGroup(nameId: number): boolean
 				local group = self.Groups[nameId]
 				if type(group) == "number" then
 					nodes:Set(group)
@@ -237,9 +260,7 @@ local function Main()
 						return false
 					end
 					for word, value in pairs(group.Words) do
-						local previous = words[word] or 0
-						words[word] = bit32.bor(previous, value)
-						nodes.Count += Bits.Pop(bit32.band(value, bit32.bnot(previous)))
+						mergeWord(word, value)
 						if limit and nodes.Count > limit then
 							return false
 						end
@@ -250,7 +271,31 @@ local function Main()
 					end
 				end
 				return not limit or nodes.Count <= limit
-			end, checkpoint)
+			end
+			local complete = true
+			for block, mask in matching.Words do
+				local first = self.LinearBlocks[block]
+				if first then
+					local word = (first - 1) // 32 + 1
+					local shift = (first - 1) % 32
+					local low = bit32.lshift(mask, shift)
+					if low ~= 0 then mergeWord(word, low) end
+					if shift ~= 0 then
+						local high = bit32.rshift(mask, 32 - shift)
+						if high ~= 0 then mergeWord(word + 1, high) end
+					end
+					complete = not limit or nodes.Count <= limit
+				else
+					while mask ~= 0 do
+						local nameId = (block - 1) * 32 + bit32.countrz(mask) + 1
+						if not addGroup(nameId) then complete = false break end
+						mask = bit32.band(mask, mask - 1)
+					end
+				end
+				if not complete then break end
+				work += 1
+				if checkpoint and work % 16 == 0 then checkpoint() end
+			end
 			if not complete then
 				if term then
 					self.BroadCounts[term] = nodes.Count

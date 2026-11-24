@@ -99,6 +99,24 @@ local checked = posts:NodeCandidates({ "car" }, nil, 3)
 assert(checked and checked.Count == 3 and checked:Has(66) and not checked:Has(65))
 local disjoint = posts:NodeCandidates({ "blue", "cargo" })
 assert(disjoint and disjoint.Count == 0)
+do
+	local index = Apps.SearchPostings.Create()
+	for id = 1, 256 do
+		index:AddMember(index:Intern("rack" .. id), id + 5)
+	end
+	local broad = index:NodeCandidates({ "rack" })
+	assert(broad.Count == 256 and broad:Has(6) and broad:Has(261) and not broad:Has(5))
+	index:RemoveMember(32, 37)
+	index:AddMember(32, 500)
+	index:AddMember(33, 501)
+	local combined = index:NodeCandidates({ "rack", "3" })
+	for id = 1, 256 do
+		local expected = id ~= 32 and string.find(tostring(id), "3", 1, true) ~= nil
+		assert(combined:Has(id + 5) == expected)
+	end
+	assert(combined:Has(500) and combined:Has(501))
+	assert(not index:NodeCandidates({ "rack" }, nil, 255))
+end
 local root = { Obj = { Name = "game", ClassName = "DataModel" } }
 local serial = 0
 local function add(parent, name)
