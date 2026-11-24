@@ -470,6 +470,14 @@ do
 		for i = 1, #fresh.Rows do assert(indexed.Rows[i] == fresh.Rows[i]) end
 		for i = 1, #fresh.MatchList do assert(indexed.MatchList[i] == fresh.MatchList[i]) end
 	end
+	local terms = { "p", "2" }
+	local original = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
+	original.Expanded[nested] = false
+	original:Remove(nested[2])
+	original:Reflow(check)
+	local reopened = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
+	assert(reopened:IndexOf(nested[2]) and not original:IndexOf(nested[2]))
+	assert(#reopened.MatchList == #original.MatchList + 1)
 	local evaluated = 0
 	local function sparseCondition(obj)
 		evaluated += 1

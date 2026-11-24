@@ -5194,7 +5194,7 @@ return search]==]
 				characterSearch.Version = version
 				characterSearch.Sorter = sorter
 				characterSearch.NilRoot = nilRoot
-				Apps.SearchResults.PrepareCharacters(previous, checkpoint)
+				Apps.SearchResults.PrepareCharacters(previous, checkpoint, context.WidthRevision)
 				return previous
 			end)
 			characterSearch.Pending = false
