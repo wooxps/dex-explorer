@@ -52,9 +52,9 @@ Compared with the [original Dex](https://github.com/LorekeeperZinnia/Dex):
 
 | Task | Original Dex | Dex Explorer | Improvement |
 | :--- | ---: | ---: | :--- |
-| Find objects by name among 70,000 objects | 30.51 ms | 1.55 ms | **19.7× faster** |
-| Repeat a search with 70,000 matches | 41.18 ms | 0.0103 ms | **4,006× faster** |
-| Update syntax colors after an edit in a 10,000 line script | 13.74 ms | 0.00271 ms | **5,072× faster** |
+| Find objects by name among 70,000 objects | 42.93 ms | 1.75 ms | **24.5× faster** |
+| Repeat a search with 70,000 matches | 64.92 ms | 0.0179 ms | **3,625× faster** |
+| Update syntax colors after an edit in a 10,000 line script | 19.25 ms | 0.00393 ms | **4,899× faster** |
 
 Local tests with simulated objects and the search index ready. Index setup and UI rendering are excluded.
 
