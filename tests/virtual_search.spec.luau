@@ -514,6 +514,35 @@ do
 end
 
 do
+	local previousSize = Explorer.InitialObjectCount
+	Explorer.InitialObjectCount = 38000
+	local host = Instance.new("Folder", workspace)
+	for _, format in { "NumberSortA%d", "NumberSortB%05d" } do
+		local folder = Instance.new("Folder", host)
+		local names = {}
+		for i = 1, 701 do
+			local node = Instance.new("Part", folder)
+			node.Name = string.format(format, i * 113 % 701)
+			names[i] = node.Name
+		end
+		table.sort(names)
+		Explorer.SyncHistoryObject(host)
+		Explorer.SyncHistoryObject(folder)
+		Explorer.ClearSearch()
+		assert(Explorer.DoSearch(format:sub(1, 11)) and #Explorer.MatchList == #names)
+		for i, name in ipairs(names) do assert(Explorer.MatchList[i].Obj.Name == name) end
+	end
+	Explorer.ClearSearch()
+	Explorer.InitialObjectCount = previousSize
+	host.Parent = nil
+	Explorer.SyncHistoryObject(host)
+	host:Destroy()
+	Explorer.CleanDeletedChildren()
+	Explorer.ForceUpdate()
+	flushTasks()
+end
+
+do
 	Explorer.ClearSearch()
 	local previousSize, previousWait = Explorer.InitialObjectCount, task.wait
 	Explorer.InitialObjectCount = 38000

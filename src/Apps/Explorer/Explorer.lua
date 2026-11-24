@@ -275,7 +275,9 @@ local function CreateModule()
 		searchTreeVersion += 1
 		if not removal then
 			local scan = characterSearch.ColdScan
-			if scan and (not parent or not scan.Visited or parent == scan.Root or scan.Visited[parent] or not next(scan.Visited)) then
+			if scan and (not parent or not scan.Visited or parent == scan.Root or scan.Visited[parent]
+				or (scan.BranchesOnly and #parent == 0 and scan.Visited[parent.Parent])
+				or not next(scan.Visited)) then
 				scan.Stale = true
 			end
 		end
@@ -1065,6 +1067,71 @@ local function CreateModule()
 		return true
 	end
 
+	local function sortNumberedSiblings(items, check)
+		local first = items[1]
+		local firstName = coldName(first)
+		local digits = firstName:match("([0-9]+)$")
+		if not digits or #digits > 8 then return false end
+		local start = #firstName - #digits + 1
+		local prefix = firstName:sub(1, start - 1)
+		local class = first.Class or first.Obj.ClassName
+		local origin = tonumber(digits)
+		local capacity = #items * 2
+		local minimum, maximum = origin, origin
+		local fixedWidth, padded = true, false
+		local function key(node)
+			if node.ManualOrder or (node.Class or node.Obj.ClassName) ~= class then return nil end
+			local name = coldName(node)
+			if #name < start or #name >= start + 8 or name:sub(1, start - 1) ~= prefix then return nil end
+			local suffix = name:sub(start)
+			if suffix:find("[^0-9]") then return nil end
+			local n = tonumber(suffix)
+			minimum, maximum = math.min(minimum, n), math.max(maximum, n)
+			fixedWidth = fixedWidth and #suffix == #digits
+			padded = padded or (#suffix > 1 and string.byte(suffix) == 48)
+			if maximum - minimum >= capacity or (not fixedWidth and (padded or maximum > capacity)) then return nil end
+			return n
+		end
+		for i = 1, 8 do
+			if not key(items[1 + (i - 1) * (#items - 1) // 7]) then return false end
+		end
+		local slots = table.create(#items)
+		local base = minimum
+		for i, node in ipairs(items) do
+			local n = key(node)
+			if not n then return false end
+			local slot = n - base + 1
+			if slots[slot] then return false end
+			slots[slot] = node
+			if i % 128 == 0 then check() end
+		end
+		local index = 0
+		if fixedWidth then
+			for n = minimum, maximum do
+				local node = slots[n - base + 1]
+				if node then
+					index += 1
+					items[index] = node
+				end
+				if n % 256 == 0 then check() end
+			end
+		else
+			local function emit(n)
+				local node = slots[n - base + 1]
+				if node then
+					index += 1
+					items[index] = node
+				end
+				if n % 128 == 0 then check() end
+				if n > 0 then
+					for child = n * 10, math.min(n * 10 + 9, maximum) do emit(child) end
+				end
+			end
+			for n = 0, math.min(9, maximum) do emit(n) end
+		end
+		return true
+	end
+
 	local function sortColdNames(items, check, sameOrder)
 		local class = items[1].Class or items[1].Obj.ClassName
 		local names, byName = table.create(#items), {}
@@ -1203,7 +1270,7 @@ local function CreateModule()
 			end
 		end
 		partition(names, first, last, 1)
-		return true
+		return true, first, last
 	end
 
 	local function coldChildren(parent, check)
@@ -1217,9 +1284,19 @@ local function CreateModule()
 		local version = searchTreeVersion
 		local building = { Sorter = Explorer.NodeSorter }
 		sortedSearchChildren[parent] = building
-		local function remember(items)
+		local function remember(items, minimum, maximum)
 			if sortedSearchChildren[parent] == building and (building.Sorter == defaultNodeSorter or searchTreeVersion == version) then
 				building.Items = items
+				if minimum and maximum then
+					local length = math.min(64, #minimum, #maximum)
+					for i = 1, length do
+						if string.byte(minimum, i) ~= string.byte(maximum, i) then
+							length = i - 1
+							break
+						end
+					end
+					if length > 0 then building.Prefix = string.lower(minimum:sub(1, length)) end
+				end
 			end
 			return items
 		end
@@ -1242,8 +1319,12 @@ local function CreateModule()
 		local names = {}
 		local less = Explorer.NodeSorter
 		if less == defaultNodeSorter then
-			if #items > 512 and (orderedColdNames(items, check) or sortColdNames(items, check)) then
-				return remember(items)
+			if #items > 512 then
+				if orderedColdNames(items, check) or sortNumberedSiblings(items, check) then
+					return remember(items, coldName(items[1]), coldName(items[#items]))
+				end
+				local sorted, minimum, maximum = sortColdNames(items, check)
+				if sorted then return remember(items, minimum, maximum) end
 			end
 			less = function(a, b)
 				return compareNodes(a, b, names, true)
@@ -5116,6 +5197,10 @@ return search]==]
 		return env.getnilinstances and Settings.Explorer.ShowNilInstances ~= false and nilNode or nil
 	end
 	characterSearch.Context = {
+		SharedPrefix = function(parent, children)
+			local cached = sortedSearchChildren[parent]
+			return cached and cached.Items == children and cached.Prefix
+		end,
 		Name = coldName,
 		PeekName = function(node) return node.SearchRawName or node.Obj.Name end,
 		Children = coldChildren,
@@ -5644,8 +5729,10 @@ return search]==]
 				context.Estimate = Explorer.InitialObjectCount
 				local ok, view = pcall(function()
 					if not layout and visited and #terms[1] > 1 then
+						scan.BranchesOnly = true
 						local selective = Apps.SearchResults.TrySelectiveCold(roots, terms, context, checkpoint, visited)
 						if selective then return selective end
+						scan.BranchesOnly = false
 						table.clear(visited)
 					end
 					local result = Apps.SearchResults.CreateCold(roots, terms, context, checkpoint, layout, visited)

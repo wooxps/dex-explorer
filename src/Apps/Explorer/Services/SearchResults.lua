@@ -690,6 +690,7 @@ local function Main()
 			return lastHit
 		end
 		local function scan(parent)
+			if visited then visited[parent] = true end
 			local kept
 			local items = table.move(parent, 1, #parent, 1, table.create(#parent))
 			for _, node in ipairs(items) do
@@ -701,7 +702,7 @@ local function Main()
 				end
 				scanned += 1
 				if scanned % 128 == 0 then checkpoint() end
-				if visited then visited[node] = true end
+				if visited and #node > 0 then visited[node] = true end
 				local hit = matches(readName(node))
 				if #node > 0 then
 					scan(node)
@@ -795,6 +796,8 @@ local function Main()
 		end
 		local nodeCount = #nodes
 		local function visitChildren(owner, children, parent, depth)
+			local prefix = owner and #children > 512 and context.SharedPrefix and context.SharedPrefix(owner, children)
+			local allHit = prefix and matchesName(prefix)
 			local hasMatches = false
 			for _, node in ipairs(children) do
 				if owner == roots[1] and rootVisibility then
@@ -810,7 +813,7 @@ local function Main()
 				local name = readName(node)
 				nodes[position], names[position] = node, name
 				depths[position], parents[position] = depth, parent
-				local hit = owner ~= nil and coldMatch(name)
+				local hit = allHit or (owner ~= nil and coldMatch(name))
 				local childMatch = #node > 0 and visitChildren(node, snapshotChildren(node, readChildren, checkpoint), position, depth + 1)
 				ends[position] = nodeCount
 				if hit or childMatch then

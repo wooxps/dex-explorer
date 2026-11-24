@@ -107,6 +107,20 @@ local function Main()
 			end
 			local result = Bits.Sparse()
 			local names = self.Names
+			local function scanWords(first, last)
+				for start = first, last, 32 do
+					local mask = 0
+					for id = start, math.min(start + 31, last) do
+						if string.find(names[id], term, 1, true) then
+							mask = bit32.bor(mask, bit32.lshift(1, id - start))
+						end
+					end
+					if mask ~= 0 then
+						result.Words[(start - 1) // 32 + 1] = mask
+						result.Count += Bits.Pop(mask)
+					end
+				end
+			end
 			local compared
 			if candidate and best * 4 < #names * 3 then
 				candidate:Each(function(id)
@@ -128,11 +142,7 @@ local function Main()
 						end
 					end
 					if string.find(text, term, 1, true) then
-						for id = first, last do
-							if string.find(names[id], term, 1, true) then
-								result:Set(id)
-							end
-						end
+						scanWords(first, last)
 						compared += last - first + 1
 					end
 					if checkpoint then
@@ -140,13 +150,9 @@ local function Main()
 					end
 				end
 			else
-				for id, name in ipairs(names) do
-					if string.find(name, term, 1, true) then
-						result:Set(id)
-					end
-					if checkpoint and id % 128 == 0 then
-						checkpoint()
-					end
+				for first = 1, #names, 128 do
+					scanWords(first, math.min(first + 127, #names))
+					if checkpoint then checkpoint() end
 				end
 				compared = #names
 			end
@@ -162,15 +168,38 @@ local function Main()
 			return result
 		end
 		function p:Candidates(terms, checkpoint)
-			local result
-			for _, term in ipairs(terms) do
-				local bits = self:Lookup(term, checkpoint)
-				result = result and result:And(bits) or bits
-				if checkpoint then
-					checkpoint()
+			if #terms == 0 then return Bits.Sparse() end
+			if #terms == 1 then return self:Lookup(terms[1], checkpoint) end
+			local normalized = table.create(#terms)
+			local first, best = 1, math.huge
+			for i, term in ipairs(terms) do
+				local lower = string.lower(term)
+				normalized[i] = lower
+				local cached = self.Cache[lower]
+				local cost = cached and cached.Count or #self.Names + 1
+				if cost < best or (cost == best and #lower > #normalized[first]) then
+					first, best = i, cost
 				end
 			end
-			return result or Bits.Sparse()
+			local result = self:Lookup(normalized[first], checkpoint)
+			for i, term in ipairs(normalized) do
+				if result.Count == 0 then break end
+				if i == first or contains(normalized[first], term) then continue end
+				local bits = self.Cache[term]
+				if not bits and result.Count <= #self.Names // 16 then
+					local narrowed = Bits.Sparse()
+					result:Each(function(id)
+						if contains(self.Names[id], term) then narrowed:Set(id) end
+					end, checkpoint)
+					self.Stats.Comparisons += result.Count
+					result = narrowed
+				else
+					bits = bits or self:Lookup(term, checkpoint)
+					result = if result.Count <= bits.Count then result:And(bits) else bits:And(result)
+				end
+				if checkpoint then checkpoint() end
+			end
+			return result
 		end
 		function p:ExceedsLimit(term, limit)
 			for cachedTerm, candidate in pairs(self.NodeCache) do
