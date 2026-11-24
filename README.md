@@ -48,6 +48,23 @@ Also includes [Transform Tools](docs/USAGE.md#transform-tools), a [Console](docs
 
 ## Performance
 
+### Explorer search
+
+Median Luau CLI timings on 60,000 simulated objects, comparing the [previous release](https://github.com/wooxps/dex-explorer/tree/55711bb) with the [search update](https://github.com/wooxps/dex-explorer/commit/fc5873b61c49a8432bf498f17e217f27117a4f37).
+
+| Workload | Matches | Previous | Updated |
+| --- | ---: | ---: | ---: |
+| Cold search, shuffled siblings | 60,000 | 195.8 ms | 129.7 ms |
+| Cold search, ordered siblings | 60,000 | 92.8 ms | 53.5 ms |
+| Cold search, shuffled siblings | 10 | 49.2 ms | 38.7 ms |
+| Cold search, shuffled siblings | 0 | 48.0 ms | 35.2 ms |
+| Indexed two-word lookup | 10 | 21.3 ms | 6.1 ms |
+| Indexed two-word lookup | 30,000 | 44.3 ms | 32.0 ms |
+
+Cold searches used fresh trees with numbered sibling names. Each median covers seven runs and includes sorting and result-row construction. Indexed timings cover nine runs on a prepared name index and measure lookup only. Both benchmarks exclude frame waits and UI rendering.
+
+### Original Dex comparison
+
 Compared with the [original Dex](https://github.com/LorekeeperZinnia/Dex):
 
 | Task | Original Dex | Dex Explorer | Improvement |
