@@ -260,10 +260,8 @@ local function Create(Bits: SearchBits)
 				if leaves and minName and maxName then
 					local uniform = minName == maxName
 					local prefix = if uniform then string.lower(minName) else sharedPrefix(minName, maxName)
-					if #prefix > 0 or uniform then
-						leafBlocks[word + 1] = { Prefix = prefix, Uniform = uniform, Width = blockWidth, Depth = blockDepth,
-							WidthRevision = widthRevision, WidthSource = widthSource }
-					end
+					leafBlocks[word + 1] = { Prefix = prefix, Uniform = uniform, Width = blockWidth, Depth = blockDepth,
+						WidthRevision = widthRevision, WidthSource = widthSource }
 				end
 				blockWidth, blockDepth = 0, 0
 				leaves, minName, maxName = true, nil, nil
@@ -504,22 +502,44 @@ local function Create(Bits: SearchBits)
 				end, checkpoint)
 			else
 				local nextMatch = math.huge
+				local blocks = layout.LeafBlocks
+				local widthRevision = context.WidthRevision and context.WidthRevision()
 				for word = (#nodes + 31) // 32 - 1, 0, -1 do
 					local offset = word * 4
 					local matchWord = buffer.readu32(allMatches.Data, offset)
 					local contextWord = 0
 					local first = word * 32 + 1
-					for i = math.min(first + 31, #nodes), first, -1 do
-						local bit = lshift(1, i - first)
-						if band(matchWord, bit) ~= 0 then
-							nextMatch = i
+					local block = blocks and blocks[word + 1]
+					if block then
+						contextWord = matchWord
+						if matchWord ~= 0 then
+							nextMatch = first + bit32.countrz(matchWord)
+							if matchWord == 0xffffffff and widthRevision and block.WidthRevision == widthRevision and block.WidthSource == context.WidthRevision then
+								width = math.max(width, block.Width)
+								depth = math.max(depth, block.Depth)
+							else
+								local pending = matchWord
+								while pending ~= 0 do
+									local i = first + bit32.countrz(pending)
+									width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
+									depth = math.max(depth, depths[i])
+									pending = band(pending, pending - 1)
+								end
+							end
 						end
-						if nextMatch <= ends[i] then
-							contextWord = bor(contextWord, bit)
-							width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
-							depth = math.max(depth, depths[i])
-							if parents[i] == 0 then
-								top[#top + 1] = i
+					else
+						for i = math.min(first + 31, #nodes), first, -1 do
+							local bit = lshift(1, i - first)
+							if band(matchWord, bit) ~= 0 then
+								nextMatch = i
+							end
+							if nextMatch <= ends[i] then
+								contextWord = bor(contextWord, bit)
+								width = math.max(width, nodes[i].NameWidth or math.min(100, #names[i]) * 14)
+								depth = math.max(depth, depths[i])
+								if parents[i] == 0 then
+									top[#top + 1] = i
+								end
 							end
 						end
 					end

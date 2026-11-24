@@ -117,6 +117,26 @@ do
 	assert(combined:Has(500) and combined:Has(501))
 	assert(not index:NodeCandidates({ "rack" }, nil, 255))
 end
+do
+	local index = Apps.SearchPostings.Create()
+	local long = string.rep("K", 75)
+	for id = 1, 1049 do
+		local name = if id == 77 then "Rack" else "RackArm"
+		if id > 256 and id <= 384 then name = long end
+		if id > 512 and id <= 640 then name = "Rack\0Arm" end
+		index:Intern(name .. id)
+	end
+	for _, term in { "ARM", "rack", "a", "", "k", long, "k384", "\0arm", "9\0rack", "49" } do
+		local result = index:Lookup(term)
+		local count = 0
+		for id, name in index.Names do
+			local hit = string.find(name, string.lower(term), 1, true) ~= nil
+			assert(result:Has(id) == hit)
+			if hit then count += 1 end
+		end
+		assert(result.Count == count)
+	end
+end
 local root = { Obj = { Name = "game", ClassName = "DataModel" } }
 local serial = 0
 local function add(parent, name)
@@ -479,7 +499,22 @@ do
 		return folders(obj) and obj.Name == "Upper_NEEDLE_日本"
 	end, context, check, roots, isFolder, "Folder", true)
 	assert(#denseLive.MatchList == 1 and denseLive.MatchList[1] == nested[129])
-	Apps.SearchResults.PrepareCharacters(layout, check)
+	local reference = Apps.SearchResults.CreateLayout(roots, context, check)
+	Apps.SearchResults.PrepareCharacters(layout, check, context.WidthRevision)
+	for limit = 1, 3 do
+		local function predicate(obj)
+			local id = tonumber(string.match(obj.Name, "%d+$"))
+			return id and (id <= 350 or id >= 513 and id % limit == 0)
+		end
+		local actual = Apps.SearchResults.CreatePredicate(layout, predicate, context, check, roots)
+		local full = Apps.SearchResults.CreatePredicate(reference, predicate, context, check, roots)
+		assert(actual.Width == full.Width and actual.Depth == full.Depth)
+		assert(#actual.Rows == #full.Rows and #actual.MatchList == #full.MatchList)
+		for i = 1, #full.Rows do assert(actual.Rows[i] == full.Rows[i]) end
+		for i = 1, #full.MatchList do assert(actual.MatchList[i] == full.MatchList[i]) end
+		nested[300].NameWidth = 2000 + limit
+		version += 1
+	end
 	for _, terms in { { "pa" }, { "art" }, { "a", "t" }, { "p", "2" } } do
 		local indexed = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
 		local fresh = Apps.SearchResults.CreateCold(roots, terms, context, check)

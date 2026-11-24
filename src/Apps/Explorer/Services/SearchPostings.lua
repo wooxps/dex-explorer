@@ -6,10 +6,27 @@ local Apps
 local function Main()
 	local Bits = Apps.SearchBits
 	local Postings = {}
+	local function BlockPrefix(names: { string }, first: number, last: number): string
+		local prefix = string.sub(names[first], 1, 64)
+		for index = last, first + 1, -1 do
+			local name = names[index]
+			if string.find(name, prefix, 1, true) ~= 1 then
+				local length = 0
+				for byteIndex = 1, math.min(#prefix, #name) do
+					if string.byte(prefix, byteIndex) ~= string.byte(name, byteIndex) then break end
+					length = byteIndex
+				end
+				if length == 0 then return "" end
+				prefix = string.sub(prefix, 1, length)
+			end
+		end
+		return prefix
+	end
 	function Postings.Create()
 		local p = {
 			Names = {},
 			NameBlocks = {},
+			BlockPrefixes = {},
 			Ids = {},
 			Groups = {},
 			LinearBlocks = {},
@@ -147,21 +164,28 @@ local function Main()
 					end
 				end, checkpoint)
 				compared = candidate.Count
-			elseif #term >= 3 and #names >= 1024 then
+			elseif #names >= 1024 then
 				compared = 0
 				for first = 1, #names, 128 do
 					local last = math.min(first + 127, #names)
 					local block = (first - 1) // 128 + 1
 					local text = self.NameBlocks[block]
-					if not text then
-						text = table.concat(names, "\0", first, last)
-						if last == first + 127 then
-							self.NameBlocks[block] = text
+					if #term < 3 or not text or string.find(text, term, 1, true) then
+						local prefix = self.BlockPrefixes[block]
+						if prefix == nil and text and contains(names[first], term) and contains(names[last], term) then
+							prefix = BlockPrefix(names, first, last)
+							self.BlockPrefixes[block] = prefix
 						end
-					end
-					if string.find(text, term, 1, true) then
-						scanWords(first, last)
-						compared += last - first + 1
+						if prefix and contains(prefix, term) then
+							local word = (first - 1) // 32 + 1
+							for offset = 0, 3 do
+								result.Words[word + offset] = 0xffffffff
+							end
+							result.Count += 128
+						else
+							scanWords(first, last)
+							compared += last - first + 1
+						end
 					end
 					if checkpoint then
 						checkpoint()
