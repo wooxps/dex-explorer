@@ -415,17 +415,17 @@ local menu=Main.MainGui.OpenButton.MainFrame
 assert(Main.AppsContainerGrid.CellSize==UDim2.fromOffset(44,42) and Main.AppsContainerGrid.FillDirectionMaxCells==5,"five-column tool grid")
 Main.SetMainGuiOpen(true)
 assert(menu.Visible and menu.Size.X.Offset==268,"menu opens at the compact desktop width")
-assert(Main.AppsContainerGrid.AbsoluteContentSize.Y==192,"sixteen tools fit in four desktop rows")
+assert(Main.AppsContainerGrid.AbsoluteContentSize.Y==142,"fifteen tools fit in three desktop rows")
 local screen=Main.MainGui
 screen.ViewportSize=Vector2.new(224,320)
 screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
 Main.AppsContainerGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Fire()
 assert(menu.Size.X.Offset==208 and menu.Size.Y.Offset<=264,"narrow and short viewports keep the launcher in view")
-assert(Main.AppsContainerGrid.AbsoluteContentSize.Y==292 and Main.AppsFrame.CanvasSize.Y.Offset>Main.AppsFrame.AbsoluteSize.Y,"tool rows wrap and remain scrollable")
+assert(Main.AppsContainerGrid.AbsoluteContentSize.Y==242 and Main.AppsFrame.CanvasSize.Y.Offset>Main.AppsFrame.AbsoluteSize.Y,"tool rows wrap and remain scrollable")
 screen.ViewportSize=nil
 screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
 Main.AppsContainerGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Fire()
-assert(menu.Size.X.Offset==268 and Main.AppsContainerGrid.AbsoluteContentSize.Y==192,"wider viewports restore the shorter grid")
+assert(menu.Size.X.Offset==268 and Main.AppsContainerGrid.AbsoluteContentSize.Y==142,"wider viewports restore the shorter grid")
 assert(Main.MainGui.OpenButton.Text=="" and not Main.MainGui.OpenButton:FindFirstChild("Caption") and not Main.MainGui.OpenButton:FindFirstChild("Chevron"),"compact launcher has no caption or arrow")
 assert(Main.MainGui.OpenButton.Size==UDim2.fromOffset(32,32) and Main.MainGui.OpenButton.DexIcon.Image=="mockasset://branding/dex/toolbar-white-v1","square launcher uses its monochrome toolbar mark")
 service.UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.Escape,UserInputType=Enum.UserInputType.Keyboard})
@@ -449,7 +449,7 @@ assert(found,"Explorer launcher preserved")
 assert(Main.AppsContainer["Script Editor"].LayoutOrder < Main.AppsContainer["Console"].LayoutOrder,"script tools are grouped in order")
 local expectedIcons={
  ["Explorer"]="menu/tool/explorer",["Properties"]="menu/tool/properties",["Click part to select"]="native/transform/ribbon/select",["Click UI to select"]="menu/tool/ui_select",
- ["Freecam"]="class/Camera",["Input Macros"]="macro/play",["Script Editor"]="menu/tool/script",["Console"]="menu/tool/console",["Save Instance"]="menu/tool/save",["3D Viewer"]="menu/tool/viewer",
+ ["Input Macros"]="macro/play",["Script Editor"]="menu/tool/script",["Console"]="menu/tool/console",["Save Instance"]="menu/tool/save",["3D Viewer"]="menu/tool/viewer",
 }
 local iconCount=0
 for _,row in ipairs(Main.AppsContainer:GetChildren()) do
@@ -460,7 +460,7 @@ for _,row in ipairs(Main.AppsContainer:GetChildren()) do
   assert(row.Main.Icon.ImageRectSize.X==0 and row.Main.Icon.ImageRectSize.Y==0,"tool icon is not cropped as a legacy sprite")
  end
 end
-assert(iconCount==10,"every main-menu tool uses the Studio icon set")
+assert(iconCount==9,"every main-menu tool uses the Studio icon set")
 local macroOpened=0
 Apps.InputMacros={
  Open=function()

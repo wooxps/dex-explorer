@@ -31,8 +31,6 @@ Type in the Explorer search field to filter the tree. You can search for a name 
 
 Clear the field to return to the full tree.
 
-Choose **Freecam** from the main menu to inspect the world with a mouse and keyboard. Fly with **WASD**, use **Q/E** to descend or rise, and hold **Shift** to move faster. Hold the right mouse button to look around. Release it and click a part to select it in Explorer and Properties. Press **Esc** or toggle Freecam off to return to your previous camera.
-
 Right click an object for its actions. Players have **View Player** and **Listen To**. Use **Highlight** to mark an object in the game.
 
 Open the same menu to stop an action: **Stop Viewing Player**, **Stop Listening To**, or **Remove Highlight** replaces the action you started.
