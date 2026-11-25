@@ -123,6 +123,8 @@ local function Create(Bits: SearchBits)
 		end
 		local pendingLow, pendingHigh, nameMasks = {}, {}, {}
 		local leafBlocks = {}
+		local nameForms = if #nodes >= 1024 then {} else nil
+		local formCount = 0
 		local minName, maxName = nil, nil
 		local leaves = true
 		local cacheCount = 0
@@ -141,6 +143,18 @@ local function Create(Bits: SearchBits)
 						lo = bor(lo, lshift(1, lane - 1))
 					else
 						hi = bor(hi, lshift(1, lane - 33))
+					end
+				end
+			end
+			if #name > 1024 then nameForms = nil end
+			if nameForms then
+				local form = string.gsub(string.lower(name), "%d+", "0")
+				if not nameForms[form] then
+					formCount += 1
+					if formCount > 512 then
+						nameForms = nil
+					else
+						nameForms[form] = lo
 					end
 				end
 			end
@@ -282,15 +296,14 @@ local function Create(Bits: SearchBits)
 		layout.Positions = layout.Positions or positions
 		layout.Top = layout.Top or top
 		layout.LeafBlocks = leafBlocks
+		layout.NameForms = nameForms
+		for _, column in columns do
+			column.WidthSource, column.WidthRevision = widthSource, widthRevision
+		end
 		layout.Characters = columns
 	end
 
-	function Results.CreateIndexed(layout, term, context, checkpoint)
-		local lane = #term == 1 and charLanes[string.byte(term)]
-		local column = lane and layout.Characters and layout.Characters[lane]
-		if not column then
-			return nil
-		end
+	local function columnRoots(layout, column, checkpoint)
 		if not column.Match.Prefix then
 			column.Match:Prepare(checkpoint)
 		end
@@ -306,6 +319,16 @@ local function Create(Bits: SearchBits)
 				checkpoint()
 			end
 		end
+		return top
+	end
+
+	function Results.CreateIndexed(layout, term, context, checkpoint)
+		local lane = #term == 1 and charLanes[string.byte(term)]
+		local column = lane and layout.Characters and layout.Characters[lane]
+		if not column then
+			return nil
+		end
+		local top = columnRoots(layout, column, checkpoint)
 		return createView(
 			layout,
 			context,
@@ -616,12 +639,73 @@ local function Create(Bits: SearchBits)
 		return createView(layout, context, checkpoint, positions, top, matches, included, width, depth)
 	end
 
+	local function canCompareForms(layout, terms)
+		if not layout.NameForms then return false end
+		for _, term in terms do
+			if string.find(term, "%d") then return false end
+		end
+		return true
+	end
+
+	local function equivalentColumn(layout, matchesName, checkpoint)
+		local lanes, visited = 0x03ffffff, 0
+		for form, letters in layout.NameForms do
+			lanes = bit32.band(lanes, if matchesName(form) then letters else bit32.bnot(letters))
+			if lanes == 0 then return nil end
+			visited += 1
+			if visited % 64 == 0 then checkpoint() end
+		end
+		local column = layout.Characters[bit32.countrz(lanes) + 1]
+		if column.Match.Count > #layout.Nodes // 8 then return column end
+		return nil
+	end
+
+	local function sameFormMatches(forms, terms, matchesName, checkpoint)
+		local visited = 0
+		for form in forms do
+			local hit = true
+			for _, term in terms do
+				if not string.find(form, term, 1, true) then
+					hit = false
+					break
+				end
+			end
+			if hit ~= matchesName(form) then return false end
+			visited += 1
+			if visited % 64 == 0 then checkpoint() end
+		end
+		return true
+	end
+
 	local function sparseNameView(layout, terms, context, checkpoint, matchesName, widthRevision)
 		local nodes, names = layout.Nodes, layout.Names
 		if #nodes < 1024 then return nil end
 		local subset
+		local comparable = canCompareForms(layout, terms)
+		local upperBound = #nodes
+		if layout.NilRoot and layout.Positions and layout.Positions[layout.NilRoot] then upperBound -= 1 end
+		if layout.Characters then
+			for _, term in terms do
+				for i = 1, math.min(#term, 128) do
+					local column = layout.Characters[charLanes[string.byte(term, i)]]
+					if column then
+						local count = column.Match.Count
+						upperBound = math.min(upperBound, count)
+						if count <= #nodes // 32 and (not subset or count < subset.Count) then
+							subset = column.Match
+						end
+					end
+				end
+			end
+		end
 		for _, entry in ipairs(layout.LiteralResults or {}) do
-			if sameTerms(entry.Terms, terms) then
+			local reuse = sameTerms(entry.Terms, terms)
+				or (entry.Match.Count == upperBound and impliesTerms(entry.Terms, terms))
+			if not reuse and comparable and entry.Match.Count > #nodes // 8 and canCompareForms(layout, entry.Terms)
+				and (impliesTerms(terms, entry.Terms) or impliesTerms(entry.Terms, terms)) then
+				reuse = sameFormMatches(layout.NameForms, entry.Terms, matchesName, checkpoint)
+			end
+			if reuse then
 				local width = entry.Width
 				if widthRevision == nil or entry.WidthRevision ~= widthRevision or entry.WidthSource ~= context.WidthRevision then
 					width = 0
@@ -636,16 +720,6 @@ local function Create(Bits: SearchBits)
 			if entry.Match.Count <= #nodes // 8 and (not subset or entry.Match.Count < subset.Count)
 				and impliesTerms(terms, entry.Terms) then
 				subset = entry.Match
-			end
-		end
-		if layout.Characters then
-			for _, term in ipairs(terms) do
-				for i = 1, math.min(#term, 128) do
-					local column = layout.Characters[charLanes[string.byte(term, i)]]
-					if column and column.Match.Count <= #nodes // 32 and (not subset or column.Match.Count < subset.Count) then
-						subset = column.Match
-					end
-				end
 			end
 		end
 		local candidates
@@ -853,6 +927,20 @@ local function Create(Bits: SearchBits)
 		if layout then
 			local sparse = sparseNameView(layout, terms, context, checkpoint, matchesName, widthRevision)
 			if sparse then return sparse end
+			local column = canCompareForms(layout, terms) and equivalentColumn(layout, matchesName, checkpoint)
+			if column then
+				local top = columnRoots(layout, column, checkpoint)
+				local columnWidth = column.Width
+				if widthRevision == nil or column.WidthSource ~= context.WidthRevision or column.WidthRevision ~= widthRevision then
+					columnWidth = 0
+					column.Context:Each(function(at)
+						columnWidth = math.max(columnWidth, nodes[at].NameWidth or math.min(100, #names[at]) * 14)
+					end, checkpoint)
+					column.Width, column.WidthSource, column.WidthRevision = columnWidth, context.WidthRevision, widthRevision
+				end
+				return literalView(layout, terms, context, checkpoint, fullPositions, top, column.Match, column.Context,
+					columnWidth, column.Depth, widthRevision)
+			end
 			local operands
 			if #terms > 1 and #terms <= 8 then
 				operands = {}

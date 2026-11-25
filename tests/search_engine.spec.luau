@@ -961,3 +961,32 @@ do
 	end
 	assert(not Apps.SearchResults.TrySelectiveCold(roots, { "object" }, context, check))
 end
+
+do
+	local root, nilRoot = {}, { Obj = { Name = "abc" } }
+	local branch = add(root, "Branch")
+	for i = 1, 3073 do
+		local name = if i % 3 == 0 then "aCb" else "AbC"
+		add(branch, name .. i .. "_node")
+	end
+	add(nilRoot, "abc_detached")
+	local roots = { root, nilRoot }
+	local revision = 1
+	local context = {
+		Name = function(node) return node.Obj.Name end, Children = function(node) return node end,
+		Visible = function() return true end, WidthRevision = function() return revision end,
+	}
+	local function check() end
+	local layout = Apps.SearchResults.CreateLayout(roots, context, check)
+	Apps.SearchResults.PrepareCharacters(layout, check, context.WidthRevision)
+	for _, terms in { { "node" }, { "ab" }, { "abc" }, { "abc", "node" }, { "abc2" }, { "abc", "0" }, { "bc_" }, { "_node" } } do
+		local result = Apps.SearchResults.CreateCold(roots, terms, context, check, layout)
+		local reference = Apps.SearchResults.CreateCold(roots, terms, context, check)
+		assert(result.Width == reference.Width and result.Depth == reference.Depth)
+		assert(#result.Rows == #reference.Rows and #result.MatchList == #reference.MatchList)
+		for i = 1, #reference.Rows do assert(result.Rows[i] == reference.Rows[i]) end
+		for i = 1, #reference.MatchList do assert(result.MatchList[i] == reference.MatchList[i]) end
+		branch[17].NameWidth = 2500
+		revision += 1
+	end
+end
