@@ -126,7 +126,7 @@ do
 		if id > 512 and id <= 640 then name = "Rack\0Arm" end
 		index:Intern(name .. id)
 	end
-	for _, term in { "ARM", "rack", "a", "", "k", long, "k384", "\0arm", "9\0rack", "49" } do
+	for _, term in { "ARM", "rack", "a", "", "k", long, "k384", "\0arm", "9\0rack", "49", "1", "12", "123", "1q", "xy", "q" } do
 		local result = index:Lookup(term)
 		local count = 0
 		for id, name in index.Names do

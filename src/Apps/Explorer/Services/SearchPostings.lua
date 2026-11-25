@@ -142,22 +142,36 @@ local function Main()
 			end
 			local result = Bits.Sparse()
 			local names = self.Names
+			local compared = 0
+			local eligible = candidate and best * 4 < #names * 3 and candidate.Words
 			local function scanWords(first, last)
+				compared += last - first + 1
 				for start = first, last, 32 do
 					local mask = 0
-					for id = start, math.min(start + 31, last) do
-						if string.find(names[id], term, 1, true) then
-							mask = bit32.bor(mask, bit32.lshift(1, id - start))
+					local word = (start - 1) // 32 + 1
+					local pending = eligible and (eligible[word] or 0)
+					if pending and pending ~= 0xffffffff then
+						compared -= math.min(32, last - start + 1) - Bits.Pop(pending)
+						while pending ~= 0 do
+							local bit = bit32.band(pending, -pending)
+							local id = start + bit32.countrz(bit)
+							if string.find(names[id], term, 1, true) then mask = bit32.bor(mask, bit) end
+							pending -= bit
+						end
+					else
+						for id = start, math.min(start + 31, last) do
+							if string.find(names[id], term, 1, true) then
+								mask = bit32.bor(mask, bit32.lshift(1, id - start))
+							end
 						end
 					end
 					if mask ~= 0 then
-						result.Words[(start - 1) // 32 + 1] = mask
+						result.Words[word] = mask
 						result.Count += Bits.Pop(mask)
 					end
 				end
 			end
-			local compared
-			if candidate and best * 4 < #names * 3 then
+			if eligible and (best <= #names // 64 or #names < 1024) then
 				candidate:Each(function(id)
 					if string.find(names[id], term, 1, true) then
 						result:Set(id)
@@ -165,12 +179,13 @@ local function Main()
 				end, checkpoint)
 				compared = candidate.Count
 			elseif #names >= 1024 then
-				compared = 0
+				local commonShortTerm = #term < 3 and contains(names[1], term)
+					and contains(names[#names // 2], term) and contains(names[#names], term)
 				for first = 1, #names, 128 do
 					local last = math.min(first + 127, #names)
 					local block = (first - 1) // 128 + 1
 					local text = self.NameBlocks[block]
-					if #term < 3 or not text or string.find(text, term, 1, true) then
+					if commonShortTerm or not text or string.find(text, term, 1, true) then
 						local prefix = self.BlockPrefixes[block]
 						if prefix == nil and text and contains(names[first], term) and contains(names[last], term) then
 							prefix = BlockPrefix(names, first, last)
@@ -184,7 +199,6 @@ local function Main()
 							result.Count += 128
 						else
 							scanWords(first, last)
-							compared += last - first + 1
 						end
 					end
 					if checkpoint then
@@ -196,7 +210,6 @@ local function Main()
 					scanWords(first, math.min(first + 127, #names))
 					if checkpoint then checkpoint() end
 				end
-				compared = #names
 			end
 			self.Stats.Comparisons += compared
 			if #self.CacheOrder >= 12 then
