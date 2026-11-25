@@ -1859,6 +1859,7 @@ Main = (function()
 		["Save Instance"] = { Order = 13 },
 		["Dex MCP"] = { Order = 14 },
 		["Input Macros"] = { Order = 15 },
+		["Freecam"] = { Order = 16 },
 	}
 
 	Main.CreateApp = function(data)
@@ -3003,7 +3004,7 @@ Main = (function()
 
 		local cptsOnMouseClick, uiSelectInput, uiPickerEscapeInput = nil, nil, nil
 		local uiCaptureGui, uiCaptureButton = nil, nil
-		local partPickerControl, uiPickerControl
+		local partPickerControl, uiPickerControl, freecamControl
 
 		local selectExplorerObject = Explorer.SelectObject
 
@@ -3134,6 +3135,7 @@ Main = (function()
 			Description = "Pick a part in the 3D world to reveal it in Explorer",
 			Icon = Main.GetStudioAsset("native/transform/ribbon/select"),
 			OnClick = function(callback)
+				if callback and freecamControl then freecamControl.Disable() end
 				if Apps.TransformTools and Apps.TransformTools.SetWorldSelection then
 					Apps.TransformTools.SetWorldSelection(callback)
 				end
@@ -3226,6 +3228,7 @@ Main = (function()
 			Icon = Main.GetStudioAsset("menu/tool/ui_select"),
 			OnClick = function(callback)
 				if callback then
+					if freecamControl then freecamControl.Disable() end
 					if partPickerControl then
 						partPickerControl.Disable()
 					end
@@ -3238,6 +3241,123 @@ Main = (function()
 				end
 			end,
 		})
+
+		do
+			local stop
+			local function start()
+				local input = service.UserInputService
+				local world = service.Workspace
+				local camera = world.CurrentCamera
+				if not camera or not input.KeyboardEnabled or not input.MouseEnabled then
+					freecamControl.Disable(true)
+					return
+				end
+				partPickerControl.Disable()
+				uiPickerControl.Disable()
+				local actions = service.ContextActionService
+				local action = "DexExplorerFreecamMove"
+				local frame = camera.CFrame
+				local original, focus, cameraType = frame, camera.Focus, camera.CameraType
+				local behavior, cursor = input.MouseBehavior, input.MouseIconEnabled
+				local pitch, yaw = frame:ToOrientation()
+				local held, connections = {}, {}
+				local looking = false
+				local function connect(signal, callback)
+					table.insert(connections, signal:Connect(callback))
+				end
+				local function releaseLook()
+					looking = false
+					input.MouseBehavior = Enum.MouseBehavior.Default
+					input.MouseIconEnabled = true
+				end
+				stop = function()
+					stop = nil
+					for _, connection in connections do connection:Disconnect() end
+					actions:UnbindAction(action)
+					input.MouseBehavior = behavior
+					input.MouseIconEnabled = cursor
+					if camera.Parent and camera.CameraType == Enum.CameraType.Scriptable then
+						camera.CFrame, camera.Focus = original, focus
+						camera.CameraType = cameraType
+					end
+				end
+				camera.CameraType = Enum.CameraType.Scriptable
+				releaseLook()
+				local key = Enum.KeyCode
+				actions:BindActionAtPriority(action, function(_, state, event)
+					local code = event.KeyCode
+					if state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+						held[code] = nil
+						return Enum.ContextActionResult.Pass
+					end
+					if input:GetFocusedTextBox() or service.GuiService.MenuIsOpen then return Enum.ContextActionResult.Pass end
+					if state == Enum.UserInputState.Begin then held[code] = true end
+					return Enum.ContextActionResult.Sink
+				end, false, Enum.ContextActionPriority.High.Value + 1, key.W, key.A, key.S, key.D, key.Q, key.E)
+				connect(input.InputBegan, function(event, processed)
+					if input:GetFocusedTextBox() then return end
+					if event.KeyCode == key.Escape then freecamControl.Disable() return end
+					if processed or service.GuiService.MenuIsOpen then return end
+					local mouse = Main.Mouse
+					if Main.IsPointInDexUI and Main.IsPointInDexUI(mouse.X, mouse.Y) then return end
+					if event.UserInputType == Enum.UserInputType.MouseButton2 then
+						looking = true
+						input.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+						input.MouseIconEnabled = false
+					elseif event.UserInputType == Enum.UserInputType.MouseButton1 and not looking then
+						if Apps.TransformTools and Apps.TransformTools.CapturesPointer(mouse.X, mouse.Y) then return end
+						if Explorer.PickWorld() then
+							Main.MenuApps.Explorer.Enable()
+							Main.MenuApps.Properties.Enable()
+						end
+					end
+				end)
+				connect(input.InputChanged, function(event)
+					if looking and event.UserInputType == Enum.UserInputType.MouseMovement then
+						yaw -= event.Delta.X * 0.003
+						pitch = math.clamp(pitch - event.Delta.Y * 0.003, -math.rad(89.5), math.rad(89.5))
+						frame = CFrame.new(frame.Position) * CFrame.fromOrientation(pitch, yaw, 0)
+					end
+				end)
+				connect(input.InputEnded, function(event)
+					if looking and event.UserInputType == Enum.UserInputType.MouseButton2 then releaseLook() end
+				end)
+				local function pause()
+					table.clear(held)
+					if looking then releaseLook() end
+				end
+				connect(input.WindowFocusReleased, pause)
+				connect(input.TextBoxFocused, pause)
+				connect(service.GuiService.MenuOpened, pause)
+				connect(world:GetPropertyChangedSignal("CurrentCamera"), freecamControl.Disable)
+				connect(service.RunService.RenderStepped, function(dt)
+					if camera.CameraType ~= Enum.CameraType.Scriptable then freecamControl.Disable() return end
+					local x = (held[key.D] and 1 or 0) - (held[key.A] and 1 or 0)
+					local y = (held[key.E] and 1 or 0) - (held[key.Q] and 1 or 0)
+					local z = (held[key.S] and 1 or 0) - (held[key.W] and 1 or 0)
+					local direction = frame.RightVector * x + Vector3.yAxis * y + frame.LookVector * -z
+					if direction.Magnitude > 0 then
+						local fast = input:IsKeyDown(key.LeftShift) or input:IsKeyDown(key.RightShift)
+						frame += direction.Unit * (fast and 144 or 36) * math.min(dt, 0.1)
+					end
+					camera.CFrame = frame
+					camera.Focus = frame * CFrame.new(0, 0, -16)
+				end)
+				if Main.MainGuiOpen then Main.SetMainGuiOpen(false) end
+			end
+			freecamControl = Main.CreateApp({
+				Name = "Freecam",
+				Description = "WASD fly, Q/E down/up, Shift boost, right-drag look, click to inspect, Esc to exit",
+				Icon = Main.GetStudioAsset("class/Camera"),
+				OnClick = function(enabled)
+					if enabled then
+						local ok, reason = pcall(start)
+						if not ok then freecamControl.Disable() warn("Dex Freecam: " .. tostring(reason)) end
+					elseif stop then stop() end
+				end,
+			})
+			Main.AddCleanup(function() if stop then stop() end end)
+		end
 
 		Main.AddCleanup(function()
 			if cptsOnMouseClick then
