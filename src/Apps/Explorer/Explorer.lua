@@ -1462,7 +1462,7 @@ local function CreateModule()
 		return moved
 	end
 
-	Explorer.StartDrag = function()
+	Explorer.StartDrag = function(touch)
 		if Explorer.Dragging then
 			return
 		end
@@ -1476,7 +1476,8 @@ local function CreateModule()
 		local outline = marker.Outline
 		local input = service.UserInputService
 		local mouse = Main.Mouse or plr:GetMouse()
-		local x, y = mouse.X, mouse.Y
+		local pointer = if touch then touch.Position else mouse
+		local x, y = pointer.X, pointer.Y
 		local target, mode, dropParent
 		local hoverTarget, hoverTicket = nil, 0
 		local connections = {}
@@ -1560,8 +1561,7 @@ local function CreateModule()
 		end
 		connections[#connections + 1] = input.InputChanged:Connect(function(event)
 			if
-				event.UserInputType == Enum.UserInputType.MouseMovement
-				or event.UserInputType == Enum.UserInputType.Touch
+				not touch and event.UserInputType == Enum.UserInputType.MouseMovement or event == touch
 			then
 				x, y = event.Position.X, event.Position.Y
 				update()
@@ -1569,9 +1569,9 @@ local function CreateModule()
 		end)
 		connections[#connections + 1] = input.InputEnded:Connect(function(event)
 			if
-				event.UserInputType == Enum.UserInputType.MouseButton1
-				or event.UserInputType == Enum.UserInputType.Touch
+				not touch and event.UserInputType == Enum.UserInputType.MouseButton1 or event == touch
 			then
+				if touch then x, y = event.Position.X, event.Position.Y end
 				update()
 				finish(true)
 			end
@@ -1599,7 +1599,7 @@ local function CreateModule()
 		update()
 	end
 
-	Explorer.StartBoxSelect = function(event, allowRow, baseSelection, currentPosition)
+	Explorer.StartBoxSelect = function(event, allowRow, baseSelection, currentPosition, touch)
 		if objectPicker or Explorer.BoxSelecting or Explorer.Dragging then
 			return
 		end
@@ -1663,12 +1663,12 @@ local function CreateModule()
 			end)
 		end
 		connections[#connections + 1] = Main.TrackSignal(service.UserInputService.InputChanged, function(e)
-			if e.UserInputType == Enum.UserInputType.MouseMovement or e.UserInputType == Enum.UserInputType.Touch then
+			if not touch and e.UserInputType == Enum.UserInputType.MouseMovement or e == touch then
 				update(e.Position.X, e.Position.Y)
 			end
 		end)
 		connections[#connections + 1] = Main.TrackSignal(service.UserInputService.InputEnded, function(e)
-			if e.UserInputType == Enum.UserInputType.MouseButton1 or e.UserInputType == Enum.UserInputType.Touch then
+			if not touch and e.UserInputType == Enum.UserInputType.MouseButton1 or e == touch then
 				finish()
 			end
 		end)
@@ -1686,9 +1686,14 @@ local function CreateModule()
 		update(currentPosition and currentPosition.X or x, currentPosition and currentPosition.Y or y)
 	end
 
-	local function overRowControl(entry)
-		local insert, expand = entry.Insert, entry.Indent.Expand
-		return (insert.Visible and Lib.CheckMouseInGui(insert)) or (expand.Visible and Lib.CheckMouseInGui(expand))
+	local function overRowControl(entry, point)
+		local function contains(control)
+			if not control.Visible then return false end
+			if not point then return Lib.CheckMouseInGui(control) end
+			local pos, size = control.AbsolutePosition, control.AbsoluteSize
+			return point.X >= pos.X and point.Y >= pos.Y and point.X < pos.X + size.X and point.Y < pos.Y + size.Y
+		end
+		return contains(entry.Insert) or contains(entry.Indent.Expand)
 	end
 
 	Explorer.NewListEntry = function(index)
@@ -1727,35 +1732,24 @@ local function CreateModule()
 				if displayedRowAt(input.Position.Y) ~= newEntry then
 					return
 				end
-				if overRowControl(newEntry) then
-					return
-				end
+				local touch = if input.UserInputType == Enum.UserInputType.Touch then input else nil
+				if overRowControl(newEntry, touch and touch.Position) then return end
 				if Explorer.IsEmptyPoint(input.Position.X, input.Position.Y) then
-					Explorer.StartBoxSelect(input)
+					if not touch then Explorer.StartBoxSelect(input) end
 					return
 				end
 				local releaseEvent, mouseEvent
-
 				local mouse = Main.Mouse or plr:GetMouse()
-				local startX, startY
-
-				if input.UserInputType == Enum.UserInputType.Touch then
-					startX = input.Position.X
-					startY = input.Position.Y
-				else
-					startX = mouse.X
-					startY = mouse.Y
-				end
-
-				local listOffsetX = startX - treeFrame.AbsolutePosition.X
-				local listOffsetY = startY - treeFrame.AbsolutePosition.Y
+				local origin = if touch then touch.Position else mouse
+				local startX, startY = origin.X, origin.Y
+				local pressedNode = displayedNodes[newEntry]
 				local marquee = startX >= newEntry.Insert.AbsolutePosition.X + newEntry.Insert.AbsoluteSize.X
 				local dragBase = table.clone(selection.List)
 
 				releaseEvent = Main.TrackSignal(service.UserInputService.InputEnded, function(input)
 					if
-						input.UserInputType == Enum.UserInputType.MouseButton1
-						or input.UserInputType == Enum.UserInputType.Touch
+						not touch and input.UserInputType == Enum.UserInputType.MouseButton1
+						or input == touch
 					then
 						releaseEvent:Disconnect()
 						mouseEvent:Disconnect()
@@ -1764,8 +1758,8 @@ local function CreateModule()
 
 				mouseEvent = Main.TrackSignal(service.UserInputService.InputChanged, function(input)
 					if
-						input.UserInputType == Enum.UserInputType.MouseMovement
-						or input.UserInputType == Enum.UserInputType.Touch
+						not touch and input.UserInputType == Enum.UserInputType.MouseMovement
+						or input == touch
 					then
 						local currentX, currentY
 
@@ -1784,15 +1778,19 @@ local function CreateModule()
 						if dist > 7 then
 							releaseEvent:Disconnect()
 							mouseEvent:Disconnect()
+							if touch then
+								if math.abs(deltaY) >= math.abs(deltaX) or displayedNodes[newEntry] ~= pressedNode then return end
+								if not marquee and pressedNode and not selection.Map[pressedNode] then selection:Set(pressedNode) end
+							end
 							if marquee then
 								Explorer.StartBoxSelect(
 									{ Position = Vector2.new(startX, startY) },
 									true,
 									dragBase,
-									Vector2.new(currentX, currentY)
+									Vector2.new(currentX, currentY), touch
 								)
 							else
-								Explorer.StartDrag(listOffsetX, listOffsetY)
+								Explorer.StartDrag(touch)
 							end
 						end
 					end
@@ -1828,25 +1826,29 @@ local function CreateModule()
 			newEntry.Indent.Expand.StudioChevron.ImageTransparency = 0.08
 		end)
 
-		newEntry.Indent.Expand.MouseButton1Down:Connect(function()
+		local function toggleExpanded(sweep)
 			local node = displayedNodes[newEntry]
-			if
-				not node
-				or not Explorer.HasChildren(node)
-				or displayedRowAt(Main.Mouse.Y) ~= newEntry
-				or not Lib.CheckMouseInGui(newEntry.Indent.Expand)
-			then
-				return
-			end
-
+			if not node or not Explorer.HasChildren(node) then return end
 			local value = not expanded[node]
-			Explorer.SetExpanded(node, value, Lib.IsShiftDown())
-			if not Lib.IsShiftDown() then
+			Explorer.SetExpanded(node, value, sweep and Lib.IsShiftDown())
+			if sweep and not Lib.IsShiftDown() then
 				Explorer.ExpandSweepValue = value
 				Explorer.ExpandSweepVisited = { [node] = true }
 			end
 			Explorer.Update(true)
 			Explorer.Refresh()
+		end
+		newEntry.Indent.Expand.MouseButton1Down:Connect(function()
+			local user = service.UserInputService
+			if user.TouchEnabled and user:GetLastInputType() == Enum.UserInputType.Touch then return end
+			if displayedRowAt(Main.Mouse.Y) == newEntry and Lib.CheckMouseInGui(newEntry.Indent.Expand) then
+				toggleExpanded(true)
+			end
+		end)
+		newEntry.Indent.Expand.Activated:Connect(function(input)
+			if input and input.UserInputType == Enum.UserInputType.Touch and displayedRowAt(input.Position.Y) == newEntry then
+				toggleExpanded(false)
+			end
 		end)
 		newEntry.Indent.Expand.MouseEnter:Connect(function()
 			local value = Explorer.ExpandSweepValue
@@ -6001,6 +6003,12 @@ return search]==]
 			end
 			return nil
 		end
+		sys.TouchTarget = function(item) return displayedNodes[item] end
+		function sys:OnTouchTap(item, point)
+			if displayedRowAt(point.Y) ~= item then return end
+			self.OnDown:Fire(item, 1, 1, point)
+			self.OnRelease:Fire(item, 1, 1, point)
+		end
 		function sys:OnTouchHold(item, point)
 			local node = displayedNodes[item]
 			if not node or node.Del or objectPicker or Explorer.Dragging or Explorer.BoxSelecting
@@ -6016,19 +6024,20 @@ return search]==]
 			Explorer.ShowRightClick(point, node)
 		end
 		sys.AllowedButtons = { 1, 2 }
-		sys.OnDown:Connect(function(item, _, button)
+		sys.OnDown:Connect(function(item, _, button, position)
+			local pointer = position or Main.Mouse
 			clickRevision += 1
 			local previous = lastClick
 			lastClick = nil
 			pressedRows[button] = nil
-			if not Explorer.IsTreeContentPoint(Main.Mouse.X, Main.Mouse.Y) then
+			if not Explorer.IsTreeContentPoint(pointer.X, pointer.Y) then
 				return
 			end
-			if Explorer.BoxSelecting or (button == 1 and Explorer.IsEmptyPoint(Main.Mouse.X, Main.Mouse.Y)) then
+			if Explorer.BoxSelecting or (button == 1 and Explorer.IsEmptyPoint(pointer.X, pointer.Y)) then
 				return
 			end
 			local node = displayedNodes[item]
-			if not node or node.Del or overRowControl(item) then
+			if not node or node.Del or overRowControl(item, position) then
 				return
 			end
 			if objectPicker then
@@ -6081,6 +6090,7 @@ return search]==]
 		end)
 
 		sys.OnRelease:Connect(function(item, _, button, position)
+			local pointer = position or Main.Mouse
 			local pressedButton = if button == 2 and position then 1 else button
 			local pressed = pressedRows[pressedButton]
 			pressedRows[pressedButton] = nil
@@ -6088,8 +6098,8 @@ return search]==]
 				Explorer.Dragging
 				or Explorer.BoxSelecting
 				or Explorer.SuppressRelease
-				or not Explorer.IsTreeContentPoint(Main.Mouse.X, Main.Mouse.Y)
-				or displayedRowAt(Main.Mouse.Y) ~= item
+				or not Explorer.IsTreeContentPoint(pointer.X, pointer.Y)
+				or displayedRowAt(pointer.Y) ~= item
 			then
 				return
 			end
@@ -6098,7 +6108,7 @@ return search]==]
 				return
 			end
 			if pressed.Picker then
-				if button == 1 and objectPicker == pressed.Picker and not overRowControl(item) then
+				if button == 1 and objectPicker == pressed.Picker and not overRowControl(item, position) then
 					pressed.Picker(node.Obj)
 				end
 				return
@@ -6135,6 +6145,7 @@ return search]==]
 				lastClick = pressed
 				if
 					pressed.Rename
+					and not position
 					and Settings.Explorer.ClickToRename
 					and Lib.CheckMouseInGui(item.Indent.EntryName)
 				then
@@ -6620,10 +6631,7 @@ return search]==]
 		end)
 		treeFrame.Active = true
 		treeFrame.InputBegan:Connect(function(event)
-			if
-				event.UserInputType == Enum.UserInputType.MouseButton1
-				or event.UserInputType == Enum.UserInputType.Touch
-			then
+			if event.UserInputType == Enum.UserInputType.MouseButton1 then
 				Explorer.StartBoxSelect(event)
 			end
 			if

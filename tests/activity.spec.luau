@@ -211,6 +211,11 @@ activityEnv.setclipboard = function(text)
 	copied = text
 end
 viewer.Rows[1].Gui.MouseButton2Click:Fire()
+local previousMenu = openedMenu
+viewer.Rows[1].Gui.InputBegan:Fire({UserInputType=Enum.UserInputType.Touch})
+viewer.Rows[1].Gui.TouchLongPress:Fire({Vector2.new(22,34)}, Enum.UserInputState.Begin)
+assert(openedMenu ~= previousMenu, "holding an activity entry opens its actions")
+viewer.Rows[1].Gui.MouseButton1Click:Fire()
 local actions = {}
 for _, item in ipairs(openedMenu.Items) do
 	actions[item.Name] = item

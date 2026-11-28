@@ -30,6 +30,12 @@ do
 	local point = Vector2.new(origin.X + 20, origin.Y + Explorer.RowHeight + 2)
 	Explorer.ClickSystem:OnTouchHold(rows[2], point)
 	assert(target and Explorer.Selection.Map[target] and touchPoint == point, "hold opens actions at the touched row")
+	local previousX, previousY = Main.Mouse.X, Main.Mouse.Y
+	Main.Mouse.X, Main.Mouse.Y = -100, -100
+	Explorer.Selection:Clear()
+	Explorer.ClickSystem:OnTouchTap(rows[2], Vector2.new(origin.X + 82, point.Y))
+	assert(Explorer.Selection.Map[target], "row tap selects the touched object with the mouse elsewhere")
+	Main.Mouse.X, Main.Mouse.Y = previousX, previousY
 	Explorer.ShowRightClick = original
 end
 assert(#rows == 5, "only the five actual visible objects receive row widgets")

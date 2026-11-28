@@ -250,6 +250,12 @@ local function CreateModule()
 			menu:Show(x, y)
 			return true
 		end
+		Main.TrackSignal(service.UserInputService.TouchLongPress, function(points, state)
+			if state == Enum.UserInputState.Begin and #points == 1 then
+				local point = points[1]
+				viewer.OpenEditorContextMenu(point.X, point.Y, false)
+			end
+		end)
 		Main.TrackSignal(service.UserInputService.InputBegan, function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton2 then
 				return

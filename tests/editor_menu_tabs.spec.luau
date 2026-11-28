@@ -104,6 +104,16 @@ do
 	})
 	local menu = editor.EditorContextMenu
 	assert(menu and menu.Shown, "global right-click opens editor menu without parent GUI event bubbling")
+	editor.CloseEditorContextMenu()
+	Main.Mouse.X, Main.Mouse.Y = -50, -50
+	local touch = Vector2.new(x,y)
+	local tx, ty = Apps.EditorHitTest.Pointer({UserInputType = Enum.UserInputType.Touch, Position = touch})
+	assert(tx == x and ty == y)
+	service.UserInputService.TouchLongPress:Fire({touch, touch}, Enum.UserInputState.Begin)
+	assert(not menu.Shown)
+	service.UserInputService.TouchLongPress:Fire({touch}, Enum.UserInputState.Begin)
+	assert(menu.Shown, "touch opens the editor menu independently of mouse position")
+	Main.Mouse.X, Main.Mouse.Y = x, y
 	for _, row in ipairs(menu.GuiElems.List:GetChildren()) do
 		local label = row:FindFirstChild("EntryName")
 		if label and label.Text == "Format" then
@@ -437,6 +447,14 @@ do
 		Position = Vector2.new(left, top),
 	})
 	assert(tabs.ContextMenu and tabs.ContextMenu.Shown, "right-click tab opens tab management menu")
+	tabs:HideMenu()
+	service.UserInputService.TouchLongPress:Fire({Vector2.new(left, top)}, Enum.UserInputState.Begin)
+	assert(tabs.ContextMenu.Shown, "holding a tab opens its menu")
+	local moveRight
+	for _, action in tabs.ContextMenu.Items do
+		if action.Text == "Move Tab Right" then moveRight = action end
+	end
+	assert(moveRight, "tab reordering has a touch action")
 	local closeOthers
 	for _, action in ipairs(tabs.ContextMenu.Items) do
 		if action.Text == "Close Other Tabs" then

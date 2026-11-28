@@ -197,6 +197,9 @@ local function CreateModule()
 				Position = UDim2.new(1, -1, 0, 0),
 				Size = UDim2.new(0, 1, 1, 0),
 			})
+			select.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch then suppressClick = nil end
+			end)
 			select.MouseButton1Click:Connect(function()
 				if suppressClick == doc then
 					suppressClick = nil
@@ -291,7 +294,7 @@ local function CreateModule()
 				clampScroll()
 			end
 		end
-		function self:ShowMenu(doc, x, y)
+		function self:ShowMenu(doc, x, y, touch)
 			local menu = tabMenu or Apps.ContextMenu.new()
 			tabMenu = menu
 			menuDocument = doc
@@ -300,6 +303,24 @@ local function CreateModule()
 			menu.Iconless = true
 			menu.Width = 256
 			menu:ApplyTheme({ RowHeight = 22, CornerRadius = 0 })
+			if touch and #self.Documents > 1 then
+				for _, step in {-1, 1} do
+					local index = table.find(self.Documents, doc)
+					menu:Add({
+						Text = if step < 0 then "Move Tab Left" else "Move Tab Right",
+						Disabled = not index or not self.Documents[index + step],
+						OnClick = function()
+							local from = table.find(self.Documents, doc)
+							if not from or not self.Documents[from + step] then return end
+							table.remove(self.Documents, from)
+							table.insert(self.Documents, from + step, doc)
+							self:Update(self.Documents, self.Active)
+							if callbacks.Reorder then callbacks.Reorder(doc, from, from + step) end
+						end,
+					})
+				end
+				menu:AddDivider()
+			end
 			menu:Add({
 				Text = "Close",
 				Shortcut = "Ctrl+W",
@@ -371,6 +392,15 @@ local function CreateModule()
 			end
 			return nil, px, py
 		end
+		Main.TrackSignal(service.UserInputService.TouchLongPress, function(points, state)
+			if state ~= Enum.UserInputState.Begin or #points ~= 1 then return end
+			local point = points[1]
+			local doc, x, y = pointed({UserInputType = Enum.UserInputType.Touch, Position = point})
+			if doc then
+				suppressClick = doc
+				self:ShowMenu(doc, x, y, true)
+			end
+		end)
 		Main.TrackSignal(service.UserInputService.InputBegan, function(input)
 			local button = input.UserInputType
 			if

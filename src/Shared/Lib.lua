@@ -12475,6 +12475,8 @@ local function CreateModule()
 
 			local cons = {}
 			cons[1] = item.MouseButton1Down:Connect(function(X, Y)
+				if self.OnTouchTap and service.UserInputService.TouchEnabled
+					and service.UserInputService:GetLastInputType() == Enum.UserInputType.Touch then return end
 				self:Trigger(item, 1, X, Y)
 			end)
 			cons[2] = item.MouseButton2Down:Connect(function(X, Y)
@@ -12482,9 +12484,21 @@ local function CreateModule()
 			end)
 
 			if self.OnTouchHold and service.UserInputService.TouchEnabled then
-				cons[3] = item.TouchLongPress:Connect(function(points, state)
-					if state == Enum.UserInputState.Begin and #points == 1 then
+				local pressed, held
+				cons[3] = item.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.Touch then
+						pressed, held = self.TouchTarget(item), false
+					end
+				end)
+				cons[4] = item.TouchLongPress:Connect(function(points, state)
+					if state == Enum.UserInputState.Begin and #points == 1 and pressed and pressed == self.TouchTarget(item) then
+						held = true
 						self:OnTouchHold(item, points[1])
+					end
+				end)
+				cons[5] = item.TouchTap:Connect(function(points)
+					if not held and #points == 1 and pressed and pressed == self.TouchTarget(item) then
+						self:OnTouchTap(item, points[1])
 					end
 				end)
 			end

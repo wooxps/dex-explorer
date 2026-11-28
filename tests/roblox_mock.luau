@@ -220,6 +220,8 @@ local eventNames = {
 	MouseButton1Click = true,
 	MouseButton2Down = true,
 	MouseButton2Click = true,
+	TouchLongPress = true,
+	TouchTap = true,
 	Activated = true,
 	Focused = true,
 	FocusLost = true,
@@ -390,6 +392,7 @@ service = {
 		end,
 	},
 	UserInputService = {
+		TouchLongPress = signal(),
 		WindowFocusReleased = signal(),
 		InputBegan = signal(),
 		InputEnded = signal(),

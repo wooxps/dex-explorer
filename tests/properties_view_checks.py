@@ -124,6 +124,10 @@ service.UserInputService.InputEnded:Fire({UserInputType=Enum.UserInputType.Mouse
 assert(changes==2 and ratio==210/340 and not activeCursor,"release flushes the final ratio and restores cursor")
 local touch={UserInputType=Enum.UserInputType.Touch,Position=Vector2.new(210,10)}
 splitter.Gui.InputBegan:Fire(touch)
+local other={UserInputType=Enum.UserInputType.Touch,Position=Vector2.new(300,10)}
+splitter.Gui.InputBegan:Fire(other)
+service.UserInputService.InputEnded:Fire(other)
+assert(activeCursor,"a second finger cannot take or release a splitter drag")
 touch.Position=Vector2.new(180,10) service.UserInputService.InputChanged:Fire(touch)
 service.UserInputService.WindowFocusReleased:Fire()
 assert(ratio==180/340 and not activeCursor,"focus loss stops a touch drag")

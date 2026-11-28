@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "3dd28f434a96352caafc",
+  "release": "39e0db9ef0eeaf92085f",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -188,9 +188,9 @@
       "sha256": "f52928cd0d671496de0f6cfc6d5b94c68aedcec016be3fb8b9fb0b4986a3142a"
     },
     "src/Apps/ActivityViewer/ActivityViewer.lua": {
-      "bytes": 17120,
-      "checksum": 3201167694,
-      "sha256": "8d5db4ff073d1b3c965b4b7c45d9f6773b811e69e501ef47785532ba20283c20"
+      "bytes": 17730,
+      "checksum": 2593501836,
+      "sha256": "db925b3f6ffa4da0bcf7a44b2d1f56d190c16270278f78d3dbcf128f85a7d7ee"
     },
     "src/Apps/AIBridge/AIBridge.lua": {
       "bytes": 11490,
@@ -458,9 +458,9 @@
       "sha256": "838114f359c27c92df31c614990c5c02f35fc06ebabe9488e4aa6a7143282bb0"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 195969,
-      "checksum": 1516266679,
-      "sha256": "2581e5cd27334ae19f2f1b571efafda9c008bda77e908ceae433a0412faa827d"
+      "bytes": 197125,
+      "checksum": 3971545898,
+      "sha256": "57b3b26a80291d68a8d8a1263a7c51ed11ffbfd6e08c7b02294f4e5e595b0843"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7114,
@@ -668,14 +668,14 @@
       "sha256": "02d5b3d4ef207875cd231c3be68fab506576ad750297613046f7aa8ff44136a7"
     },
     "src/Apps/Properties/Components/PropertyColumnSplitter.lua": {
-      "bytes": 2724,
-      "checksum": 979521811,
-      "sha256": "499d33d06843364d5e28cf0bae89a2e06d10b3fc062a50b185cb27d37e6d9d39"
+      "bytes": 2919,
+      "checksum": 4251620916,
+      "sha256": "5b0092e67d2c43831451e5a304cf72a35e4b02ac59253db198630600c9d1a377"
     },
     "src/Apps/Properties/Components/PropertyRow.lua": {
-      "bytes": 10110,
-      "checksum": 141254010,
-      "sha256": "fd58e46e3c35326f19369e42925830c3912f06656b7fcce02cbccc9d861e3377"
+      "bytes": 10291,
+      "checksum": 901487685,
+      "sha256": "5c8d73fde5ee03b6810006a980db8745f4a803f359feee1a2a0616104b414266"
     },
     "src/Apps/Properties/Components/PropertyValueCell.lua": {
       "bytes": 6438,
@@ -803,9 +803,9 @@
       "sha256": "a2e46852470501d35e3f4cd762402201a64bcdd494595377363f1eb4fac10e67"
     },
     "src/Apps/ScriptViewer/Components/EditorContextMenu.lua": {
-      "bytes": 7900,
-      "checksum": 117195972,
-      "sha256": "94f6930c4cb048149f16a1b6a976d2d76e7c9fedabc8125759610b284e5e25a4"
+      "bytes": 8147,
+      "checksum": 2330302206,
+      "sha256": "cb053a47ac7958dcf7fdf19e6ee1a9a84c1fa88e56339cb6a7755e82206d856f"
     },
     "src/Apps/ScriptViewer/Components/EditorDocumentationText.lua": {
       "bytes": 2235,
@@ -848,9 +848,9 @@
       "sha256": "4a3401b21dfed704ad050ba3924ad951cffb7f86c847de9038fa9b6ea72ac18c"
     },
     "src/Apps/ScriptViewer/Components/EditorTabs.lua": {
-      "bytes": 13904,
-      "checksum": 429167957,
-      "sha256": "73b3f7b1d7bba9da5215da16af854923623153c5bb3f1440084e94d0df6e801c"
+      "bytes": 15110,
+      "checksum": 259264080,
+      "sha256": "084faa23853fbcf65622108ef68796337596e50b2b809837a1f7da83f76823d9"
     },
     "src/Apps/ScriptViewer/Components/StudioEditorSkin.lua": {
       "bytes": 1588,
@@ -943,9 +943,9 @@
       "sha256": "716852e6e254f6122259d147863da366cf27dd8633a1ab4fafbc774e0ac8c5c6"
     },
     "src/Apps/ScriptViewer/Util/EditorHitTest.lua": {
-      "bytes": 3382,
-      "checksum": 2797998412,
-      "sha256": "bd6d33074ac5dc4dd797b9a2e22bfaafbf8ae25f4461614eedd077189c959706"
+      "bytes": 3520,
+      "checksum": 3282059668,
+      "sha256": "1c4832218028c78e3125fe80616a392df9ebdcf21bb6a64f65a3f4fe21725c07"
     },
     "src/Apps/TransformTools/GuiAlignment.lua": {
       "bytes": 4952,
@@ -1013,9 +1013,9 @@
       "sha256": "5a30e4e2589465cdd57c0aa58562ff3f57dc3ca0d41bbe379a8ca814c1e7aac0"
     },
     "src/Shared/Lib.lua": {
-      "bytes": 346382,
-      "checksum": 2107686280,
-      "sha256": "45f181c608eb6a5f40f545f3b763b4addb7faccbde996b85a6bc424312c30b3e"
+      "bytes": 347020,
+      "checksum": 1564314383,
+      "sha256": "ae6f968669cfb74644720759f33cc4f28aa9e5ba090bdf7fe4e6cbcd356a870b"
     },
     "src/Shared/LoadingSplash.lua": {
       "bytes": 9123,

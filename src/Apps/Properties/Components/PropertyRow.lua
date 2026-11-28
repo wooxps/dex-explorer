@@ -243,13 +243,14 @@ local function CreateModule()
 			end)
 
 			valueFrame.SoundPreview.InputBegan:Connect(function(input)
-				if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+				local touch = if input.UserInputType == Enum.UserInputType.Touch then input else nil
+				if not touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 					return
 				end
 
 				local releaseEvent, mouseEvent
 				releaseEvent = Main.TrackSignal(service.UserInputService.InputEnded, function(input)
-					if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+					if (touch and input ~= touch) or (not touch and input.UserInputType ~= Enum.UserInputType.MouseButton1) then
 						return
 					end
 					releaseEvent:Disconnect()
@@ -288,7 +289,7 @@ local function CreateModule()
 				update(input)
 
 				mouseEvent = Main.TrackSignal(service.UserInputService.InputChanged, function(input)
-					if input.UserInputType == Enum.UserInputType.MouseMovement then
+					if input == touch or not touch and input.UserInputType == Enum.UserInputType.MouseMovement then
 						update(input)
 					end
 				end)

@@ -12,6 +12,9 @@ end
 local function CreateModule()
 	local Hit = {}
 	function Hit.Pointer(input)
+		if input and input.UserInputType == Enum.UserInputType.Touch and input.Position then
+			return input.Position.X, input.Position.Y
+		end
 		if Main.Mouse and type(Main.Mouse.X) == "number" and type(Main.Mouse.Y) == "number" then
 			return Main.Mouse.X, Main.Mouse.Y
 		end

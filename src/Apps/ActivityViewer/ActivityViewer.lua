@@ -89,7 +89,7 @@ local function CreateModule()
 		notice = ok and "Copied to clipboard" or "Clipboard is unavailable"
 		refresh(true)
 	end
-	local function menu(event)
+	local function menu(event, point)
 		local context = Apps.ContextMenu.new()
 		context.Iconless = true
 		context.Width = 220
@@ -182,7 +182,7 @@ local function CreateModule()
 				end,
 			})
 		end
-		local mouse = service.UserInputService:GetMouseLocation()
+		local mouse = point or service.UserInputService:GetMouseLocation()
 		context:Show(mouse.X, mouse.Y)
 	end
 	paint = function()
@@ -231,7 +231,22 @@ local function CreateModule()
 				text.Size = UDim2.new(0.72, -202, 1, 0)
 				record = { Gui = gui, Time = time, Kind = kind, Text = text, Object = object }
 				rows[slot] = record
+				local pressed, held
+				gui.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.Touch then
+						pressed, held = record.Event, false
+					elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+						held = false
+					end
+				end)
+				gui.TouchLongPress:Connect(function(points, state)
+					if state ~= Enum.UserInputState.Begin or #points ~= 1 or not pressed or pressed ~= record.Event then return end
+					held, selected, notice = true, pressed, ""
+					paint()
+					menu(selected, points[1])
+				end)
 				gui.MouseButton1Click:Connect(function()
+					if held then held = false return end
 					selected = record.Event
 					notice = ""
 					paint()

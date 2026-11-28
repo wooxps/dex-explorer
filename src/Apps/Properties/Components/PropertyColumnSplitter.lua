@@ -52,7 +52,7 @@ local function CreateModule()
 		end
 		Main.TrackSignal(gui.InputBegan, function(input)
 			if
-				not options.Enabled()
+				dragging or not options.Enabled()
 				or (
 					input.UserInputType ~= Enum.UserInputType.MouseButton1
 					and input.UserInputType ~= Enum.UserInputType.Touch
@@ -65,7 +65,7 @@ local function CreateModule()
 			cursor:Begin(input.Position)
 		end)
 		Main.TrackSignal(service.UserInputService.InputChanged, function(input)
-			if not dragging or (touch and input ~= touch) then
+			if not dragging or (touch and input ~= touch) or (not touch and input.UserInputType == Enum.UserInputType.Touch) then
 				return
 			end
 			if
@@ -76,13 +76,14 @@ local function CreateModule()
 			end
 		end)
 		Main.TrackSignal(service.UserInputService.InputEnded, function(input)
-			if not dragging or (touch and input ~= touch) then
+			if not dragging or (touch and input ~= touch) or (not touch and input.UserInputType == Enum.UserInputType.Touch) then
 				return
 			end
 			if
 				input.UserInputType == Enum.UserInputType.MouseButton1
 				or input.UserInputType == Enum.UserInputType.Touch
 			then
+				if touch then frame:Push(input.Position) end
 				self:Stop()
 			end
 		end)
