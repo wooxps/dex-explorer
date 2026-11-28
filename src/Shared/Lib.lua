@@ -6424,10 +6424,12 @@ local function CreateModule()
 					if stopDrag then
 						stopDrag()
 					end
+					local touch = if input.UserInputType == Enum.UserInputType.Touch then input else nil
+					local pointer = if touch then touch.Position else mouse
 					local fontSizeX, fontSizeY = math.ceil(obj.FontSize / 2), obj.FontSize
 
-					local relX = mouse.X - codeFrame.AbsolutePosition.X
-					local relY = mouse.Y - codeFrame.AbsolutePosition.Y
+					local relX = pointer.X - codeFrame.AbsolutePosition.X
+					local relY = pointer.Y - codeFrame.AbsolutePosition.Y
 					local selX = math.round(relX / fontSizeX) + obj.ViewX
 					local selY = obj:DisplayToSource(math.floor(relY / fontSizeY) + obj.ViewY)
 					local releaseEvent, mouseEvent, scrollEvent, focusEvent
@@ -6435,7 +6437,7 @@ local function CreateModule()
 					selY = math.min(#lines - 1, selY)
 					local relativeLine = lines[selY + 1] or ""
 					if obj.ScreenToEditorPoint then
-						selX, selY = obj:ScreenToEditorPoint(mouse.X, mouse.Y)
+						selX, selY = obj:ScreenToEditorPoint(pointer.X, pointer.Y)
 					else
 						selX = math.min(#relativeLine, selX + obj:TabAdjust(selX, selY))
 					end
@@ -6463,25 +6465,25 @@ local function CreateModule()
 					end
 
 					local function updateSelection()
-						local relX = mouse.X - codeFrame.AbsolutePosition.X
-						local relY = mouse.Y - codeFrame.AbsolutePosition.Y
+						local relX = pointer.X - codeFrame.AbsolutePosition.X
+						local relY = pointer.Y - codeFrame.AbsolutePosition.Y
 						local sel2X = math.max(0, math.round(relX / fontSizeX) + obj.ViewX)
 						local sel2Y = obj:DisplayToSource(math.max(0, math.floor(relY / fontSizeY) + obj.ViewY))
 
 						sel2Y = math.min(#lines - 1, sel2Y)
 						local relativeLine = lines[sel2Y + 1] or ""
 						if obj.ScreenToEditorPoint then
-							sel2X, sel2Y = obj:ScreenToEditorPoint(mouse.X, mouse.Y)
+							sel2X, sel2Y = obj:ScreenToEditorPoint(pointer.X, pointer.Y)
 						else
 							sel2X = math.min(#relativeLine, sel2X + obj:TabAdjust(sel2X, sel2Y))
 						end
 
 						if span then
-							span(sel2X, sel2Y, mouse.X, mouse.Y)
+							span(sel2X, sel2Y, pointer.X, pointer.Y)
 							return
 						end
 						if trackMove then
-							trackMove(mouse.X, mouse.Y)
+							trackMove(pointer.X, pointer.Y)
 						end
 						if sel2Y < selY or (sel2Y == selY and sel2X < selX) then
 							obj.SelectionRange = { { sel2X, sel2Y }, { selX, selY } }
@@ -6505,8 +6507,7 @@ local function CreateModule()
 					end
 					releaseEvent = Main.TrackSignal(service.UserInputService.InputEnded, function(input)
 						if
-							input.UserInputType == Enum.UserInputType.MouseButton1
-							or input.UserInputType == Enum.UserInputType.Touch
+							not touch and input.UserInputType == Enum.UserInputType.MouseButton1 or input == touch
 						then
 							stopDrag()
 							obj:SetCopyableSelection()
@@ -6518,13 +6519,13 @@ local function CreateModule()
 
 					mouseEvent = Main.TrackSignal(service.UserInputService.InputChanged, function(input)
 						if
-							input.UserInputType == Enum.UserInputType.MouseMovement
-							or input.UserInputType == Enum.UserInputType.Touch
+							not touch and input.UserInputType == Enum.UserInputType.MouseMovement or input == touch
 						then
-							local upDelta = mouse.Y - codeFrame.AbsolutePosition.Y
-							local downDelta = mouse.Y - codeFrame.AbsolutePosition.Y - codeFrame.AbsoluteSize.Y
-							local leftDelta = mouse.X - codeFrame.AbsolutePosition.X
-							local rightDelta = mouse.X - codeFrame.AbsolutePosition.X - codeFrame.AbsoluteSize.X
+							if touch then pointer = input.Position end
+							local upDelta = pointer.Y - codeFrame.AbsolutePosition.Y
+							local downDelta = pointer.Y - codeFrame.AbsolutePosition.Y - codeFrame.AbsoluteSize.Y
+							local leftDelta = pointer.X - codeFrame.AbsolutePosition.X
+							local rightDelta = pointer.X - codeFrame.AbsolutePosition.X - codeFrame.AbsoluteSize.X
 							scrollPowerV = 0
 							scrollPowerH = 0
 							if downDelta > 0 then
@@ -6711,6 +6712,10 @@ local function CreateModule()
 					return
 				end
 				if service.UserInputService:GetFocusedTextBox() ~= self.GuiElems.EditBox then
+					return
+				end
+				if self.TouchTextInput and not Lib.IsCtrlDown() and (input.KeyCode == Enum.KeyCode.Backspace
+					or input.KeyCode == Enum.KeyCode.Delete or input.KeyCode == Enum.KeyCode.Return) then
 					return
 				end
 				if self.HandleEditorInput and self:HandleEditorInput(input) then
@@ -7001,10 +7006,14 @@ local function CreateModule()
 
 			if on then
 				if self.Editable then
-					self.EditBoxCopying = true
-					self.NativeInputBuffer = ""
-					self.GuiElems.EditBox.Text = ""
-					self.EditBoxCopying = false
+					if self.TouchTextInput then
+						self:SetCopyableSelection()
+					else
+						self.EditBoxCopying = true
+						self.NativeInputBuffer = ""
+						self.GuiElems.EditBox.Text = ""
+						self.EditBoxCopying = false
+					end
 					self.GuiElems.EditBox:CaptureFocus()
 				end
 			else
@@ -12424,9 +12433,11 @@ local function CreateModule()
 				self.Combo = self.Combo + 1
 				self.ClickId = tick()
 
+				local touchPress = button == 1 and service.UserInputService.TouchEnabled
+					and service.UserInputService:GetLastInputType() == Enum.UserInputType.Touch
 				local press = { Combo = self.Combo }
 				self.ActivePresses[button] = press
-				if button == 1 then
+				if button == 1 and not (self.OnTouchHold and touchPress) then
 					task.delay(0.4, function()
 						if
 							Main.Alive
@@ -12443,7 +12454,8 @@ local function CreateModule()
 
 				local release
 				release = Main.TrackSignal(service.UserInputService.InputEnded, function(input)
-					if input.UserInputType == Enum.UserInputType["MouseButton" .. button] then
+					if input.UserInputType == Enum.UserInputType["MouseButton" .. button]
+						or touchPress and input.UserInputType == Enum.UserInputType.Touch then
 						release:Disconnect()
 						self.ActivePresses[button] = nil
 						if not press.Held and item.Parent and Lib.CheckMouseInGui(item) then
@@ -12468,6 +12480,14 @@ local function CreateModule()
 			cons[2] = item.MouseButton2Down:Connect(function(X, Y)
 				self:Trigger(item, 2, X, Y)
 			end)
+
+			if self.OnTouchHold and service.UserInputService.TouchEnabled then
+				cons[3] = item.TouchLongPress:Connect(function(points, state)
+					if state == Enum.UserInputState.Begin and #points == 1 then
+						self:OnTouchHold(item, points[1])
+					end
+				end)
+			end
 
 			self.ItemCons[item] = cons
 			self.Items[#self.Items + 1] = item

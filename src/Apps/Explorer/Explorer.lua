@@ -6001,6 +6001,20 @@ return search]==]
 			end
 			return nil
 		end
+		function sys:OnTouchHold(item, point)
+			local node = displayedNodes[item]
+			if not node or node.Del or objectPicker or Explorer.Dragging or Explorer.BoxSelecting
+				or not Explorer.IsTreeContentPoint(point.X, point.Y) or displayedRowAt(point.Y) ~= item then return end
+			resetClicks()
+			if self.ActivePresses[1] then self.ActivePresses[1].Held = true end
+			if not selection.Map[node] then
+				selection.ShiftSet = {}
+				selection:Set(node)
+				selection.Piviot = node
+				Explorer.Refresh()
+			end
+			Explorer.ShowRightClick(point, node)
+		end
 		sys.AllowedButtons = { 1, 2 }
 		sys.OnDown:Connect(function(item, _, button)
 			clickRevision += 1

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "2bc5f8346f6d8177b0ae",
+  "release": "3dd28f434a96352caafc",
   "entry": "main.lua",
   "assets": "studio_assets.lua",
   "react": "src/Packages/React/Loader.luau",
@@ -353,9 +353,9 @@
       "sha256": "3058004f5fc7cccf8b75578ac5af838802c5e2509b5086f2178f54e80f656e99"
     },
     "src/Apps/Console/Console.lua": {
-      "bytes": 23942,
-      "checksum": 1060278029,
-      "sha256": "f2cf1a417c9a67c5e9d836533145b975447686f70ec7c81075ad336106f17c24"
+      "bytes": 24214,
+      "checksum": 1770384075,
+      "sha256": "0e9b08910584e17c106fb39f7d2fb81d0c34782d64d3b7e93bc9deccf1afe494"
     },
     "src/Apps/Explorer/Components/BoxSelectIndicator.lua": {
       "bytes": 952,
@@ -458,9 +458,9 @@
       "sha256": "838114f359c27c92df31c614990c5c02f35fc06ebabe9488e4aa6a7143282bb0"
     },
     "src/Apps/Explorer/Explorer.lua": {
-      "bytes": 195416,
-      "checksum": 2978655292,
-      "sha256": "7a42fd13c3e4e94a026004b0545d4786a4777c277a3405a6613bfffa9f51b10a"
+      "bytes": 195969,
+      "checksum": 1516266679,
+      "sha256": "2581e5cd27334ae19f2f1b571efafda9c008bda77e908ceae433a0412faa827d"
     },
     "src/Apps/Explorer/ExplorerPolicy.lua": {
       "bytes": 7114,
@@ -878,9 +878,9 @@
       "sha256": "074fd022f357b812bdaed2975046a6504dd4398f12ac31529503e4944c55892e"
     },
     "src/Apps/ScriptViewer/Services/EditorController.lua": {
-      "bytes": 60750,
-      "checksum": 1168696574,
-      "sha256": "c7ac216d5cf557a24950d436622c655f40564df617bfddc6eab9b296de1e770c"
+      "bytes": 62269,
+      "checksum": 1595594275,
+      "sha256": "8b653d49eba581be4583bd9243a32405fd7937f2a0a675413e5f7985f08363c7"
     },
     "src/Apps/ScriptViewer/Services/EditorDefinitions.lua": {
       "bytes": 26148,
@@ -1013,9 +1013,9 @@
       "sha256": "5a30e4e2589465cdd57c0aa58562ff3f57dc3ca0d41bbe379a8ca814c1e7aac0"
     },
     "src/Shared/Lib.lua": {
-      "bytes": 345364,
-      "checksum": 2172743279,
-      "sha256": "fbe4149b880516cc57b58dc7bbbf63f8da2db84fa6c5a0054bbbf86733a1e25d"
+      "bytes": 346382,
+      "checksum": 2107686280,
+      "sha256": "45f181c608eb6a5f40f545f3b763b4addb7faccbde996b85a6bc424312c30b3e"
     },
     "src/Shared/LoadingSplash.lua": {
       "bytes": 9123,

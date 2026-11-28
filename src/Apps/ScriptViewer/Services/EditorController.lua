@@ -229,6 +229,11 @@ local function CreateModule()
 				and not user:IsKeyDown(Enum.KeyCode.RightAlt)
 				and (user:IsKeyDown(Enum.KeyCode.Return) or user:IsKeyDown(Enum.KeyCode.KeypadEnter))
 		end
+		local function touchKeyboard()
+			local input = service.UserInputService
+			return input.TouchEnabled and (not input.KeyboardEnabled or input.OnScreenKeyboardVisible
+				or input:GetLastInputType() == Enum.UserInputType.Touch)
+		end
 		local function resetNativeBuffer()
 			cf:SetCopyableSelection()
 		end
@@ -239,6 +244,15 @@ local function CreateModule()
 				or (viewer.EditorContextMenu and viewer.EditorContextMenu.Shown)
 			then
 				resetNativeBuffer()
+				return true
+			end
+			if cf.TouchTextInput and not clipboardInput and not Lib.IsCtrlDown() then
+				local previous = cf.NativeInputBuffer or ""
+				local caret = cf.GuiElems.EditBox.CursorPosition
+				local expected = (cf.NativeSelectionEnd or #previous + 1) + #text - #previous
+				if not caret or caret <= 0 or caret == cf.NativeSelectionEnd then caret = expected end
+				caret = Apps.EditorDocument.ClampSelectionPosition(text, math.clamp(caret, 1, #text + 1))
+				apply({Text = text, Changed = text ~= cf:GetText(), Anchor = caret, Caret = caret})
 				return true
 			end
 			local operation = clipboardInput
@@ -832,6 +846,20 @@ local function CreateModule()
 			if not viewer.ActiveDocument then
 				return copyBuffer(self, ...)
 			end
+			if self.TouchTextInput then
+				sync()
+				local text = document:GetText()
+				local anchor, caret = selection()
+				local box = self.GuiElems.EditBox
+				self.EditBoxCopying = true
+				self.NativeInputBuffer = text
+				self.NativeSelectionEnd = math.max(anchor, caret)
+				if box.Text ~= text then box.Text = text end
+				box.CursorPosition = caret
+				box.SelectionStart = if anchor ~= caret then anchor else -1
+				self.EditBoxCopying = false
+				return
+			end
 			local packet = readClipboardSelection()
 			local box = self.GuiElems.EditBox
 			self.EditBoxCopying = true
@@ -841,6 +869,13 @@ local function CreateModule()
 			box.CursorPosition = #packet.Text + 1
 			self.EditBoxCopying = false
 		end
+		Main.TrackSignal(cf.GuiElems.EditBox.Focused, function()
+			cf.TouchTextInput = touchKeyboard()
+			if cf.TouchTextInput then cf:SetCopyableSelection() end
+		end)
+		Main.TrackSignal(cf.GuiElems.EditBox.FocusLost, function()
+			cf.TouchTextInput = false
+		end)
 		function viewer.DeleteClipboardSelection()
 			if cf.Editable == false then
 				return false

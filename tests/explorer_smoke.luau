@@ -22,6 +22,16 @@ end
 table.sort(rows, function(a, b)
 	return a.Position.Y.Offset < b.Position.Y.Offset
 end)
+do
+	local original = Explorer.ShowRightClick
+	local target, touchPoint
+	Explorer.ShowRightClick = function(point, node) target, touchPoint = node, point end
+	local origin = tree.ReactViewport.AbsolutePosition
+	local point = Vector2.new(origin.X + 20, origin.Y + Explorer.RowHeight + 2)
+	Explorer.ClickSystem:OnTouchHold(rows[2], point)
+	assert(target and Explorer.Selection.Map[target] and touchPoint == point, "hold opens actions at the touched row")
+	Explorer.ShowRightClick = original
+end
 assert(#rows == 5, "only the five actual visible objects receive row widgets")
 assert(rows[1].Size.Y.Offset == 20, "modern row size")
 assert(rows[2].Position.Y.Offset == 20, "row positioning")

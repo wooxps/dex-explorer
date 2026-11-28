@@ -55,6 +55,20 @@ do
 		keys.LeftControl = false
 		keys.LeftShift = false
 		keys.LeftAlt = false
+		editor.OpenDocument("touch-input-test", "Touch input", "")
+		local keyboard = service.UserInputService
+		local wasTouch, wasKeyboard = keyboard.TouchEnabled, keyboard.KeyboardEnabled
+		keyboard.TouchEnabled, keyboard.KeyboardEnabled = true, false
+		local nativeBox = cf.GuiElems.EditBox
+		nativeBox:CaptureFocus()
+		assert(cf.TouchTextInput)
+		for _, snapshot in {"p", "pr", "pri", "prin", "print", "prin", ""} do
+			nativeBox.Text = snapshot
+			assert(cf:HandleNativeTextChange(snapshot))
+			assert(cf:GetText() == snapshot, "native composition and deletion: " .. snapshot)
+		end
+		nativeBox:ReleaseFocus()
+		keyboard.TouchEnabled, keyboard.KeyboardEnabled = wasTouch, wasKeyboard
 		editor.OpenDocument("native-batch-test", "Native transactions", "foo\nbar")
 		cf.SelectionRange = { { 0, 0 }, { 0, 0 } }
 		cf:MoveCursor(0, 0)

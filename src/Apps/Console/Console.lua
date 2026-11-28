@@ -940,19 +940,26 @@ local function CreateModule()
 			end
 			chunk()
 		end
+		local function renderCommand()
+			local native = inputService.TouchEnabled and inputService:GetFocusedTextBox() == command
+			local highlight = command.Text ~= "" and not native
+			commandSyntax.Visible = highlight
+			if highlight then commandSyntax.Text = highlighter.run(command.Text) end
+		end
 		command:GetPropertyChangedSignal("Text"):Connect(function()
 			local text = command.Text:gsub("\n", "    ")
 			if text ~= command.Text then
 				command.Text = text
 				return
 			end
-			commandSyntax.Text = highlighter.run(text)
-			commandSyntax.Visible = text ~= ""
+			renderCommand()
 		end)
 		command.Focused:Connect(function()
+			renderCommand()
 			commandStroke.Color = theme.Focus
 		end)
 		command.FocusLost:Connect(function(enterPressed)
+			renderCommand()
 			commandStroke.Color = theme.Outline2
 			if enterPressed then
 				executeCommand()
