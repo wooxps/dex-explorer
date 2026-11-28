@@ -13,6 +13,14 @@ do
 		symbols:Index(source)
 		return assert(types.Analyze(source, symbols, function() end, nil, options)), source
 	end
+	local defaults = Apps.EditorSymbols.New()
+	defaults:Index("type Pair<A = string, B = A> = { left: A, right: B }")
+	local defaultType = types.ParseAnnotation("Pair<number>", defaults)
+	assert(types.FieldType(defaultType, "left") == "number" and types.FieldType(defaultType, "right") == "number")
+	assert(types.Describe(types.ParseAnnotation("false")) == "false")
+	local chainSource = "local n = " .. string.rep("1 + ", 90) .. "2 * 3\nlocal result = n"
+	local chain = analyze(chainSource)
+	assert(types.TypeAt(chain.Entries[chainSource:find("result", 1, true)]) == "number")
 	local union = types.ParseAnnotation("{ Count: number, Fast: boolean } | { Count: string, Slow: boolean } | nil")
 	local shared = types.Members(union)
 	assert(shared.Count and not shared.Fast and not shared.Slow, "only shared union members are offered")

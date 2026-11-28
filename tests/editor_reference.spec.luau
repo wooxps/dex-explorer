@@ -210,7 +210,7 @@ do
 		Main.InternalGuis = oldInternal
 		cursorOverlay:Destroy()
 		local oldDocument = editor.ActiveDocument
-		local fixture = editor.OpenDocument({}, "Hover lifecycle", "local value: number =")
+		local fixture = editor.OpenDocument({}, "Hover lifecycle", "local  42 = 0")
 		deps.env.loadstring = function()
 			return nil, "DexEditor:1: Expected an expression"
 		end

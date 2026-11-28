@@ -137,7 +137,7 @@ local function Main()
 					return nil
 				end
 				definitions = definitions or entry and entry.Definitions or Apps.EditorDefinitions.New()
-				if not definitions.Prime(text, checkpoint, tokens) then
+				if not definitions.Prime(text, checkpoint, tokens, entry and entry.Symbols.Record) then
 					return nil
 				end
 				if entry and entry.Tokens then
@@ -219,7 +219,7 @@ local function Main()
 				resolving[object] = nil
 				return { Export = copyExport(entry.Export), Types = entry.Types }
 			end
-			local tokens = entry.Tokens or Apps.EditorDefinitions.Tokenize(text, checkpoint)
+			local tokens = entry.Tokens or Apps.EditorDefinitions.Tokenize(text, checkpoint, false, entry.Symbols.Record)
 			if not tokens then
 				resolving[object] = nil
 				return nil

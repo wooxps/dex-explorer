@@ -245,20 +245,19 @@ do
 		"failed clipboard write cannot discard selected source"
 	)
 	deps.env.setclipboard = previousClipboard
-	cf:SetText("line one\nline two\nline three")
-	local executed = 0
+	cf:SetText("local one = 1\nreturn one")
+	local compilerCalls = 0
 	local previousCompiler = deps.env.loadstring
 	deps.env.loadstring = function()
-		return function()
-			executed += 1
-		end
+		compilerCalls += 1
+		error("Unexpected compiler call")
 	end
 	local checked = editor.CheckSyntax()
-	assert(checked.Passed and executed == 0, "syntax check compiles but never invokes resulting code")
-	deps.env.loadstring = function()
-		return nil, "DexEditor:2: Expected identifier"
-	end
+	assert(checked.Passed and compilerCalls == 0, "syntax checking uses only the parser")
+	cf:SetText("local one = 1\nlocal 42 = 2\nlocal 37 = 3")
 	checked = editor.CheckSyntax()
+	assert(#checked.Errors >= 2 and #cf.SyntaxRanges == #checked.Errors and compilerCalls == 0)
+	assert(cf.SyntaxRanges[1].First[1] == 6 and cf.SyntaxRanges[1].Last[1] == 8)
 	cf.AdditionalSelections = { { { 0, 0 }, { 0, 0 } } }
 	assert(
 		checked.Line == 2 and editor.GoToDiagnostic() and cf.CursorY == 1,
@@ -282,6 +281,6 @@ do
 	)
 	editor.DismissCompletion()
 	print(
-		"PASS: integrated editor commands, atomic undo, pairing, bounded completion, lexical context, compiler-only diagnostics and whole-word replacement"
+		"PASS: integrated editor commands, atomic undo, pairing, bounded completion, lexical context, parser diagnostics and whole-word replacement"
 	)
 end

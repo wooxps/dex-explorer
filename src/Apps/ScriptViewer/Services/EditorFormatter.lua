@@ -81,7 +81,17 @@ local function Main()
 			end
 		end
 		local sourceToFormat = if insertions then text:sub(1, document.Ends[lastLine] or 0) else text
-		local tokens = Apps.EditorDefinitions.Tokenize(sourceToFormat, nil, true)
+		local record = Apps.EditorParser.Parse(sourceToFormat)
+		local tokens = Apps.EditorDefinitions.Tokenize(sourceToFormat, nil, true, record)
+		local expressionIf = {}
+		if record.Root then
+			for _, node in Apps.EditorParser.Nodes(record) do
+				if node.kind == "ExprIfElse" then
+					local start = node.location.begin
+					expressionIf[record.Starts[start.x + 1] + start.y] = true
+				end
+			end
+		end
 
 		local stack, edits = {}, {}
 		local level, tokenIndex = 0, 1
@@ -138,7 +148,7 @@ local function Main()
 						end
 						leading = false
 					elseif value == "if" then
-						push("then", 0, if expectsExpression then "expression" else "statement")
+						push("then", 0, if expressionIf[token.First] or expectsExpression then "expression" else "statement")
 						leading = false
 					elseif Closer[value] then
 						push(Closer[value], line)

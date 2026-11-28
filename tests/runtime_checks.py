@@ -216,6 +216,17 @@ target.write_text(program,encoding='utf-8')
 subprocess.run([str(luau),str(target)],check=True)
 print(f"PASS: all {len(manifest['files'])} hosted source files compile independently")
 
+editor_modules = ["EditorParserCore", "EditorParser", "EditorSymbols", "EditorFolding"]
+editor_runner = ["local Apps = {}"]
+for module in editor_modules:
+    module_path = manifest["modules"][module].removesuffix(".lua")
+    editor_runner.append(f'Apps.{module} = require("../dist/github/{module_path}").Main(Apps)')
+editor_runner.append((ROOT / "tests/editor_parser.spec.luau").read_text(encoding="utf-8"))
+editor_target = ROOT / ".build/packaged-editor-parser.luau"
+editor_target.write_text("\n".join(editor_runner), encoding="utf-8")
+subprocess.run([str(luau), str(editor_target)], check=True)
+print("PASS: parser integration against hosted modules named in the release manifest")
+
 # Missing readfile() may return nil successfully on some executor hosts.
 # Exercise the generated public entry, not only its downstream bootstrap.
 entry_source = package.loader('0'*40)

@@ -608,17 +608,30 @@ local function Main()
 				end
 				entries[#entries + 1] = declaration
 			end
-			local nextCheck = 0
-			for first, name in symbols.Masked:gmatch("()([%a_][%w_]*)") do
-				if checkpoint and first >= nextCheck then
-					nextCheck = first + 4096
-					if not checkpoint() then
-						return false
+			local record = symbols.Record
+			if record then
+				local tokenAt = Apps.EditorParser.TokenAt
+				for i = 1, record.TokenCount do
+					if checkpoint and i % 256 == 1 and not checkpoint() then return false end
+					local kind, first, last = tokenAt(record, i)
+					if kind == 281 or kind >= 291 then
+						local before = if first > 1 then text:byte(first - 1) else nil
+						if before ~= 46 and before ~= 58 then identifiers[text:sub(first, last - 1)] = true end
 					end
 				end
-				local before = first > 1 and symbols.Masked:sub(first - 1, first - 1)
-				if before ~= "." and before ~= ":" then
-					identifiers[name] = true
+			else
+				local nextCheck = 0
+				for first, name in symbols.Masked:gmatch("()([%a_][%w_]*)") do
+					if checkpoint and first >= nextCheck then
+						nextCheck = first + 4096
+						if not checkpoint() then
+							return false
+						end
+					end
+					local before = first > 1 and symbols.Masked:sub(first - 1, first - 1)
+					if before ~= "." and before ~= ":" then
+						identifiers[name] = true
+					end
 				end
 			end
 			self.Symbols, self.masked = symbols, symbols.Masked
@@ -635,7 +648,7 @@ local function Main()
 				if entry.Position > position then
 					break
 				end
-				declaration = entry
+				if not entry.ScopeEnd or position < entry.ScopeEnd then declaration = entry end
 			end
 			local parameter = (symbols or self.Symbols):Parameter(name, position)
 			if parameter and (not declaration or declaration.Position < parameter.Position) then
@@ -656,7 +669,7 @@ local function Main()
 			local expression
 			for _, binding in ipairs(symbols.Bindings[name] or {}) do
 				if binding.Position < position then
-					expression = binding.Expression
+					if not binding.ScopeEnd or position < binding.ScopeEnd then expression = binding.Expression end
 				else
 					break
 				end
@@ -1724,20 +1737,6 @@ local function Main()
 			end
 			className = type(class.Superclass) == "table" and class.Superclass.Name or class.Superclass
 		end
-	end
-	function Language.Compile(text, compiler)
-		if type(compiler) ~= "function" then
-			return { Available = false, Message = "Syntax checking is unavailable in this client." }
-		end
-		local ok, chunk, problem = pcall(compiler, text, "@DexEditor")
-		if ok and type(chunk) == "function" then
-			return { Available = true, Passed = true, Message = "No syntax errors" }
-		end
-		local message = tostring(ok and problem or chunk)
-		local line =
-			tonumber(message:match(":(%d+):") or message:match("[Ll]ine (%d+)") or message:match("%((%d+),%s*%d+%)"))
-		local column = tonumber(message:match(":%d+:(%d+):") or message:match("%(%d+,%s*(%d+)%)"))
-		return { Available = true, Passed = false, Line = line, Column = column, Message = message }
 	end
 	return Language
 end

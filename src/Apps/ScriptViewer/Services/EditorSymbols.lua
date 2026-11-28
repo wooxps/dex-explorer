@@ -2,7 +2,7 @@
 
 ------------------------------ Module ------------------------------
 
-local function Main()
+local function Main(apps)
 	local Symbols = {}
 	function Symbols.Mask(text, checkpoint)
 		local chunks, i = {}, 1
@@ -128,15 +128,19 @@ local function Main()
 		local self = { Source = nil, Masked = "", Functions = {}, Declarations = {}, Bindings = {} }
 		function self:Index(source, checkpoint)
 			if self.Source == source then
-				return
+				return true
 			end
-			self.Source = source
-			self.Masked = Symbols.Mask(source, checkpoint)
+			self.Source = nil
+			local record = apps and apps.EditorParser and apps.EditorParser.Parse(source, checkpoint)
+			if apps and apps.EditorParser and not record then return false end
+			self.Masked = if record and record.Root then apps.EditorParser.Mask(record, checkpoint) else Symbols.Mask(source, checkpoint)
+			self.Record = record
 			self.Functions = {}
 			self.Declarations = {}
 			self.Bindings = {}
 			self.Types = {}
 			self.TypeRanges = {}
+			self.AnnotationNodes = {}
 			self.TypeValues = {}
 			self.Parameters = {}
 			self.FunctionScopes = {}
@@ -181,203 +185,301 @@ local function Main()
 				self.Declarations[#self.Declarations + 1] = item
 				return item
 			end
-			local occupied = {}
-			local functionDeclarations = {}
-			local function fn(name, at, opening, declarationStart, header)
-				if occupied[opening] then
-					return
-				end
-				occupied[opening] = true
-				local depth, last = 1, opening + 1
-				while last <= #source and depth > 0 do
-					local c = self.Masked:sub(last, last)
-					if c == "(" then
-						depth += 1
-					elseif c == ")" then
-						depth -= 1
+			if record and record.Root then
+				local function pos(v) return (record.Starts[v.x + 1] or #source + 1) + v.y end
+				local function first(node) return pos(node.location.begin) end
+				local function last(node) return pos(node.location.end_) end
+				local function slice(node) return source:sub(first(node), last(node) - 1) end
+				local function generics(node)
+					local all = {}
+					for _, group in {node.generics or {}, node.genericPacks or {}} do
+						for _, g in group do table.insert(all, slice(g)) end
 					end
-					last += 1
+					return if #all > 0 then table.concat(all, ", ") else nil
 				end
-				if depth ~= 0 then
-					return
+				for _, node, parent, scope in apps.EditorParser.Nodes(record, checkpoint) do
+					local kind = node.kind
+					if kind == "StatLocal" then
+						for i, var in node.vars do
+							local name, at = var.name, first(var)
+							local item = if node.values[i] and node.values[i].kind == "ExprFunction" then {} else declare(name, at, "Variable")
+							item.Documentation = precedingComment(first(node))
+							item.Annotation = var.annotation and slice(var.annotation)
+							item.ScopeEnd = if scope and scope ~= record.Root then last(scope) else nil
+							if node.values[i] then
+								local list = self.Bindings[name] or {}
+								self.Bindings[name] = list
+								list[#list+1] = {Position = first(node), Expression = slice(node.values[i]), ScopeEnd = item.ScopeEnd}
+							end
+						end
+					elseif kind == "StatFor" or kind == "StatForIn" then
+						for _, variable in node.vars or {node.var} do
+							local item = declare(variable.name, first(variable), "Variable")
+							item.ScopeEnd = last(node.body)
+							item.Annotation = variable.annotation and slice(variable.annotation)
+						end
+					elseif kind == "ExprFunction" and node.argLocation then
+						local opening, after = pos(node.argLocation.begin), pos(node.argLocation.end_)
+						local named = parent and (parent.kind == "StatFunction" or parent.kind == "StatLocalFunction") and parent.name
+						local assignment = parent and (parent.kind == "StatLocal" or parent.kind == "StatAssign")
+						if assignment then
+							local i = table.find(parent.values, node)
+							named = i and parent.vars[i]
+						elseif parent and parent.kind == "Record" then
+							named = parent.key
+						end
+						local name = named and slice(named)
+						local at = if named then first(named) else first(node)
+						local args = source:sub(opening + 1, after - 2)
+						local item = if named then declare(name, at, "Function", if assignment or parent.kind == "Record" then name .. source:sub(opening, after-1) else source:sub(at, after-1)) else {Position = at}
+						item.Parameters, item.Generics = args, generics(node)
+						item.HeaderEnd = after
+						item.BodyStart, item.BodyEnd = first(node.body), last(node)
+						item.ReturnType = node.returnAnnotation and slice(node.returnAnnotation)
+						if named then
+							if item.ReturnType then item.Signature ..= ": " .. item.ReturnType end
+							item.Documentation = precedingComment(if parent.location then first(parent) else at)
+							self.Functions[#self.Functions+1] = item
+						end
+						self.FunctionScopes[#self.FunctionScopes+1] = item
+						for _, arg in node.args do
+							local list = self.Parameters[arg.name] or {}
+							self.Parameters[arg.name] = list
+							list[#list+1] = {Name = arg.name, Kind = "Parameter", Position = first(arg), NameEnd = last(arg),
+								Annotation = arg.annotation and slice(arg.annotation), BodyStart = item.BodyStart, Owner = item}
+						end
+					elseif kind == "StatTypeAlias" then
+						local alias = {Name = node.name, Kind = "Type", Position = pos(node.nameLocation.begin),
+							First = first(node.type), Last = last(node.type), Annotation = slice(node.type), Ast = node.type, TypeParameters = node.generics, TypePacks = node.genericPacks,
+							Signature = slice(node):gsub("^export%s+", ""), Documentation = precedingComment(first(node)),
+							Generics = generics(node), Exported = node.exported, Fields = {}}
+						self.Types[node.name] = alias
+						for _, field in node.type.props or {} do
+							local name, ft = field.name.value, field.type
+							local comment = precedingComment(first(field))
+							local item = {Name = name, Position = first(field), Kind = "Property", Annotation = slice(ft),
+								Signature = name .. ": " .. slice(ft)}
+							local expr = ft.kind == "TypeTypeof" and ft.expr
+							if expr and expr.kind == "ExprFunction" and expr.argLocation and expr.returnAnnotation then
+								item.Kind = "Function"
+								item.Signature = name .. source:sub(pos(expr.argLocation.begin), pos(expr.argLocation.end_)-1)
+									.. ": " .. slice(expr.returnAnnotation)
+								comment = comment or precedingComment(first(expr))
+							end
+							item.Documentation = comment
+							alias.Fields[name] = item
+							if comment then self.DocumentedFields[name] = if self.DocumentedFields[name] == nil then item else false end
+						end
+					end
+					if kind:sub(1,4) == "Type" then
+						self.AnnotationNodes[slice(node)] = node
+						self.TypeRanges[#self.TypeRanges+1] = {First = first(node), Last = last(node)}
+						if kind == "TypeTypeof" then
+							self.TypeValues[#self.TypeValues+1] = {First = first(node.expr), Last = last(node.expr)}
+						end
+					end
 				end
-				local item = name and declare(name, at, "Function", name .. source:sub(opening, last - 1))
-					or { Position = at }
-				if name then
-					functionDeclarations[at] = item
-				end
-				local params = source:sub(opening + 1, last - 2)
-				item.Parameters = params
-				if name then
-					item.Documentation = precedingComment(declarationStart)
-				end
-				local returnStart = masked:match("^%s*:()", last)
-				if returnStart then
-					local returnType, typeEnd = annotation(returnStart)
-					item.ReturnType = returnType
+				if not record.Nodes then return false end
+				for _, list in self.Bindings do table.sort(list, function(a,b) return a.Position < b.Position end) end
+			else
+				local occupied = {}
+				local functionDeclarations = {}
+				local function fn(name, at, opening, declarationStart, header)
+					if occupied[opening] then
+						return
+					end
+					occupied[opening] = true
+					local depth, last = 1, opening + 1
+					while last <= #source and depth > 0 do
+						local c = self.Masked:sub(last, last)
+						if c == "(" then
+							depth += 1
+						elseif c == ")" then
+							depth -= 1
+						end
+						last += 1
+					end
+					if depth ~= 0 then
+						return
+					end
+					local item = name and declare(name, at, "Function", name .. source:sub(opening, last - 1))
+						or { Position = at }
 					if name then
-						item.Signature ..= ": " .. returnType
+						functionDeclarations[at] = item
 					end
-					last = typeEnd
-				end
-				if header then
+					local params = source:sub(opening + 1, last - 2)
+					item.Parameters = params
 					if name then
-						item.Signature = name .. source:sub(header, opening - 1) .. item.Signature:sub(#name + 1)
+						item.Documentation = precedingComment(declarationStart)
 					end
-					local genericEnd = balanced(masked, header)
-					item.Generics = genericEnd and source:sub(header + 1, genericEnd - 2)
-				end
-				item.BodyStart = last
-				self.FunctionScopes[#self.FunctionScopes + 1] = item
-				local paramEnd = opening + #params + 1
-				local paramStart = opening + 1
-				while paramStart < paramEnd do
-					local position, parameter, afterName = masked:match("^%s*()([%a_][%w_]*)()", paramStart)
-					if not parameter then
-						break
+					local returnStart = masked:match("^%s*:()", last)
+					if returnStart then
+						local returnType, typeEnd = annotation(returnStart)
+						item.ReturnType = returnType
+						if name then
+							item.Signature ..= ": " .. returnType
+						end
+						last = typeEnd
 					end
-					local typeStart = masked:match("^%s*:()", afterName)
-					local parameterType, afterType
-					if typeStart then
-						parameterType, afterType = annotation(typeStart)
+					if header then
+						if name then
+							item.Signature = name .. source:sub(header, opening - 1) .. item.Signature:sub(#name + 1)
+						end
+						local genericEnd = balanced(masked, header)
+						item.Generics = genericEnd and source:sub(header + 1, genericEnd - 2)
 					end
-					local params = self.Parameters[parameter] or {}
-					self.Parameters[parameter] = params
-					params[#params + 1] = {
-						Name = parameter,
-						Kind = "Parameter",
-						Position = position,
-						NameEnd = afterName,
-						Annotation = parameterType,
-						BodyStart = last,
-						Owner = item,
-					}
-					paramStart = masked:match("^%s*,()", afterType or afterName) or paramEnd
+					item.BodyStart = last
+					self.FunctionScopes[#self.FunctionScopes + 1] = item
+					local paramEnd = opening + #params + 1
+					local paramStart = opening + 1
+					while paramStart < paramEnd do
+						local position, parameter, afterName = masked:match("^%s*()([%a_][%w_]*)()", paramStart)
+						if not parameter then
+							break
+						end
+						local typeStart = masked:match("^%s*:()", afterName)
+						local parameterType, afterType
+						if typeStart then
+							parameterType, afterType = annotation(typeStart)
+						end
+						local params = self.Parameters[parameter] or {}
+						self.Parameters[parameter] = params
+						params[#params + 1] = {
+							Name = parameter,
+							Kind = "Parameter",
+							Position = position,
+							NameEnd = afterName,
+							Annotation = parameterType,
+							BodyStart = last,
+							Owner = item,
+						}
+						paramStart = masked:match("^%s*,()", afterType or afterName) or paramEnd
+					end
+					if name then
+						self.Functions[#self.Functions + 1] = item
+					end
 				end
-				if name then
-					self.Functions[#self.Functions + 1] = item
-				end
-			end
-			for at, name, opening in self.Masked:gmatch("()function%s+([%a_][%w_%.:]*)%s*()%(") do
-				local prefixStart = math.max(1, at - 32)
-				local localStart = self.Masked:sub(prefixStart, at - 1):match("%f[%w_]()local%s+$")
-				local start = localStart and prefixStart + localStart - 1 or at
-				fn(name, self.Masked:find(name, at + 8, true), opening, start)
-			end
-			for at, name, generic in masked:gmatch("()function%s+([%a_][%w_%.:]*)%s*()<") do
-				local genericEnd = balanced(masked, generic)
-				local opening = genericEnd and masked:match("^%s*()%(", genericEnd)
-				if opening then
+				for at, name, opening in self.Masked:gmatch("()function%s+([%a_][%w_%.:]*)%s*()%(") do
 					local prefixStart = math.max(1, at - 32)
-					local localStart = masked:sub(prefixStart, at - 1):match("%f[%w_]()local%s+$")
-					fn(
-						name,
-						masked:find(name, at + 8, true),
-						opening,
-						localStart and prefixStart + localStart - 1 or at,
-						generic
-					)
+					local localStart = self.Masked:sub(prefixStart, at - 1):match("%f[%w_]()local%s+$")
+					local start = localStart and prefixStart + localStart - 1 or at
+					fn(name, self.Masked:find(name, at + 8, true), opening, start)
 				end
-			end
-			for at, name, opening in self.Masked:gmatch("()([%a_][%w_%.:]*)%s*=%s*function%s*()%(") do
-				local prefixStart = math.max(1, at - 32)
-				local localStart = self.Masked:sub(prefixStart, at - 1):match("%f[%w_]()local%s+$")
-				fn(name, at, opening, localStart and prefixStart + localStart - 1 or at)
-			end
-			for at, opening in masked:gmatch("%f[%w_]()function%s*()%(") do
-				fn(nil, at, opening, at)
-			end
-			for at, name, afterName in self.Masked:gmatch("()local%s+([%a_][%w_]*)()") do
-				if name ~= "function" then
-					local tail = source:match("^[^\n]*", at) or ""
-					local expression = tail:match("^local%s+[%a_][%w_]*%s*=%s*(.-)%s*$")
-					local position = afterName - #name
-					local declaration = functionDeclarations[position] or declare(name, position, "Variable")
-					declaration.Documentation = precedingComment(at)
-					local typeStart = masked:match("^[ \t]*:()", afterName)
-					if typeStart then
-						local typeEnd
-						declaration.Annotation, typeEnd = annotation(typeStart)
-						local rhs = masked:match("^%s*=()", typeEnd)
-						expression = rhs and trim(source:match("^[^\r\n]*", rhs) or "")
-					end
-					if expression then
-						self.Bindings[name] = self.Bindings[name] or {}
-						table.insert(self.Bindings[name], { Position = at, Expression = expression })
+				for at, name, generic in masked:gmatch("()function%s+([%a_][%w_%.:]*)%s*()<") do
+					local genericEnd = balanced(masked, generic)
+					local opening = genericEnd and masked:match("^%s*()%(", genericEnd)
+					if opening then
+						local prefixStart = math.max(1, at - 32)
+						local localStart = masked:sub(prefixStart, at - 1):match("%f[%w_]()local%s+$")
+						fn(
+							name,
+							masked:find(name, at + 8, true),
+							opening,
+							localStart and prefixStart + localStart - 1 or at,
+							generic
+						)
 					end
 				end
-			end
-			for position, name, afterName in masked:gmatch("%f[%w_]()type[ \t]+([%a_][%w_]*)()") do
-				local generic = masked:match("^[ \t]*()<", afterName)
-				local genericEnd = generic and balanced(masked, generic)
-				local first = masked:match("^%s*=()", genericEnd or afterName)
-				if not first then
-					continue
+				for at, name, opening in self.Masked:gmatch("()([%a_][%w_%.:]*)%s*=%s*function%s*()%(") do
+					local prefixStart = math.max(1, at - 32)
+					local localStart = self.Masked:sub(prefixStart, at - 1):match("%f[%w_]()local%s+$")
+					fn(name, at, opening, localStart and prefixStart + localStart - 1 or at)
 				end
-				local declarationStart = position
-				local exportStart = math.max(1, position - 24)
-				local export = masked:sub(exportStart, position - 1):match("%f[%w_]()export%s+$")
-				if export then
-					declarationStart = exportStart + export - 1
+				for at, opening in masked:gmatch("%f[%w_]()function%s*()%(") do
+					fn(nil, at, opening, at)
 				end
-				local annotationText, last = annotation(first)
-				local item = {
-					Name = name,
-					Kind = "Type",
-					Position = position + #"type ",
-					First = first,
-					Last = last,
-					Annotation = annotationText,
-					Signature = trim(source:sub(position, last - 1)),
-					Documentation = precedingComment(declarationStart),
-					Fields = {},
-					Generics = genericEnd and source:sub(generic + 1, genericEnd - 2),
-					Exported = export ~= nil,
-				}
-				self.Types[name] = item
-			end
-			for colon in masked:gmatch("()::") do
-				annotation(colon + 2)
-			end
-			for _, alias in pairs(self.Types) do
-				for offset in masked:sub(alias.First, alias.Last - 1):gmatch("%f[%w_]typeof%s*%(()") do
-					local first = alias.First + offset - 1
-					local last = balanced(masked, first - 1)
-					self.TypeValues[#self.TypeValues + 1] = { First = first, Last = last and last - 1 or #source + 1 }
-				end
-				local start = masked:match("^%s*(){", alias.First)
-				if not start then
-					continue
-				end
-				local cursor = start + 1
-				while cursor < alias.Last do
-					local position, field, first = masked:match("^%s*()([%a_][%w_]*)%s*:()", cursor)
-					if not field then
-						break
+				for at, name, afterName in self.Masked:gmatch("()local%s+([%a_][%w_]*)()") do
+					if name ~= "function" then
+						local tail = source:match("^[^\n]*", at) or ""
+						local expression = tail:match("^local%s+[%a_][%w_]*%s*=%s*(.-)%s*$")
+						local position = afterName - #name
+						local declaration = functionDeclarations[position] or declare(name, position, "Variable")
+						declaration.Documentation = precedingComment(at)
+						local typeStart = masked:match("^[ \t]*:()", afterName)
+						if typeStart then
+							local typeEnd
+							declaration.Annotation, typeEnd = annotation(typeStart)
+							local rhs = masked:match("^%s*=()", typeEnd)
+							expression = rhs and trim(source:match("^[^\r\n]*", rhs) or "")
+						end
+						if expression then
+							self.Bindings[name] = self.Bindings[name] or {}
+							table.insert(self.Bindings[name], { Position = at, Expression = expression })
+						end
 					end
-					local fieldType, last = annotation(first)
-					local signature = field .. ": " .. fieldType
-					local functionAt, parameters, returnStart =
-						masked:match("^%s*typeof%s*%(%s*()function%s*(%b())%s*:()", first)
-					local comment = precedingComment(position) or (functionAt and precedingComment(functionAt))
+				end
+				for position, name, afterName in masked:gmatch("%f[%w_]()type[ \t]+([%a_][%w_]*)()") do
+					local generic = masked:match("^[ \t]*()<", afterName)
+					local genericEnd = generic and balanced(masked, generic)
+					local first = masked:match("^%s*=()", genericEnd or afterName)
+					if not first then
+						continue
+					end
+					local declarationStart = position
+					local exportStart = math.max(1, position - 24)
+					local export = masked:sub(exportStart, position - 1):match("%f[%w_]()export%s+$")
+					if export then
+						declarationStart = exportStart + export - 1
+					end
+					local annotationText, last = annotation(first)
 					local item = {
-						Name = field,
-						Position = position,
-						Kind = "Property",
-						Signature = signature,
-						Annotation = fieldType,
-						Documentation = comment,
+						Name = name,
+						Kind = "Type",
+						Position = position + #"type ",
+						First = first,
+						Last = last,
+						Annotation = annotationText,
+						Signature = trim(source:sub(position, last - 1)),
+						Documentation = precedingComment(declarationStart),
+						Fields = {},
+						Generics = genericEnd and source:sub(generic + 1, genericEnd - 2),
+						Exported = export ~= nil,
 					}
-					if functionAt then
-						local returnType = readType(source, masked, returnStart)
-						item.Signature = field .. parameters .. ": " .. trim(source:sub(returnStart, returnType - 1))
-						item.Kind = "Function"
+					self.Types[name] = item
+				end
+				for colon in masked:gmatch("()::") do
+					annotation(colon + 2)
+				end
+				for _, alias in pairs(self.Types) do
+					for offset in masked:sub(alias.First, alias.Last - 1):gmatch("%f[%w_]typeof%s*%(()") do
+						local first = alias.First + offset - 1
+						local last = balanced(masked, first - 1)
+						self.TypeValues[#self.TypeValues + 1] = { First = first, Last = last and last - 1 or #source + 1 }
 					end
-					alias.Fields[field] = item
-					if comment then
-						self.DocumentedFields[field] = if self.DocumentedFields[field] == nil then item else false
+					local start = masked:match("^%s*(){", alias.First)
+					if not start then
+						continue
 					end
-					cursor = masked:match("^%s*[,;]()", last) or alias.Last
+					local cursor = start + 1
+					while cursor < alias.Last do
+						local position, field, first = masked:match("^%s*()([%a_][%w_]*)%s*:()", cursor)
+						if not field then
+							break
+						end
+						local fieldType, last = annotation(first)
+						local signature = field .. ": " .. fieldType
+						local functionAt, parameters, returnStart =
+							masked:match("^%s*typeof%s*%(%s*()function%s*(%b())%s*:()", first)
+						local comment = precedingComment(position) or (functionAt and precedingComment(functionAt))
+						local item = {
+							Name = field,
+							Position = position,
+							Kind = "Property",
+							Signature = signature,
+							Annotation = fieldType,
+							Documentation = comment,
+						}
+						if functionAt then
+							local returnType = readType(source, masked, returnStart)
+							item.Signature = field .. parameters .. ": " .. trim(source:sub(returnStart, returnType - 1))
+							item.Kind = "Function"
+						end
+						alias.Fields[field] = item
+						if comment then
+							self.DocumentedFields[field] = if self.DocumentedFields[field] == nil then item else false
+						end
+						cursor = masked:match("^%s*[,;]()", last) or alias.Last
+					end
 				end
 			end
 			table.sort(self.Functions, function(a, b)
@@ -391,21 +493,22 @@ local function Main()
 					return a.Position < b.Position
 				end)
 			end
+			self.Source = source
+			return true
 		end
 		function self:InType(position)
-			for _, range in ipairs(self.TypeRanges or {}) do
-				if position >= range.First and position <= range.Last then
-					for _, value in ipairs(self.TypeValues) do
-						if position >= value.First and position < value.Last and value.First >= range.First then
-							return false
-						end
-					end
-					return true
-				end
+			local nearest = 0
+			for _, range in self.TypeRanges or {} do
+				if position >= range.First and position <= range.Last then nearest = math.max(nearest, range.First) end
 			end
-			return false
+			if nearest == 0 then return false end
+			for _, value in self.TypeValues or {} do
+				if value.First >= nearest and position >= value.First and position < value.Last then return false end
+			end
+			return true
 		end
 		local function inFunction(self, item, position)
+			if item.BodyEnd then return position >= item.BodyStart and position < item.BodyEnd end
 			if position < item.BodyStart or position - item.BodyStart > 8192 then
 				return false
 			end
@@ -461,7 +564,8 @@ local function Main()
 		function self:Find(name, position)
 			local result
 			for _, item in ipairs(self.Declarations) do
-				if item.Name == name and (not result or item.Position <= (position or math.huge)) then
+				if item.Name == name and (not position or not item.ScopeEnd or position < item.ScopeEnd)
+					and (not result or item.Position <= (position or math.huge)) then
 					result = item
 					if item.Position > (position or math.huge) then
 						break
@@ -512,7 +616,7 @@ local function Main()
 				local binding
 				for _, item in ipairs(bindings or {}) do
 					if item.Position < (position or math.huge) then
-						binding = item
+						if not position or not item.ScopeEnd or position <= item.ScopeEnd then binding = item end
 					else
 						break
 					end

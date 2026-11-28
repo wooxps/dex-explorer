@@ -827,30 +827,37 @@ local function CreateModule()
 				number.Text = numberText
 			end
 			local lineText = self.Lines[relaY] or ""
-			local marker = lineFrame:FindFirstChild("SyntaxUnderline")
-			local diagnostic = self.SyntaxDiagnostic
-			if diagnostic and diagnostic.Line == sourceLine then
-				local first = math.clamp((diagnostic.Column or 1) - 1, 0, #lineText)
-				if not diagnostic.Column then
-					first = #(lineText:match("^%s*") or "")
-				end
-				local startX = View.GetColumnPixelX(self, first, sourceLine - 1) - scrollPixel
-				local endX = View.GetColumnPixelX(self, #lineText, sourceLine - 1) - scrollPixel
+			local marks = 0
+			for _, mark in if sourceLine then self.SyntaxRanges or {} else {} do
+				local row = sourceLine - 1
+				if row < mark.First[2] or row > mark.Last[2] then continue end
+				local first = if row == mark.First[2] then mark.First[1] else 0
+				local last = if row == mark.Last[2] then mark.Last[1] else #lineText
+				if row == mark.Last[2] and last == 0 and row ~= mark.First[2] then continue end
+				marks += 1
+				local key = "SyntaxUnderline" .. marks
+				local marker = lineFrame:FindFirstChild(key)
 				if not marker then
 					marker = Instance.new("Frame")
-					marker.Name = "SyntaxUnderline"
+					marker.Name = key
 					marker.BackgroundColor3 = Color3.fromRGB(234, 68, 68)
 					marker.BorderSizePixel = 0
 					marker.ZIndex = 4
 					marker.Parent = lineFrame
 				end
+				local startX = View.GetColumnPixelX(self, first, row) - scrollPixel
+				local endX = View.GetColumnPixelX(self, last, row) - scrollPixel
 				local x = math.max(0, math.round(startX))
 				local width = math.min(hSize, math.round(math.max(startX + 4, endX))) - x
 				marker.Position = UDim2.new(0, x, 1, -1)
 				marker.Size = UDim2.fromOffset(math.max(0, width), 1)
 				marker.Visible = width > 0
-			elseif marker then
-				marker.Visible = false
+			end
+			local unused = lineFrame:FindFirstChild("SyntaxUnderline" .. (marks + 1))
+			while unused do
+				unused.Visible = false
+				marks += 1
+				unused = lineFrame:FindFirstChild("SyntaxUnderline" .. (marks + 1))
 			end
 			local guideHost = lineFrame:FindFirstChild("IndentGuides")
 			if self.ShowIndentGuides then

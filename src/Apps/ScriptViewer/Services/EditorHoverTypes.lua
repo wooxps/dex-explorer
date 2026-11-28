@@ -486,9 +486,93 @@ local function Main()
 		return read(1, 0)
 	end
 
+	local function semanticType(node, aliases, resolveAlias, substitutions, loading, depth)
+		if not node or depth > 24 then return nil end
+		local function read(child)
+			return semanticType(child, aliases, resolveAlias, substitutions, loading, depth + 1)
+		end
+		local kind = node.kind
+		if kind == "TypeReference" then
+			local name = node.name
+			local alias = aliases[name]
+			if node.prefix then
+				alias = resolveAlias and resolveAlias(node.prefix, name)
+				name = node.prefix .. "." .. name
+			end
+			if substitutions and substitutions[name] then return substitutions[name] end
+			if alias and alias.Ast and not loading[alias] then
+				local bound = {}
+				local i = 0
+				loading[alias] = true
+				for _, parameters in {alias.TypeParameters or {}, alias.TypePacks or {}} do
+					for _, param in parameters do
+						i += 1
+						local arg = node.parameters[i]
+						if arg then
+							bound[param.name] = read(arg.type or arg.typePack)
+						elseif param.defaultValue then
+							bound[param.name] = semanticType(param.defaultValue, alias.Aliases or aliases, resolveAlias, bound, loading, depth + 1)
+						end
+					end
+				end
+				local value = semanticType(alias.Ast, alias.Aliases or aliases, resolveAlias, bound, loading, depth + 1)
+				loading[alias] = nil
+				return value or name
+			end
+			return name
+		elseif kind == "TypeTable" then
+			local fields = {}
+			for _, prop in node.props do fields[prop.name.value] = read(prop.type) or "unknown" end
+			local result = {Kind = "record", Fields = fields, Sealed = true}
+			if node.indexer then
+				local key = read(node.indexer.indexType)
+				local value = read(node.indexer.resultType)
+				if key == "number" then result.Element = value
+				elseif key == "string" then result.Indexer = value
+				elseif type(key) == "table" and key.Literal == "string" then fields[key.Value] = value end
+			end
+			return result
+		elseif kind == "TypeUnion" or kind == "TypeIntersection" or kind == "TypePackExplicit" then
+			local values = {}
+			for _, member in node.types do table.insert(values, read(member) or "unknown") end
+			if node.tailType then table.insert(values, read(node.tailType) or "unknown") end
+			if kind == "TypeUnion" then return combine(values) end
+			if kind == "TypeIntersection" then return {Kind = "intersection", Values = values} end
+			return if #values == 1 then values[1] elseif #values == 0 then "()" else {Kind = "pack", Values = values}
+		elseif kind == "TypeFunction" then
+			local params = {}
+			for i, param in node.argTypes.types do
+				local named = node.argNames[i]
+				params[i] = {Name = named and named.name or nil, Type = read(param) or "unknown"}
+			end
+			if node.argTypes.tailType then table.insert(params, {Type = read(node.argTypes.tailType)}) end
+			return {Kind = "function", Params = params, Return = read(node.returnTypes) or "unknown"}
+		elseif kind == "TypeOptional" then return "nil"
+		elseif kind == "TypeGroup" then return read(node.type)
+		elseif kind == "TypePackGeneric" then return substitutions and substitutions[node.genericName] or node.genericName
+		elseif kind == "TypePackVariadic" then return {Kind = "variadic", Type = read(node.variadicType) or "unknown"}
+		elseif kind == "TypeSingletonBool" or kind == "TypeSingletonString" then
+			return {Kind = "singleton", Literal = if kind == "TypeSingletonString" then "string" else "boolean", Value = tostring(node.value)}
+		elseif kind == "TypeTypeof" then return "typeof" end
+		return nil
+	end
+
 	function Types.ParseAnnotation(annotation, symbols, resolveAlias)
 		if type(annotation) ~= "string" or #annotation > 8192 then
 			return annotation
+		end
+		local aliases = symbols and (symbols.Types or symbols) or {}
+		if Apps.EditorParser then
+			local node = symbols and symbols.AnnotationNodes and symbols.AnnotationNodes[annotation]
+			if not node then
+				local parsed = Apps.EditorParser.Parse("type __Annotation = " .. annotation)
+				local declaration = parsed and parsed.Root and parsed.Root.body[1]
+				if parsed and parsed.Diagnostics.Passed and declaration then node = declaration.type end
+			end
+			if node then
+				local value = semanticType(node, aliases, resolveAlias, nil, {}, 0)
+				if value then return value end
+			end
 		end
 		local tokens = Apps.EditorDefinitions.Tokenize(annotation)
 		return tokens
@@ -499,9 +583,13 @@ local function Main()
 		if #source > 65536 then
 			return nil
 		end
-		local ranges = table.clone(symbols.TypeRanges)
+		local record = symbols.Record
+		if not record or record.Source ~= source then
+			record = Apps.EditorParser and Apps.EditorParser.Parse(source, checkpoint)
+			if Apps.EditorParser and not record then return nil end
+		end
 		local aliases = symbols.Types
-		local tokens = options and options.Tokens or Apps.EditorDefinitions.Tokenize(source, checkpoint)
+		local tokens = options and options.Tokens or Apps.EditorDefinitions.Tokenize(source, checkpoint, false, record)
 		if not tokens or #tokens > 12000 then
 			return nil
 		end
@@ -518,9 +606,17 @@ local function Main()
 		for _, item in ipairs(symbols.Declarations) do
 			declarations[item.Position] = item
 		end
-		table.sort(ranges, function(a, b)
-			return a.First < b.First
-		end)
+		local syntax
+		local ranges
+		if record and record.Diagnostics.Passed then
+			syntax = Apps.EditorParser.ExpressionIndex(record, checkpoint)
+			if not syntax then return nil end
+		else
+			ranges = table.clone(symbols.TypeRanges)
+			table.sort(ranges, function(a, b)
+				return if a.First == b.First then a.Last > b.Last else a.First < b.First
+			end)
+		end
 		local nextRange = 1
 		local expr, block, readFunction
 		local function findSlot(name)
@@ -608,17 +704,25 @@ local function Main()
 			if not start then
 				return nil
 			end
-			while ranges[nextRange] and ranges[nextRange].Last <= start do
-				nextRange += 1
-			end
-			for rangeIndex = nextRange, #ranges do
-				local range = ranges[rangeIndex]
-				if range.First > start then
-					break
+			if syntax then
+				local last = syntax.TypeEnds[start]
+				if last then
+					readTypeTokens(last)
+					return source:sub(start, last - 1)
 				end
-				if start >= range.First and start < range.Last then
-					readTypeTokens(range.Last)
-					return source:sub(start, range.Last - 1):match("^(.-)%s*$")
+			else
+				while ranges[nextRange] and ranges[nextRange].Last <= start do
+					nextRange += 1
+				end
+				for rangeIndex = nextRange, #ranges do
+					local range = ranges[rangeIndex]
+					if range.First > start then
+						break
+					end
+					if start >= range.First and start < range.Last then
+						readTypeTokens(range.Last)
+						return source:sub(start, range.Last - 1):match("^(.-)%s*$")
+					end
 				end
 			end
 			local token = current()
@@ -634,7 +738,7 @@ local function Main()
 			if parsedTypes[raw] then
 				return parsedTypes[raw]
 			end
-			local value = Types.ParseAnnotation(raw, aliases, function(module, name)
+			local value = Types.ParseAnnotation(raw, symbols, function(module, name)
 				local slot = findSlot(module)
 				local imported = slot and Types.ExportedTypes(slot.Type)
 				return imported and imported[name]
@@ -875,11 +979,61 @@ local function Main()
 				Guarded = if value.Path == "type" or value.Path == "typeof" then args[1] else nil,
 			}
 		end
-		function expr(minimum, depth, expectedType)
+		local function binaryResult(operator, result, rhs)
+			if comparisons[operator] then
+				constrain(result, typeAt(rhs))
+				constrain(rhs, typeAt(result))
+				local guard
+				if rhs and (operator == "==" or operator == "~=") then
+					local checked, check = result, rhs
+					if result.Type == "nil" or rhs.Guarded then
+						checked, check = rhs, result
+					end
+					local test = if checked.Guarded
+						then check.String
+						elseif check.Type == "nil" then "nil"
+						else nil
+					checked = checked.Guarded or checked
+					if test and checked.Slot then
+						guard =
+							{ Slot = checked.Slot, Name = checked.Name, Type = test, Invert = operator == "~=" }
+					end
+				end
+				result = { Type = "boolean", Guard = guard }
+			elseif operator == "or" or operator == "and" then
+				result = { Type = combine({ typeAt(result) or "unknown", typeAt(rhs) or "unknown" }) }
+			else
+				local inferred = if operator == ".." then "string" else "number"
+				constrain(result, inferred)
+				constrain(rhs, inferred)
+				result = { Type = inferred }
+			end
+			return result
+		end
+		function expr(minimum, depth, expectedType, node)
 			operations += 1
 			local token = current()
 			if depth > 32 or operations > 18000 or not token.First or token.Kind == "name" and blocked[token.Value] then
 				return nil
+			end
+			node = node or (minimum == 0 and syntax and syntax.Expressions[token.First]) or nil
+			local finish = node and record.Starts[node.location.end_.x + 1] + node.location.end_.y
+			if node and node.kind == "ExprBinary" then
+				local chain = {}
+				while node.kind == "ExprBinary" do
+					chain[#chain + 1] = node
+					node = node.left
+				end
+				local result = expr(0, depth + 1, nil, node)
+				if not result then return nil end
+				for i = #chain, 1, -1 do
+					local operator = current()
+					if not precedence[operator.Value] then break end
+					index += 1
+					local rhs = expr(0, depth + 1, nil, chain[i].right)
+					result = binaryResult(operator.Value, result, rhs)
+				end
+				return result
 			end
 			index += 1
 			local value = token.Value
@@ -916,7 +1070,7 @@ local function Main()
 				result = expr(0, depth + 1, expectedType)
 				take(")")
 			elseif value == "not" or value == "-" or value == "#" then
-				local operand = expr(7, depth + 1)
+				local operand = expr(7, depth + 1, nil, node and node.kind == "ExprUnary" and node.expr or nil)
 				if value == "-" then
 					constrain(operand, "number")
 				end
@@ -934,7 +1088,7 @@ local function Main()
 				index -= 1
 				return nil
 			end
-			while result and current().First do
+			while result and current().First and (not finish or current().First < finish) do
 				local nextToken = current()
 				local operator = if nextToken.Kind == "symbol" or nextToken.Kind == "name" then nextToken.Value else ""
 				if operator == "." or operator == ":" then
@@ -990,34 +1144,7 @@ local function Main()
 					end
 					index += 1
 					local rhs = expr(priority + ((operator == "^" or operator == "..") and 0 or 1), depth + 1)
-					if comparisons[operator] then
-						constrain(result, typeAt(rhs))
-						constrain(rhs, typeAt(result))
-						local guard
-						if rhs and (operator == "==" or operator == "~=") then
-							local checked, check = result, rhs
-							if result.Type == "nil" or rhs.Guarded then
-								checked, check = rhs, result
-							end
-							local test = if checked.Guarded
-								then check.String
-								elseif check.Type == "nil" then "nil"
-								else nil
-							checked = checked.Guarded or checked
-							if test and checked.Slot then
-								guard =
-									{ Slot = checked.Slot, Name = checked.Name, Type = test, Invert = operator == "~=" }
-							end
-						end
-						result = { Type = "boolean", Guard = guard }
-					elseif priority < 3 then
-						result = { Type = combine({ typeAt(result) or "unknown", typeAt(rhs) or "unknown" }) }
-					else
-						local inferred = if operator == ".." then "string" else "number"
-						constrain(result, inferred)
-						constrain(rhs, inferred)
-						result = { Type = inferred }
-					end
+					result = binaryResult(operator, result, rhs)
 				end
 			end
 			return result

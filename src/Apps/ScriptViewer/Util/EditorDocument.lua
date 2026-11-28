@@ -49,6 +49,7 @@ local function Main()
 			return false
 		end
 		local previous = self.Text
+		self.Revision = (self.Revision or 0) + 1
 		self.Text = text
 		if Apps and Apps.EditorBuffer then
 			if not self.Buffer then

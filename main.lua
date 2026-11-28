@@ -335,6 +335,8 @@ Main = (function()
 		"EditorFindWidget",
 		"EditorGlobalSearch",
 		"EditorGlobalSearchWidget",
+		"EditorParserCore",
+		"EditorParser",
 		"EditorSymbols",
 		"EditorHoverTypes",
 		"EditorModuleTypes",

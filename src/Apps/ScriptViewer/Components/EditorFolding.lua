@@ -2,7 +2,7 @@
 
 ------------------------------ Module ------------------------------
 
-local function Main()
+local function Main(apps)
 	local Folding = {}
 	local structural = {
 		["function"] = true,
@@ -41,6 +41,22 @@ local function Main()
 			and structure(previous) == structure(current)
 	end
 	function Folding.Ranges(source)
+		local record = apps and apps.EditorParser and apps.EditorParser.Peek(source)
+		if record and record.Diagnostics.Passed then
+			local ranges = {}
+			for _, node, parent in apps.EditorParser.Nodes(record) do
+				local kind = node.kind
+				local location = node.location
+				if kind == "StatFor" or kind == "StatForIn" or kind == "StatWhile" or kind == "StatRepeat"
+					or kind == "ExprFunction" or kind == "ExprTable" or kind == "TypeTable"
+					or kind == "StatBlock" and parent and parent.kind == "StatBlock"
+					or kind == "StatIf" and not (parent and parent.kind == "StatIf" and parent.elsebody == node) then
+					local first, last = location.begin.x + 1, location.end_.x + 1
+					if last > first then ranges[first] = math.max(ranges[first] or 0, last) end
+				end
+			end
+			return ranges
+		end
 		local stack, ranges = {}, {}
 		local i, line, lineStart = 1, 1, 1
 		local pendingIf, pendingLoop

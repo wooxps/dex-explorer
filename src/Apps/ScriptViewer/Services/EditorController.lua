@@ -916,15 +916,31 @@ local function CreateModule()
 			return viewer.PasteText(text)
 		end
 		local function updateDiagnostics()
-			syntax = Apps.EditorLanguage.Compile(cf:GetText(), env.loadstring)
+			sync()
+			local source, owner, ticket = document:GetText(), viewer.ActiveDocument, analysisTicket
+			local function current()
+				return Main.Alive and viewer.ActiveDocument == owner and analysisTicket == ticket
+			end
+			local record = Apps.EditorParser.ParseDocument(document, workBudget(current))
+			if not record or not current() or cf:GetText() ~= source then return nil end
+			syntax = record.Diagnostics
+			sync()
+			local ranges = {}
+			for _, diagnostic in syntax.Errors do
+				local start = document:LineColumnToPosition(diagnostic.Line, diagnostic.Column)
+				local finish = document:LineColumnToPosition(diagnostic.EndLine, diagnostic.EndColumn)
+				local first, last = point(start), point(finish)
+				ranges[#ranges + 1] = { First = first, Last = last, Message = diagnostic.Message }
+			end
+			cf.SyntaxRanges = ranges
 			viewer.Diagnostics = syntax
-			cf.SyntaxDiagnostic = syntax.Line and syntax or nil
+			viewer.DiagnosticRevision = document.Revision
 			cf:Refresh()
 			return syntax
 		end
 		function viewer.CheckSyntax()
 			analysisTicket += 1
-			updateDiagnostics()
+			if not updateDiagnostics() then return syntax end
 			if options.Message then
 				options.Message(syntax.Message, syntax.Available and not syntax.Passed)
 			end
@@ -937,8 +953,9 @@ local function CreateModule()
 			closeCompletion()
 			local row = math.clamp(syntax.Line - 1, 0, #cf.Lines - 1)
 			cf.AdditionalSelections = {}
-			cf.SelectionRange = { { 0, row }, { 0, row } }
-			cf:MoveCursor(0, row)
+			local column = if cf.SyntaxRanges and cf.SyntaxRanges[1] then cf.SyntaxRanges[1].First[1] else 0
+			cf.SelectionRange = { { column, row }, { column, row } }
+			cf:MoveCursor(column, row)
 			cf:SetCopyableSelection()
 			cf:Refresh()
 			cf.GuiElems.EditBox:CaptureFocus()
@@ -1352,13 +1369,16 @@ local function CreateModule()
 			if before == self.Text then
 				return
 			end
+			local hadMarks = cf.SyntaxRanges and #cf.SyntaxRanges > 0
 			hideHover()
-			cf.SyntaxDiagnostic = nil
+			cf.SyntaxRanges = nil
+			if hadMarks then cf:Refresh() end
+			viewer.DiagnosticRevision = nil
 			syntax = { Available = false, Message = "Not checked" }
 			viewer.Diagnostics = syntax
 			analysisTicket += 1
 			local ticket = analysisTicket
-			if type(env.loadstring) == "function" and #self.Text <= 65536 then
+			if #self.Text <= 1048576 then
 				task.delay(0.35, function()
 					if ticket == analysisTicket and Main.Alive and window:IsVisible() then
 						updateDiagnostics()
@@ -1813,16 +1833,16 @@ local function CreateModule()
 					hideHover()
 					return
 				end
-				local diagnosticStart = syntax.Column and syntax.Column - 1 or 0
-				if syntax.Line == row + 1 and column >= diagnosticStart then
-					target.Resolved = true
-					target.First, target.Last = diagnosticStart, math.max(column + 1, #cf.Lines[row + 1])
-					local message = syntax.Message:gsub("^.-:%d+:%d+:%s*", "", 1)
-					if message == syntax.Message then
-						message = message:gsub("^.-:%d+:%s*", "", 1)
+				for _, mark in cf.SyntaxRanges or {} do
+					if row < mark.First[2] or row > mark.Last[2] then continue end
+					local first = if row == mark.First[2] then mark.First[1] else 0
+					local last = if row == mark.Last[2] then mark.Last[1] else #cf.Lines[row + 1]
+					if column >= first and column < math.max(first + 1, last) then
+						target.Resolved = true
+						target.First, target.Last = first, last
+						hover:Show("", mark.Message, row, first, true)
+						return
 					end
-					hover:Show("", message, row, target.First, true)
-					return
 				end
 				local source = cf:GetText()
 				if #source > 65536 then
@@ -1937,7 +1957,7 @@ local function CreateModule()
 		Apps.EditorContextMenu.Attach(viewer, cf, window, options)
 		viewer.LanguageCapabilities = {
 			Completion = "Lexical and API metadata",
-			Diagnostics = "Client compiler syntax only",
+			Diagnostics = "LuauParser syntax diagnostics",
 			NativeDebugger = false,
 			NativeTypeChecker = false,
 		}

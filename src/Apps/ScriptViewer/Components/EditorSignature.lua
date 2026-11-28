@@ -45,6 +45,46 @@ local function Main()
 		return stack
 	end
 
+	local function parsedCalls(symbols, position, checkpoint)
+		local record = symbols.Record
+		if not record or not record.Diagnostics.Passed then
+			local stack = findCalls(symbols.Masked, position, checkpoint)
+			if not stack or #stack == 0 then return stack, 0 end
+			return stack, Apps.EditorDocument.OpenFunctionAt(symbols.Source, position, checkpoint)
+		end
+		local stack, boundary = {}, 0
+		local function offset(point)
+			return record.Starts[point.x + 1] + point.y
+		end
+		for index, call in record.Calls do
+			if checkpoint and index % 128 == 0 and not checkpoint() then return nil end
+			local first = offset(call.argLocation.begin)
+			local last = offset(call.argLocation.end_)
+			if first <= position and position < last and symbols.Source:byte(first - 1) == 40 then
+				local argument = 1
+				for i, arg in call.args do
+					local finish = offset(arg.location.end_)
+					argument = i
+					if position <= finish then break end
+					local nextArg = call.args[i + 1]
+					if nextArg and position <= offset(nextArg.location.begin) then
+						local comma = symbols.Masked:find(",", finish, true)
+						if comma and comma < position then argument += 1 end
+						break
+					end
+				end
+				stack[#stack + 1] = {Open = 40, Position = first - 1, Argument = argument}
+			end
+		end
+		table.sort(stack, function(left, right) return left.Position < right.Position end)
+		for _, fn in symbols.FunctionScopes do
+			if fn.HeaderEnd and position >= fn.HeaderEnd and position < fn.BodyEnd then
+				boundary = math.max(boundary, fn.HeaderEnd - 1)
+			end
+		end
+		return stack, boundary
+	end
+
 	local function activeSignature(source, active)
 		local escape = Apps.EditorDocumentationText.Escape
 		local closing = { ["("] = ")", ["["] = "]", ["{"] = "}", ["<"] = ">" }
@@ -339,7 +379,7 @@ local function Main()
 				return
 			end
 			local symbols = language.Symbols
-			local stack = findCalls(symbols.Masked, position, checkpoint)
+			local stack, boundary = parsedCalls(symbols, position, checkpoint)
 			if not stack then
 				return
 			end
@@ -347,7 +387,6 @@ local function Main()
 				self:Hide()
 				return
 			end
-			local boundary = Apps.EditorDocument.OpenFunctionAt(source, position, checkpoint)
 			if boundary == nil then
 				return
 			end

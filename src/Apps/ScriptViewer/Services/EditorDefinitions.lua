@@ -462,8 +462,89 @@ local function ResolvePath(path: string, scriptObject: Instance?, gameObject: Da
 	return object
 end
 
-local function Main()
-	local Definitions = { New = Main, Tokenize = Tokenize }
+local function Main(apps)
+	local function tokensFor(source, checkpoint, includeComments, preparedRecord)
+		local record = if preparedRecord and preparedRecord.Source == source then preparedRecord else apps and apps.EditorParser and apps.EditorParser.Parse(source, checkpoint)
+		if not record then
+			if apps and apps.EditorParser then return nil end
+			return Tokenize(source, checkpoint, includeComments)
+		end
+		if not record.Root then return Tokenize(source, checkpoint, includeComments) end
+		local key = if includeComments then "WithComments" else "Tokens"
+		if record[key] then return record[key] end
+		local tokens = {}
+		local tokenAt = apps.EditorParser.TokenAt
+		local depth, interpolation = 0, nil
+		for i = 1, record.TokenCount do
+			if checkpoint and i % 256 == 1 and checkpoint() == false then return nil end
+			local id, first, last = tokenAt(record, i)
+			local kind, value
+			if id == 266 then
+				if depth == 0 then interpolation = first end
+				depth += 1
+				continue
+			elseif depth > 0 then
+				if id == 268 then depth -= 1 end
+				if depth ~= 0 then continue end
+				first, kind = interpolation, "opaque"
+			elseif id == 278 or id == 279 or id == 269 then
+				local finish
+				if id == 278 then finish, value = LongString(source, first) else finish, value = QuotedString(source, first) end
+				kind = if value then "string" else "opaque"
+			elseif id == 282 or id == 283 or id == 287 then
+				if not includeComments then continue end
+				kind = "comment"
+			elseif id == 286 or id == 289 then
+				kind = "opaque"
+			else
+				kind = if id == 280 then "number" elseif id == 281 or id >= 291 then "name" else "symbol"
+				value = source:sub(first, last - 1)
+			end
+			tokens[#tokens + 1] = {Kind = kind, Value = value or "", First = first, Last = last}
+		end
+		if depth > 0 then
+			tokens[#tokens + 1] = {Kind = "opaque", Value = "", First = interpolation, Last = #source + 1}
+		end
+		record[key] = tokens
+		return tokens
+	end
+	local function astBindings(record, tokens, checkpoint)
+		if record.BindingIndex then return record.BindingIndex[1], record.BindingIndex[2] end
+		local declarations, blocked = {}, {}
+		local function tokenAt(node)
+			local at = node.location.begin
+			return FindToken(tokens, record.Starts[at.x+1] + at.y)
+		end
+		for i, node, _, scope in apps.EditorParser.Nodes(record, checkpoint) do
+			if checkpoint and i % 256 == 0 and checkpoint() == false then return nil, nil end
+			if node.kind == "StatLocal" then
+				for index, var in node.vars do
+					local name = var.name
+					local expr = node.values[index]
+					if scope == record.Root and expr and not declarations[name] then
+						local lhs, rhs = tokenAt(var), tokenAt(expr)
+						if lhs and rhs then declarations[name] = {Name = lhs, Value = rhs} end
+						if name == "script" or name == "game" or name == "workspace" or name == "require" then blocked[name] = true end
+					else blocked[name] = true end
+				end
+			elseif node.kind == "StatLocalFunction" and node.name then blocked[node.name.name] = true
+			elseif node.kind == "ExprFunction" then
+				for _, arg in node.args do blocked[arg.name] = true end
+			elseif node.kind == "StatFor" then blocked[node.var.name] = true
+			elseif node.kind == "StatForIn" then
+				for _, var in node.vars do blocked[var.name] = true end
+			elseif node.kind == "StatAssign" or node.kind == "StatCompoundAssign" or node.kind == "StatFunction" then
+				for _, var in node.vars or {node.var or node.name} do
+					if var.kind == "ExprGlobal" then blocked[var.name] = true
+					elseif var.kind == "ExprLocal" then blocked[var["local"].name] = true end
+				end
+			end
+		end
+		if not record.Nodes then return nil, nil end
+		record.BindingIndex = {declarations, blocked}
+		return declarations, blocked
+	end
+	local Definitions = { New = function() return Main(apps) end, Tokenize = tokensFor }
 	function Definitions.ResolvePath(path: string, _scriptObject: Instance?, _gameObject: DataModel?): Instance?
 		return ResolvePath(path, _scriptObject, _gameObject or game)
 	end
@@ -477,15 +558,21 @@ local function Main()
 		return source == indexedSource
 	end
 
-	function Definitions.Prime(source: string, _checkpoint: Checkpoint?, preparedTokens: { Token }?): boolean
+	function Definitions.Prime(source: string, _checkpoint: Checkpoint?, preparedTokens: { Token }?, preparedRecord): boolean
 		if Definitions.IsPrimed(source) then
 			return true
 		end
-		local nextTokens = preparedTokens or Tokenize(source, _checkpoint)
+		local nextTokens = preparedTokens or tokensFor(source, _checkpoint, false, preparedRecord)
 		if not nextTokens then
 			return false
 		end
-		local nextDeclarations, nextBlocked = IndexBindings(nextTokens, _checkpoint)
+		local nextDeclarations, nextBlocked
+		local record = if preparedRecord and preparedRecord.Source == source then preparedRecord else apps and apps.EditorParser and apps.EditorParser.Parse(source, _checkpoint)
+		if record and record.Root then
+			nextDeclarations, nextBlocked = astBindings(record, nextTokens, _checkpoint)
+		else
+			nextDeclarations, nextBlocked = IndexBindings(nextTokens, _checkpoint)
+		end
 		if not nextDeclarations or not nextBlocked or _checkpoint and not _checkpoint() then
 			return false
 		end
